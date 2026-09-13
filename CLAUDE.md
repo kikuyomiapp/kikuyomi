@@ -8,7 +8,7 @@ The approved design is `docs/architecture.md` (v0.3). Individual decisions are r
 ## Current status
 Phase 0: environment setup, CI skeleton, and spikes. Spikes live in `spikes/` and are throwaway; their purpose is to answer the questions listed in the roadmap and produce ADRs. `spikes/README.md` carries the current status of each and what is blocking.
 
-The workspace and the fourteen packages under `packages/` exist. Phase 1 has begun on the pure-Dart core, ahead of Phase 0's Android items: `domain` holds the Timeline and the `Clock` interface; `playback` holds the `PlaybackEngine` interface, the progress-write rules, smart rewind and the sleep timer; `data` holds the §4.4 chapter-sync and book-details merges; and `sources_builtin` holds the M4B chapter reader. All of it is unit tested. The other packages are still empty scaffolding. CI builds an Android APK, a Windows build and an unsigned iOS IPA on every push, and runs `dart test` in every package that has tests.
+The workspace and the fourteen packages under `packages/` exist. Phase 1 has begun on the pure-Dart core, ahead of Phase 0's Android items: `domain` holds the Timeline and the `Clock` interface; `playback` holds the `PlaybackEngine` interface, the progress-write rules, smart rewind, the sleep timer and listening-session recording; `data` holds the §4.4 chapter-sync and book-details merges; and `sources_builtin` holds the M4B chapter reader. All of it is unit tested. The other packages are still empty scaffolding. CI builds an Android APK, a Windows build and an unsigned iOS IPA on every push, and runs `dart test` in every package that has tests.
 
 All fifteen decisions in §9 of the architecture document have ADRs in `docs/adr/`. Fourteen are Accepted; ADR-0001, the QuickJS binding, is still Proposed pending an Android run.
 
@@ -42,6 +42,7 @@ Folder names are short; `pubspec` names use a `kikuyomi_` prefix (e.g. `kikuyomi
 - Logic in pure-Dart packages ships with `dart test` unit tests.
 - Every schema change comes with a Drift migration and a migration test.
 - Code must pass `dart format` and `flutter analyze` with no warnings.
+- Judge whether CI will pass from a fresh clone of the committed tree, never from the working tree. Packages resolved by hand on the development machine, such as the spikes, make local runs pass where a clean checkout fails; that once hid a red build across a dozen commits.
 - Use sealed classes and pattern matching for state; prefer immutable models.
 
 ## Legal boundaries (non-negotiable)
