@@ -7,5 +7,6 @@
 /// Depends on Flutter by design; see docs/architecture.md section 2.4.
 library;
 
+export 'src/audio/audio_focus.dart';
 export 'src/audio/just_audio_engine.dart';
 export 'src/storage/storage_locations.dart';

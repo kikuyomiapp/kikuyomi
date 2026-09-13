@@ -48,7 +48,10 @@ final class JustAudioEngine implements PlaybackEngine {
   /// How long a seek into another item may wait for that item to become ready.
   static const _itemReadyTimeout = Duration(seconds: 10);
 
-  final _player = ja.AudioPlayer();
+  /// Interruptions and unplugged headphones are the coordinator's to handle (§6.5), and reach it
+  /// through `AudioFocus`. Left to just_audio, they would pause the player behind the
+  /// coordinator's back, and the coordinator would go on believing the book was playing.
+  final _player = ja.AudioPlayer(handleInterruptions: false);
   final _events = StreamController<EngineEvent>.broadcast();
   final _subscriptions = <StreamSubscription<Object?>>[];
   bool _buffering = false;
