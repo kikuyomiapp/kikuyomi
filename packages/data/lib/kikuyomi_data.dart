@@ -6,5 +6,8 @@
 /// Pure Dart. This package must never import Flutter or a platform plugin.
 library;
 
+export 'src/database/converters.dart';
+export 'src/database/database.dart';
+export 'src/database/tables.dart';
 export 'src/merge/book_details.dart';
 export 'src/merge/chapter_sync.dart';

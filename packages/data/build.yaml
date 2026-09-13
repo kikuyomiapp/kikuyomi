@@ -1,0 +1,22 @@
+# Drift code generation for the data package.
+#
+# Generated code is committed, so CI never runs build_runner. After changing tables, regenerate with
+#   dart run build_runner build
+# and after bumping schemaVersion, snapshot the schema and generate its migration test with
+#   dart run drift_dev make-migrations
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          # Registers the database with make-migrations, which snapshots every schema version into
+          # schema_dir and writes migration tests into test_dir. CLAUDE.md requires a migration and a
+          # migration test with every schema change.
+          databases:
+            kikuyomi: lib/src/database/database.dart
+          schema_dir: drift_schemas/
+          test_dir: test/drift/
+
+          # Drift's default stores DateTime as whole unix seconds, which would silently drop the
+          # milliseconds that progress and listening sessions are recorded to.
+          store_date_time_values_as_text: true
