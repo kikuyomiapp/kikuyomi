@@ -31,7 +31,7 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   Future<void> _open(String path) async {
     final services = ref.read(servicesProvider);
     try {
-      final bookId = await services.importM4b(path);
+      final bookId = await services.addBookInPlace(path);
       await services.openBook(bookId);
       await _navigator.currentState?.push(PlayerScreen.route());
     } catch (error) {

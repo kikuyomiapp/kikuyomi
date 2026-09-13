@@ -39,7 +39,6 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^3.4.3
-  path_provider: ^2.1.6
   file_selector: ^1.1.0
   drift: ^2.35.0
   kikuyomi_domain:
