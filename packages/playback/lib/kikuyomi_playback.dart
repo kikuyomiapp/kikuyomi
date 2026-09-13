@@ -7,6 +7,7 @@
 library;
 
 export 'src/engine.dart';
+export 'src/listening_sessions.dart';
 export 'src/progress_tracker.dart';
 export 'src/sleep_timer.dart';
 export 'src/smart_rewind.dart';
