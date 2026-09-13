@@ -6,9 +6,13 @@ Kikuyomi is an open-source (Apache-2.0), cross-platform audiobook player whose c
 The approved design is `docs/architecture.md` (v0.3). Individual decisions are recorded in `docs/adr/`. Read the relevant sections before proposing structural changes.
 
 ## Current status
-Phase 0: environment setup, CI skeleton, and spikes. Spikes live in `spikes/` and are throwaway; their purpose is to answer the questions listed in the roadmap and produce ADRs. Production code in `app/` and `packages/` starts in Phase 1.
+Phase 0: environment setup, CI skeleton, and spikes. Spikes live in `spikes/` and are throwaway; their purpose is to answer the questions listed in the roadmap and produce ADRs. `spikes/README.md` carries the current status of each and what is blocking.
 
-## Repository layout (target)
+The workspace and the fourteen packages under `packages/` exist, but they are empty scaffolding: pubspecs, dependency edges and a library entry point each. **Production code still starts in Phase 1.** CI builds an Android APK, a Windows build and an unsigned iOS IPA on every push.
+
+All fifteen decisions in §9 of the architecture document have ADRs in `docs/adr/`. Fourteen are Accepted; ADR-0001, the QuickJS binding, is still Proposed pending an Android run.
+
+## Repository layout
 ```
 app/                  Flutter app: composition root, routing, feature folders, adaptive shell
 packages/
