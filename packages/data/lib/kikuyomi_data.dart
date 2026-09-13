@@ -5,3 +5,5 @@
 ///
 /// Pure Dart. This package must never import Flutter or a platform plugin.
 library;
+
+export 'src/merge/chapter_sync.dart';
