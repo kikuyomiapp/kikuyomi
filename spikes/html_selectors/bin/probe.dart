@@ -139,24 +139,30 @@ void main() {
       detail = text.length > 90 ? '${text.substring(0, 90)}...' : text;
       unsupported++;
     }
-    results.putIfAbsent(p.group, () => []).add(
-          '  [$status] ${p.selector}  ::  $detail',
-        );
+    results
+        .putIfAbsent(p.group, () => [])
+        .add('  [$status] ${p.selector}  ::  $detail');
   }
 
-  print('--- spike (a) second half: CSS selector coverage in package:html ---\n');
+  print(
+    '--- spike (a) second half: CSS selector coverage in package:html ---\n',
+  );
   for (final entry in results.entries) {
     print('${entry.key}:');
     entry.value.forEach(print);
     print('');
   }
-  print('--- $supported correct, $wrong wrong, $unsupported unsupported '
-      '(of ${probes.length}) ---');
+  print(
+    '--- $supported correct, $wrong wrong, $unsupported unsupported '
+    '(of ${probes.length}) ---',
+  );
 
   // A wrong result is more dangerous than an unsupported one: an extension that silently matches
   // the wrong number of elements produces a corrupted library rather than a visible failure.
   if (wrong > 0) {
-    print('\nNOTE: "WRONG" means the selector parsed but matched a different set than CSS '
-        'requires. That fails silently in production, which is worse than throwing.');
+    print(
+      '\nNOTE: "WRONG" means the selector parsed but matched a different set than CSS '
+      'requires. That fails silently in production, which is worse than throwing.',
+    );
   }
 }

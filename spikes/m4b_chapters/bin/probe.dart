@@ -42,7 +42,14 @@ class Mp4Reader {
   Mp4Reader(this.bytes) : _view = ByteData.sublistView(bytes);
 
   static const _containers = {
-    'moov', 'udta', 'trak', 'mdia', 'minf', 'stbl', 'tref', 'edts',
+    'moov',
+    'udta',
+    'trak',
+    'mdia',
+    'minf',
+    'stbl',
+    'tref',
+    'edts',
   };
 
   /// Finds the first box of [type], descending only through known containers.
@@ -103,7 +110,6 @@ class Mp4Reader {
   bool hasQuickTimeChapterTrack() => findBox('chap') >= 0;
 }
 
-
 /// A seek-based reader that never holds the file in memory.
 ///
 /// This is the one that matters. §1.5 puts real M4B files at hundreds of megabytes to over a
@@ -118,7 +124,14 @@ class Mp4StreamReader {
   Mp4StreamReader(this._f) : _length = _f.lengthSync();
 
   static const _containers = {
-    'moov', 'udta', 'trak', 'mdia', 'minf', 'stbl', 'tref', 'edts',
+    'moov',
+    'udta',
+    'trak',
+    'mdia',
+    'minf',
+    'stbl',
+    'tref',
+    'edts',
   };
 
   Uint8List _readAt(int off, int n) {
@@ -167,10 +180,12 @@ class Mp4StreamReader {
       final len = body[p];
       p += 1;
       if (p + len > body.length) break;
-      out.add(Chapter(
-        Duration(microseconds: ticks ~/ 10),
-        String.fromCharCodes(body, p, p + len),
-      ));
+      out.add(
+        Chapter(
+          Duration(microseconds: ticks ~/ 10),
+          String.fromCharCodes(body, p, p + len),
+        ),
+      );
       p += len;
     }
     return out;
@@ -193,7 +208,9 @@ void main(List<String> args) {
   stdout.writeln('--- spike (d): M4B chapter extraction in pure Dart ---');
   stdout.writeln('file: $path (${file.lengthSync()} bytes)');
   stdout.writeln('parsed in ${sw.elapsedMicroseconds}us');
-  stdout.writeln('QuickTime chapter track present: ${reader.hasQuickTimeChapterTrack()}');
+  stdout.writeln(
+    'QuickTime chapter track present: ${reader.hasQuickTimeChapterTrack()}',
+  );
   stdout.writeln('');
 
   if (chapters == null) {
@@ -214,15 +231,19 @@ void main(List<String> args) {
   ];
   var failures = 0;
   if (chapters.length != expected.length) {
-    stdout.writeln('FAIL: expected ${expected.length} chapters, got ${chapters.length}');
+    stdout.writeln(
+      'FAIL: expected ${expected.length} chapters, got ${chapters.length}',
+    );
     failures++;
   } else {
     for (var i = 0; i < expected.length; i++) {
       final (ms, title) = expected[i];
       final got = chapters[i];
       if (got.start.inMilliseconds != ms || got.title != title) {
-        stdout.writeln('FAIL: chapter $i expected ${ms}ms "$title", '
-            'got ${got.start.inMilliseconds}ms "${got.title}"');
+        stdout.writeln(
+          'FAIL: chapter $i expected ${ms}ms "$title", '
+          'got ${got.start.inMilliseconds}ms "${got.title}"',
+        );
         failures++;
       }
     }
@@ -239,19 +260,27 @@ void main(List<String> args) {
   stdout.writeln('');
   stdout.writeln('seek-based reader:');
   stdout.writeln('  parsed in ${sw2.elapsedMicroseconds}us');
-  stdout.writeln('  bytes read: ${streamed.bytesRead} of ${file.lengthSync()} '
-      '(${(streamed.bytesRead * 100 / file.lengthSync()).toStringAsFixed(2)}%)');
+  stdout.writeln(
+    '  bytes read: ${streamed.bytesRead} of ${file.lengthSync()} '
+    '(${(streamed.bytesRead * 100 / file.lengthSync()).toStringAsFixed(2)}%)',
+  );
   final sameCount = streamedChapters?.length == chapters.length;
-  final sameData = sameCount &&
-      List.generate(chapters.length, (i) =>
-          streamedChapters![i].title == chapters[i].title &&
-          streamedChapters[i].start == chapters[i].start).every((x) => x);
+  final sameData =
+      sameCount &&
+      List.generate(
+        chapters.length,
+        (i) =>
+            streamedChapters![i].title == chapters[i].title &&
+            streamedChapters[i].start == chapters[i].start,
+      ).every((x) => x);
   stdout.writeln('  identical to in-memory result: $sameData');
   if (!sameData) failures++;
 
   stdout.writeln('');
-  stdout.writeln(failures == 0
-      ? '--- all chapter boundaries and titles correct ---'
-      : '--- $failures mismatches ---');
+  stdout.writeln(
+    failures == 0
+        ? '--- all chapter boundaries and titles correct ---'
+        : '--- $failures mismatches ---',
+  );
   exit(failures == 0 ? 0 : 1);
 }
