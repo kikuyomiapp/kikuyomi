@@ -162,6 +162,38 @@ The probe's "expected a throw" helper cannot distinguish a throw for the right r
 because everything is broken. On the unpatched run it scored two false passes for exactly that
 reason. The passing figures above were re-read individually against their error text.
 
+## Android: blocked on this machine
+
+The Android half of this spike cannot run here yet. The emulator refuses to start:
+
+```
+ERROR | x86_64 emulation currently requires hardware acceleration!
+CPU acceleration status: Android Emulator hypervisor driver is not installed on this machine
+```
+
+Diagnosis: the CPU is an Intel i7-9700K, and `Win32_Processor.VirtualizationFirmwareEnabled` is
+`True`, so VT-x **is** enabled in firmware. `Win32_ComputerSystem.HypervisorPresent` is `False`,
+so nothing is providing acceleration. The BIOS is not the problem; the hypervisor driver is simply
+absent.
+
+Note that `flutter doctor` reports the Android toolchain as green. It checks the SDK, the
+platform, the build tools and the licences. It does not check whether the emulator can actually
+start, so a green doctor is not evidence that Android is runnable. §2.11 assumes hardware
+virtualisation is available and should say what to verify.
+
+Three ways forward, in order of preference:
+
+1. **Install the Android Emulator hypervisor driver.** It is an SDK Manager package, and its
+   installer must be run elevated. This is the smallest change and keeps the emulator workflow.
+2. **Use a physical Android device over adb.** §2.2 already anticipates buying a cheap used
+   Android phone, on the grounds that real devices kill background work in ways emulators do not.
+   That argument applies with more force to spikes (b) and (c) than to this one.
+3. **Run the probe on an emulator in CI.** GitHub's Linux runners have KVM. This would need the
+   patched binding available to CI, so it is the most work, but it removes the dependency on any
+   local machine and would keep the answer honest over time.
+
+Until one of those happens, ADR-0001 stays Proposed on the strength of the Windows result alone.
+
 ## Next, in order
 
 1. **Run the same probe on Android.** Windows passes; Android is the other primary target and the
