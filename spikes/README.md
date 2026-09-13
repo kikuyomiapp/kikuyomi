@@ -22,7 +22,7 @@ From the roadmap in `docs/architecture.md` §8. Status as of the last commit.
 | `playback/` | **Windows done, Android not run** | The stack works. Two undocumented behaviours would each silently corrupt resume; both are now requirements on the `PlaybackEngine` adapter. ADR-0006. |
 | `m4b_chapters/` | **Done** | Both chapter formats read in pure Dart, seek-based, ~1% of the file. No platform plugin and no ffmpeg at runtime. |
 | `downloads/` | **Windows done, Android not run** | 7 of 7 pass against a local origin the probe starts itself. `progress` is a union of a 0-1 fraction and five negative sentinels, so it must never reach the UI. Foreground-service limits, process death and Doze are unobservable on Windows. |
-| iOS canary | **Blocked on hardware** | CI produces the unsigned IPA. Sideloading it needs the physical iPhone. |
+| iOS canary | **Launches; audio not yet tried** | The CI-built IPA, sideloaded onto the iPhone, installs and launches. Adding and playing a book, and playing on with the phone locked, wait for an M4B on the phone. |
 
 ## What is blocking
 
