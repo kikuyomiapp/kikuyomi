@@ -408,6 +408,33 @@ void main() {
       expect(engine.lastSeek, q(0, 40 * s));
     });
 
+    test('for the end of a chapter pauses there, not at the next', () async {
+      await openBook();
+      await coordinator.play();
+      await emit(EnginePositionChanged(q(0, 290 * s)));
+      await coordinator.startSleepTimer(const SleepAtEndOfChapter());
+
+      await emit(EnginePositionChanged(q(0, 299 * s)));
+      expect(engine.playing, isTrue);
+
+      await emit(EnginePositionChanged(q(1, 1 * s)));
+      expect(engine.playing, isFalse);
+      expect(ready().sleepTimer, isA<SleepTimerOff>());
+    });
+
+    test('for the end of a chapter follows the listener elsewhere', () async {
+      await openBook();
+      await coordinator.play();
+      await emit(EnginePositionChanged(q(0, 10 * s)));
+      await coordinator.startSleepTimer(const SleepAtEndOfChapter());
+
+      await coordinator.nextChapter();
+      await emit(EnginePositionChanged(q(1, 5 * s)));
+
+      expect(engine.playing, isTrue);
+      expect((ready().sleepTimer as SleepTimerRunning).remaining, sec(295));
+    });
+
     test('is reported in the player state', () async {
       await openBook();
       await coordinator.startSleepTimer(SleepAfter(sec(90)));

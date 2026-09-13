@@ -168,6 +168,7 @@ final class PlaybackCoordinator {
     session.retried = false;
     session.finished = false;
     await _seekInternal(session, globalMs);
+    _pinSleepChapter(session);
     _publish();
   });
 
@@ -178,6 +179,7 @@ final class PlaybackCoordinator {
     session.retried = false;
     session.finished = false;
     await _seekInternal(session, session.globalMs + by.inMilliseconds);
+    _pinSleepChapter(session);
     _publish();
   });
 
@@ -192,6 +194,7 @@ final class PlaybackCoordinator {
     if (index + 1 >= entries.length) return;
     session.retried = false;
     await _seekInternal(session, entries[index + 1].startMs);
+    _pinSleepChapter(session);
     _publish();
   });
 
@@ -212,6 +215,7 @@ final class PlaybackCoordinator {
     session.retried = false;
     session.finished = false;
     await _seekInternal(session, target);
+    _pinSleepChapter(session);
     _publish();
   });
 
@@ -235,6 +239,7 @@ final class PlaybackCoordinator {
     final session = _session;
     if (session == null) return;
     _sleepTimer.start(target);
+    _pinSleepChapter(session);
     await _applySleepTimer(session, evenWhenPaused: true);
     _publish();
   });
@@ -251,6 +256,7 @@ final class PlaybackCoordinator {
     final session = _session;
     if (session == null) return;
     _sleepTimer.cancel();
+    session.sleepChapterEndMs = null;
     _sleepState = const SleepTimerOff();
     await _setVolume(session, 1.0);
     _publish();
@@ -459,9 +465,12 @@ final class PlaybackCoordinator {
   }) async {
     if (!_sleepTimer.isActive || (!session.playing && !evenWhenPaused)) return;
     final global = session.globalMs;
-    final entry = session.timeline.navigationEntryAt(global);
+    // A book opened while a timer runs has no chapter pinned yet, so it takes the one playing now.
+    final chapterEnd = session.sleepChapterEndMs ??= session.timeline
+        .navigationEntryAt(global)
+        .endMs;
     final state = _sleepTimer.poll(
-      chapterRemaining: Duration(milliseconds: entry.endMs - global),
+      chapterRemaining: Duration(milliseconds: chapterEnd - global),
       speed: session.speed,
     );
     switch (state) {
@@ -469,12 +478,26 @@ final class PlaybackCoordinator {
         _sleepState = state;
         await _setVolume(session, volume);
       case SleepTimerExpired():
+        session.sleepChapterEndMs = null;
         _sleepState = const SleepTimerOff();
         await _pauseInternal();
         await _setVolume(session, 1.0);
       case SleepTimerOff():
         _sleepState = state;
     }
+  }
+
+  /// Makes the chapter playing now the one an end-of-chapter sleep timer waits for.
+  ///
+  /// Called when a timer is set and when the listener moves playback themselves, but not as
+  /// playback crosses into the next chapter on its own: that crossing is what the timer waits for.
+  /// Measured against whichever chapter is playing, the goal would move on at every chapter start
+  /// and the timer would never run out. Nor is it called for the rewind on resuming, which may step
+  /// back over a chapter start without the listener choosing that chapter.
+  void _pinSleepChapter(_Session session) {
+    session.sleepChapterEndMs = session.timeline
+        .navigationEntryAt(session.globalMs)
+        .endMs;
   }
 
   Future<void> _setVolume(_Session session, double volume) async {
@@ -600,6 +623,10 @@ final class _Session {
   /// Whether an interruption paused playback and nobody has pressed play or pause since, so that
   /// the interruption's end may start it again.
   bool interrupted = false;
+
+  /// Where the chapter an end-of-chapter sleep timer waits for ends, in book-global time. See
+  /// [PlaybackCoordinator._pinSleepChapter].
+  int? sleepChapterEndMs;
 
   /// Whether the one automatic recovery §6.3 allows has been spent since the last user action.
   bool retried = false;
