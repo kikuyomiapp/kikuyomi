@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
@@ -30,6 +31,7 @@ final class AppServices {
       ),
     );
     const clock = SystemClock();
+    final audioFocus = await AudioFocus.configure();
     final coordinator = PlaybackCoordinator(
       engine: JustAudioEngine(),
       resolver: LocalMediaResolver(database, mediaRoot: locations.mediaRoot),
@@ -39,6 +41,11 @@ final class AppServices {
         clock: clock,
       ),
       clock: clock,
+    );
+    // Calls, navigation prompts and unplugged headphones go to the coordinator, which decides what
+    // each means for the book (§6.5). The subscription lasts as long as the app.
+    audioFocus.events.listen(
+      (event) => unawaited(coordinator.onSystemAudio(event)),
     );
     return AppServices._(
       database: database,

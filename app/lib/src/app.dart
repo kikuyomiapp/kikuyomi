@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -18,14 +20,27 @@ class KikuyomiApp extends ConsumerStatefulWidget {
 
 class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   final _navigator = GlobalKey<NavigatorState>();
+  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
     super.initState();
+    _lifecycle = AppLifecycleListener(
+      // §6.4: progress is saved the moment the app leaves the screen, because the system may end it
+      // there without warning. Playback carries on.
+      onHide: () =>
+          unawaited(ref.read(servicesProvider).coordinator.onBackgrounded()),
+    );
     final path = widget.openOnLaunch;
     if (path != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _open(path));
     }
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
   }
 
   Future<void> _open(String path) async {
