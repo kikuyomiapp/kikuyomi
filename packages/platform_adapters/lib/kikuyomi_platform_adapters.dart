@@ -8,3 +8,4 @@
 library;
 
 export 'src/audio/just_audio_engine.dart';
+export 'src/storage/storage_locations.dart';
