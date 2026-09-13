@@ -24,9 +24,24 @@ void main() {
 
     test('one queue item per file', () {
       expect(t.queue, const [
-        QueueItem(fileId: 10, clipStartMs: 0, clipEndMs: 60 * s),
-        QueueItem(fileId: 20, clipStartMs: 0, clipEndMs: 90 * s),
-        QueueItem(fileId: 30, clipStartMs: 0, clipEndMs: 30 * s),
+        QueueItem(
+          fileId: 10,
+          clipStartMs: 0,
+          clipEndMs: 60 * s,
+          endsAtFileEnd: true,
+        ),
+        QueueItem(
+          fileId: 20,
+          clipStartMs: 0,
+          clipEndMs: 90 * s,
+          endsAtFileEnd: true,
+        ),
+        QueueItem(
+          fileId: 30,
+          clipStartMs: 0,
+          clipEndMs: 30 * s,
+          endsAtFileEnd: true,
+        ),
       ]);
       expect(t.totalDurationMs, 180 * s);
     });
@@ -54,7 +69,12 @@ void main() {
 
     test('plays as a single queue item', () {
       expect(t.queue, const [
-        QueueItem(fileId: 1, clipStartMs: 0, clipEndMs: 600 * s),
+        QueueItem(
+          fileId: 1,
+          clipStartMs: 0,
+          clipEndMs: 600 * s,
+          endsAtFileEnd: true,
+        ),
       ]);
     });
 
@@ -100,9 +120,24 @@ void main() {
       'contiguous segments of the same file merge into one item per file',
       () {
         expect(t.queue, const [
-          QueueItem(fileId: 1, clipStartMs: 0, clipEndMs: 40 * m),
-          QueueItem(fileId: 2, clipStartMs: 0, clipEndMs: 35 * m),
-          QueueItem(fileId: 3, clipStartMs: 0, clipEndMs: 50 * m),
+          QueueItem(
+            fileId: 1,
+            clipStartMs: 0,
+            clipEndMs: 40 * m,
+            endsAtFileEnd: true,
+          ),
+          QueueItem(
+            fileId: 2,
+            clipStartMs: 0,
+            clipEndMs: 35 * m,
+            endsAtFileEnd: true,
+          ),
+          QueueItem(
+            fileId: 3,
+            clipStartMs: 0,
+            clipEndMs: 50 * m,
+            endsAtFileEnd: true,
+          ),
         ]);
         expect(t.totalDurationMs, 125 * m);
       },
@@ -147,9 +182,18 @@ void main() {
     test('become separately clipped items, as §6.2 describes', () {
       expect(t.queue, const [
         QueueItem(fileId: 1, clipStartMs: 0, clipEndMs: 30 * s),
-        QueueItem(fileId: 1, clipStartMs: 60 * s, clipEndMs: 100 * s),
+        QueueItem(
+          fileId: 1,
+          clipStartMs: 60 * s,
+          clipEndMs: 100 * s,
+          endsAtFileEnd: true,
+        ),
       ]);
       expect(t.totalDurationMs, 70 * s);
+    });
+
+    test('only the stretch that reaches the end of the file is marked so', () {
+      expect([for (final item in t.queue) item.endsAtFileEnd], [false, true]);
     });
 
     test(

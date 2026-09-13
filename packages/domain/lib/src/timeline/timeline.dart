@@ -124,6 +124,7 @@ final class Timeline {
             fileId: previous.fileId,
             clipStartMs: previous.clipStartMs,
             clipEndMs: end,
+            endsAtFileEnd: end == file.durationMs,
           );
         } else {
           queue.add(
@@ -131,6 +132,7 @@ final class Timeline {
               fileId: segment.fileId,
               clipStartMs: segment.startMs,
               clipEndMs: end,
+              endsAtFileEnd: end == file.durationMs,
             ),
           );
           itemStartMs.add(global);

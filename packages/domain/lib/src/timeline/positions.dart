@@ -37,6 +37,7 @@ final class QueueItem {
     required this.fileId,
     required this.clipStartMs,
     required this.clipEndMs,
+    this.endsAtFileEnd = false,
   });
 
   final int fileId;
@@ -46,6 +47,13 @@ final class QueueItem {
 
   /// Exclusive offset into the file where this item ends.
   final int clipEndMs;
+
+  /// True when the item runs to the end of its file, so the engine needs no clipping at the end.
+  ///
+  /// This cannot be worked out from [clipEndMs], because the file's duration may be an estimate.
+  /// An item that runs to the end should play until the file really ends, not stop at a guess of
+  /// where that is.
+  final bool endsAtFileEnd;
 
   int get durationMs => clipEndMs - clipStartMs;
 
@@ -57,13 +65,17 @@ final class QueueItem {
       other is QueueItem &&
       other.fileId == fileId &&
       other.clipStartMs == clipStartMs &&
-      other.clipEndMs == clipEndMs;
+      other.clipEndMs == clipEndMs &&
+      other.endsAtFileEnd == endsAtFileEnd;
 
   @override
-  int get hashCode => Object.hash(fileId, clipStartMs, clipEndMs);
+  int get hashCode =>
+      Object.hash(fileId, clipStartMs, clipEndMs, endsAtFileEnd);
 
   @override
-  String toString() => 'QueueItem(file $fileId, $clipStartMs-$clipEndMs)';
+  String toString() =>
+      'QueueItem(file $fileId, $clipStartMs-$clipEndMs'
+      '${endsAtFileEnd ? ' to end' : ''})';
 }
 
 /// A position in engine coordinates: which queue item, and how far into it.
