@@ -58,6 +58,7 @@ final class PlaybackCoordinator {
     SmartRewind? smartRewind,
     SleepTimer? sleepTimer,
     this.previousChapterThreshold = const Duration(seconds: 3),
+    this.seekLandingTolerance = const Duration(milliseconds: 500),
   }) : _engine = engine,
        _resolver = resolver,
        _store = store,
@@ -73,6 +74,18 @@ final class PlaybackCoordinator {
   /// "Previous chapter" restarts the current chapter when playback is further into it than this,
   /// and goes to the previous chapter otherwise. The usual convention in media players.
   final Duration previousChapterThreshold;
+
+  /// How far short of where a seek or load was sent the engine may report being, and still be
+  /// taken to be there.
+  ///
+  /// The just_audio backend on Windows settles a seek just short of where it was sent: at normal
+  /// speed, a seek to 9000 ms reports 8999 ms. Taken literally, a position short of a chapter's
+  /// start belongs to the previous chapter: the player names the wrong chapter, progress is saved
+  /// at the end of the previous one, and "next chapter" seeks to the same start again and again
+  /// without moving. A position this close short of the destination is read as the destination
+  /// itself. The margin is generous because nothing else reports such a position: playback only
+  /// moves forwards from where it was sent.
+  final Duration seekLandingTolerance;
 
   final PlaybackEngine _engine;
   final MediaResolver _resolver;
@@ -297,8 +310,11 @@ final class PlaybackCoordinator {
       case EnginePositionChanged(:final position):
         // Spike (b): after completion the engine reports position zero. It is not a position.
         if (session.finished) return;
-        session.position = position;
-        await _saveProgress(session, session.tracker.onPosition(position));
+        session.position = _settle(session, position);
+        await _saveProgress(
+          session,
+          session.tracker.onPosition(session.position),
+        );
         await _saveSession(session.recorder.onPosition(session.globalMs));
         await _applySleepTimer(session);
         _publish();
@@ -349,6 +365,7 @@ final class PlaybackCoordinator {
     final destination = timeline.queuePositionAt(globalMs);
     await _engine.seek(destination);
     session.position = destination;
+    session.landing = destination;
     await _saveProgress(session, session.tracker.onSeek(destination));
     await _saveSession(
       session.recorder.onSeek(
@@ -358,10 +375,27 @@ final class PlaybackCoordinator {
     );
   }
 
+  /// The engine's [reported] position, or where it was last sent if [reported] falls just short of
+  /// that. See [seekLandingTolerance].
+  ///
+  /// The destination is kept until the next seek or load rather than cleared once passed. Playback
+  /// only moves forwards from it, so nothing else reports a position just short of it, and a stale
+  /// sample from before a backwards seek cannot clear it early.
+  QueuePosition _settle(_Session session, QueuePosition reported) {
+    final timeline = session.timeline;
+    final shortBy =
+        timeline.globalOfQueue(session.landing) -
+        timeline.globalOfQueue(reported);
+    return shortBy > 0 && shortBy <= seekLandingTolerance.inMilliseconds
+        ? session.landing
+        : reported;
+  }
+
   /// Re-resolves every file and reloads at the current position. Returns whether it worked.
   Future<bool> _reload(_Session session, {required bool refresh}) async {
     try {
       final items = await _resolve(session.timeline, refresh: refresh);
+      session.landing = session.position;
       await _engine.load(items, startAt: session.position);
       await _engine.setSpeed(session.speed);
       await _engine.setVolume(session.volume);
@@ -513,7 +547,7 @@ final class _Session {
     required this.recorder,
     required this.speed,
     required this.position,
-  });
+  }) : landing = position;
 
   final int bookId;
   final Timeline timeline;
@@ -521,6 +555,10 @@ final class _Session {
   final ListeningSessionRecorder recorder;
   double speed;
   QueuePosition position;
+
+  /// Where the engine was last sent, by the load that opened the book, a reload or a seek. See
+  /// [PlaybackCoordinator.seekLandingTolerance].
+  QueuePosition landing;
   bool playing = false;
   bool buffering = false;
   bool finished = false;

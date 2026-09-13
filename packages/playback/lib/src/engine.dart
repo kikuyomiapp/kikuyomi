@@ -35,6 +35,10 @@ final class EngineBufferingChanged extends EngineEvent {
 }
 
 /// The whole queue played to its end.
+///
+/// The engine has stopped when it reports this: it is paused at the end, so a seek followed by
+/// [PlaybackEngine.play] plays again, and playing through to the end once more reports completion
+/// once more.
 final class EngineCompleted extends EngineEvent {
   const EngineCompleted();
 }

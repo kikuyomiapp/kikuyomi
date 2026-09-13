@@ -35,6 +35,30 @@ Timeline twoFileBook() => Timeline.build(
   ],
 );
 
+/// Three chapters in one 600 s file, so every chapter boundary is inside the file.
+Timeline oneFileBook() => Timeline.build(
+  files: const [TimelineFile(id: 1, durationMs: 600 * s)],
+  chapters: [
+    TimelineChapter(
+      id: 1,
+      title: 'One',
+      segments: const [TimelineSegment(fileId: 1, endMs: 200 * s)],
+    ),
+    TimelineChapter(
+      id: 2,
+      title: 'Two',
+      segments: const [
+        TimelineSegment(fileId: 1, startMs: 200 * s, endMs: 400 * s),
+      ],
+    ),
+    TimelineChapter(
+      id: 3,
+      title: 'Three',
+      segments: const [TimelineSegment(fileId: 1, startMs: 400 * s)],
+    ),
+  ],
+);
+
 void main() {
   late FakeClock clock;
   late FakeEngine engine;
@@ -59,12 +83,13 @@ void main() {
 
   Future<void> openBook({
     int bookId = 1,
+    Timeline? timeline,
     ChapterPosition? resumeFrom,
     Duration pausedFor = Duration.zero,
   }) => coordinator.open(
     PlaybackRequest(
       bookId: bookId,
-      timeline: twoFileBook(),
+      timeline: timeline ?? twoFileBook(),
       resumeFrom: resumeFrom,
       pausedFor: pausedFor,
     ),
@@ -257,6 +282,49 @@ void main() {
         expect(engine.lastSeek, q(0, 0));
       },
     );
+
+    group('a seek that lands just short of its destination', () {
+      // The Windows backend settles a seek to 9000 ms at 8999 ms. With chapters inside one file,
+      // that position belongs to the previous chapter.
+      const short = 1;
+
+      test('still shows the destination and its chapter', () async {
+        await openBook(timeline: oneFileBook());
+        await coordinator.nextChapter();
+        await emit(EnginePositionChanged(q(0, 200 * s - short)));
+        expect(ready().globalMs, 200 * s);
+        expect(ready().entry.title, 'Two');
+      });
+
+      test('lets next chapter move on instead of repeating itself', () async {
+        await openBook(timeline: oneFileBook());
+        await coordinator.nextChapter();
+        await emit(EnginePositionChanged(q(0, 200 * s - short)));
+        await coordinator.nextChapter();
+        expect(engine.lastSeek, q(0, 400 * s));
+      });
+
+      test('saves no progress at the end of the previous chapter', () async {
+        await openBook(timeline: oneFileBook());
+        await coordinator.play();
+        await coordinator.nextChapter();
+        await emit(EnginePositionChanged(q(0, 200 * s - short)));
+        expect(store.progress.last.position, at(2, 0));
+      });
+
+      test('applies to a book resumed at a chapter start as well', () async {
+        await openBook(timeline: oneFileBook(), resumeFrom: at(3, 0));
+        await emit(EnginePositionChanged(q(0, 400 * s - short)));
+        expect(ready().entry.title, 'Three');
+      });
+
+      test('but a position well short of it is taken as reported', () async {
+        await openBook(timeline: oneFileBook());
+        await coordinator.seekTo(400 * s);
+        await emit(EnginePositionChanged(q(0, 390 * s)));
+        expect(ready().globalMs, 390 * s);
+      });
+    });
   });
 
   group('speed', () {
