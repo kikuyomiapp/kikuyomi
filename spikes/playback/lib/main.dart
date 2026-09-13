@@ -33,31 +33,6 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 const _sampleRate = 44100;
 
-int _passed = 0;
-int _failed = 0;
-
-void _ok(String name, String detail) {
-  _passed++;
-  stdout.writeln('[PASS] $name :: $detail');
-}
-
-void _bad(String name, String detail) {
-  _failed++;
-  stdout.writeln('[FAIL] $name :: $detail');
-}
-
-void _near(String name, Duration? actual, Duration expected, int toleranceMs) {
-  if (actual == null) {
-    _bad(name, 'got null, expected ${expected.inMilliseconds}ms');
-    return;
-  }
-  final delta = (actual.inMilliseconds - expected.inMilliseconds).abs();
-  final detail =
-      'got ${actual.inMilliseconds}ms, expected ${expected.inMilliseconds}ms, '
-      'delta ${delta}ms (tolerance ${toleranceMs}ms)';
-  delta <= toleranceMs ? _ok(name, detail) : _bad(name, detail);
-}
-
 /// Polls until [test] passes or [limit] elapses. Returns whether it ended up true.
 Future<bool> _until(
   bool Function() test, {

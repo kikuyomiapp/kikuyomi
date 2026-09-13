@@ -129,8 +129,9 @@ Future<void> main() async {
     }
     final result = await engine.evaluate('7 * 6');
     engine.close();
-    if (result != 42)
+    if (result != 42) {
       throw StateError('expected 42 after interrupt, got $result');
+    }
     return 'engine usable after interrupt, got $result';
   });
 
