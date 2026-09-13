@@ -20,4 +20,4 @@ independently of the proposal it came from.
 
 | ADR | Title | Status |
 |---|---|---|
-| — | _none yet_ | — |
+| [0001](0001-script-engine-binding.md) | QuickJS binding for the extension runtime | Proposed |
