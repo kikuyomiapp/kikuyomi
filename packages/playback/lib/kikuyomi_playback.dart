@@ -10,6 +10,7 @@ export 'src/coordinator.dart';
 export 'src/engine.dart';
 export 'src/listening_sessions.dart';
 export 'src/media.dart';
+export 'src/media_session.dart';
 export 'src/player_state.dart';
 export 'src/progress_tracker.dart';
 export 'src/sleep_timer.dart';
