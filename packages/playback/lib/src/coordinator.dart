@@ -10,6 +10,7 @@ import 'player_state.dart';
 import 'progress_tracker.dart';
 import 'sleep_timer.dart';
 import 'smart_rewind.dart';
+import 'system_audio.dart';
 
 /// What the coordinator needs to open a book.
 final class PlaybackRequest {
@@ -147,45 +148,18 @@ final class PlaybackCoordinator {
 
   Future<void> play() => _serial(() async {
     final session = _session;
-    if (session == null || session.playing) return;
-    session.retried = false;
-
-    if (session.error != null) {
-      session.error = null;
-      if (!await _reload(session, refresh: true)) return;
+    if (session != null) {
+      // The user has taken over from any interruption, and re-armed §6.3's one recovery.
+      session.interrupted = false;
+      session.retried = false;
     }
-
-    if (session.finished) {
-      session.finished = false;
-      await _seekInternal(session, 0);
-    } else {
-      final pausedAt = session.pausedAt;
-      final pause = pausedAt == null
-          ? Duration.zero
-          : _clock.now().difference(pausedAt);
-      // Smart rewind and the sleep timer's rewind are independent; the larger one wins.
-      final smart = _smartRewind.rewindAfter(pause);
-      final sleep = _sleepTimer.takeResumeRewind();
-      final rewind = smart > sleep ? smart : sleep;
-      if (rewind > Duration.zero) {
-        final here = session.timeline.chapterPositionOfQueue(session.position);
-        final back = ChapterPosition(
-          chapterId: here.chapterId,
-          offsetMs: math.max(0, here.offsetMs - rewind.inMilliseconds),
-        );
-        await _seekInternal(session, session.timeline.globalOf(back));
-      }
-    }
-
-    await _engine.play();
-    session.playing = true;
-    session.pausedAt = null;
-    _sleepTimer.onPlaying();
-    session.recorder.onPlay(globalMs: session.globalMs, speed: session.speed);
-    _publish();
+    await _playInternal();
   });
 
-  Future<void> pause() => _serial(_pauseInternal);
+  Future<void> pause() => _serial(() async {
+    _session?.interrupted = false;
+    await _pauseInternal();
+  });
 
   /// A seek to a position in book-global time, which is what the scrubber and skip buttons produce.
   Future<void> seekTo(int globalMs) => _serial(() async {
@@ -282,9 +256,30 @@ final class PlaybackCoordinator {
     _publish();
   });
 
-  /// An interruption such as a phone call or navigation prompt took the audio. §6.4 saves progress
-  /// immediately.
-  Future<void> onInterruption() => _serial(_pauseInternal);
+  /// §6.5's interruption rules.
+  ///
+  /// A spoken book pauses for an interruption rather than talking over it, saving progress at once
+  /// (§6.4). It resumes when the interruption ends only if the interruption is what paused it,
+  /// nobody has pressed play or pause since, and the system says resuming is appropriate; smart
+  /// rewind then applies as after any pause. Losing the audio output pauses for good, so that a book
+  /// playing through headphones does not carry on out of the phone's speaker.
+  Future<void> onSystemAudio(SystemAudioEvent event) => _serial(() async {
+    final session = _session;
+    if (session == null) return;
+    switch (event) {
+      case AudioInterruptionBegan():
+        if (!session.playing) return;
+        await _pauseInternal();
+        session.interrupted = true;
+      case AudioInterruptionEnded(:final mayResume):
+        final resume = session.interrupted && mayResume;
+        session.interrupted = false;
+        if (resume) await _playInternal();
+      case AudioOutputLost():
+        session.interrupted = false;
+        await _pauseInternal();
+    }
+  });
 
   /// The app moved to the background. §6.4 saves progress immediately; playback continues.
   Future<void> onBackgrounded() => _serial(() async {
@@ -345,6 +340,45 @@ final class PlaybackCoordinator {
           await _reload(session, refresh: true);
         }
     }
+  }
+
+  Future<void> _playInternal() async {
+    final session = _session;
+    if (session == null || session.playing) return;
+
+    if (session.error != null) {
+      session.error = null;
+      if (!await _reload(session, refresh: true)) return;
+    }
+
+    if (session.finished) {
+      session.finished = false;
+      await _seekInternal(session, 0);
+    } else {
+      final pausedAt = session.pausedAt;
+      final pause = pausedAt == null
+          ? Duration.zero
+          : _clock.now().difference(pausedAt);
+      // Smart rewind and the sleep timer's rewind are independent; the larger one wins.
+      final smart = _smartRewind.rewindAfter(pause);
+      final sleep = _sleepTimer.takeResumeRewind();
+      final rewind = smart > sleep ? smart : sleep;
+      if (rewind > Duration.zero) {
+        final here = session.timeline.chapterPositionOfQueue(session.position);
+        final back = ChapterPosition(
+          chapterId: here.chapterId,
+          offsetMs: math.max(0, here.offsetMs - rewind.inMilliseconds),
+        );
+        await _seekInternal(session, session.timeline.globalOf(back));
+      }
+    }
+
+    await _engine.play();
+    session.playing = true;
+    session.pausedAt = null;
+    _sleepTimer.onPlaying();
+    session.recorder.onPlay(globalMs: session.globalMs, speed: session.speed);
+    _publish();
   }
 
   Future<void> _pauseInternal() async {
@@ -562,6 +596,10 @@ final class _Session {
   bool playing = false;
   bool buffering = false;
   bool finished = false;
+
+  /// Whether an interruption paused playback and nobody has pressed play or pause since, so that
+  /// the interruption's end may start it again.
+  bool interrupted = false;
 
   /// Whether the one automatic recovery §6.3 allows has been spent since the last user action.
   bool retried = false;

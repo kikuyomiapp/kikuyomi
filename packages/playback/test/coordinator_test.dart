@@ -473,6 +473,94 @@ void main() {
     });
   });
 
+  group('interruptions (§6.5)', () {
+    test('pause playback and save progress at once', () async {
+      await openBook();
+      await coordinator.play();
+      await emit(EnginePositionChanged(q(0, 1 * s)));
+      clock.advance(sec(2));
+      await emit(EnginePositionChanged(q(0, 3 * s)));
+
+      await coordinator.onSystemAudio(const AudioInterruptionBegan());
+
+      expect(engine.playing, isFalse);
+      expect(ready().playing, isFalse);
+      expect(store.progress.last.position, at(1, 3 * s));
+    });
+
+    test('resume when they end, if the system allows it', () async {
+      await openBook();
+      await coordinator.play();
+      await coordinator.onSystemAudio(const AudioInterruptionBegan());
+      await coordinator.onSystemAudio(
+        const AudioInterruptionEnded(mayResume: true),
+      );
+      expect(engine.playing, isTrue);
+      expect(ready().playing, isTrue);
+    });
+
+    test('stay paused when the system says not to resume', () async {
+      await openBook();
+      await coordinator.play();
+      await coordinator.onSystemAudio(const AudioInterruptionBegan());
+      await coordinator.onSystemAudio(
+        const AudioInterruptionEnded(mayResume: false),
+      );
+      expect(engine.playing, isFalse);
+    });
+
+    test('never start a book that was already paused', () async {
+      await openBook();
+      await coordinator.onSystemAudio(const AudioInterruptionBegan());
+      await coordinator.onSystemAudio(
+        const AudioInterruptionEnded(mayResume: true),
+      );
+      expect(engine.calls, isNot(contains('play')));
+    });
+
+    test(
+      'leave the choice to the user once they press play or pause',
+      () async {
+        await openBook();
+        await coordinator.play();
+        await coordinator.onSystemAudio(const AudioInterruptionBegan());
+        await coordinator.play();
+        await coordinator.pause();
+        await coordinator.onSystemAudio(
+          const AudioInterruptionEnded(mayResume: true),
+        );
+        expect(engine.playing, isFalse);
+      },
+    );
+
+    test('apply smart rewind when a long one ends', () async {
+      await openBook();
+      await coordinator.play();
+      clock.advance(sec(60));
+      await emit(EnginePositionChanged(q(0, 60 * s)));
+      await coordinator.onSystemAudio(const AudioInterruptionBegan());
+
+      clock.advance(const Duration(minutes: 10));
+      await coordinator.onSystemAudio(
+        const AudioInterruptionEnded(mayResume: true),
+      );
+
+      expect(engine.lastSeek, q(0, 50 * s));
+      expect(engine.playing, isTrue);
+    });
+
+    test('losing the output pauses, and for good', () async {
+      await openBook();
+      await coordinator.play();
+      await coordinator.onSystemAudio(const AudioInterruptionBegan());
+      await coordinator.onSystemAudio(const AudioOutputLost());
+      await coordinator.onSystemAudio(
+        const AudioInterruptionEnded(mayResume: true),
+      );
+      expect(engine.playing, isFalse);
+    });
+  });
+
   test('backgrounding saves progress without pausing', () async {
     await openBook();
     await coordinator.play();
