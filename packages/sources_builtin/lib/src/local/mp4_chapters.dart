@@ -128,6 +128,43 @@ final class Mp4Chapters {
 Future<Mp4Chapters?> readMp4Chapters(ByteSource source) =>
     _Mp4Reader(source).read();
 
+/// What an MP4 or M4B file says about itself: enough to import it as a book.
+final class Mp4Info {
+  const Mp4Info({
+    required this.durationMs,
+    this.title,
+    this.artist,
+    this.album,
+    this.composer,
+    this.chapters,
+  });
+
+  /// From the movie header, so exact rather than estimated.
+  final int durationMs;
+
+  /// `©nam`. Usually the book's title, though some taggers put that in [album] instead.
+  final String? title;
+
+  /// `©ART`, conventionally the author.
+  final String? artist;
+
+  /// `©alb`.
+  final String? album;
+
+  /// `©wrt`, which audiobook taggers commonly use for the narrator.
+  final String? composer;
+
+  final Mp4Chapters? chapters;
+}
+
+/// Reads a file's duration, its common text tags and its chapters.
+///
+/// Returns null when the bytes hold no movie box at all. Throws [FormatException] for a damaged
+/// file, as [readMp4Chapters] does, and also when the movie header is missing or has a zero
+/// timescale, since a book with no duration cannot be played.
+Future<Mp4Info?> readMp4Info(ByteSource source) =>
+    _Mp4Reader(source).readInfo();
+
 final class _Box {
   const _Box({
     required this.type,
@@ -162,10 +199,54 @@ final class _Mp4Reader {
   /// Likewise for the number of chapters a table may expand to.
   static const _maxChapters = 10000;
 
+  /// Tag values larger than this are skipped. Titles and names are tiny; the bound only stops a
+  /// damaged file claiming a huge one.
+  static const _maxTagBytes = 64 * 1024;
+
   Future<Mp4Chapters?> read() async {
     final moov = await _findChild('moov', 0, _source.length);
     if (moov == null) return null;
+    return _chaptersIn(moov);
+  }
 
+  Future<Mp4Info?> readInfo() async {
+    final moov = await _findChild('moov', 0, _source.length);
+    if (moov == null) return null;
+
+    final mvhd = await _findChild('mvhd', moov.contentStart, moov.end);
+    if (mvhd == null) {
+      throw FormatException('movie box at ${moov.start} has no movie header');
+    }
+    // version 0: creation(4) modification(4) timescale(4) duration(4)
+    // version 1: creation(8) modification(8) timescale(4) duration(8)
+    final version = await _version(mvhd);
+    final timescale = await _u32At(mvhd, version == 1 ? 20 : 12);
+    if (timescale == 0) {
+      throw FormatException(
+        'movie header at ${mvhd.start} has a zero timescale',
+      );
+    }
+    final duration = version == 1
+        ? await _u64At(mvhd, 24)
+        : await _u32At(mvhd, 16);
+    if (duration < 0) {
+      throw FormatException(
+        'movie header at ${mvhd.start} has an impossible duration',
+      );
+    }
+
+    final tags = await _readTags(moov);
+    return Mp4Info(
+      durationMs: duration * 1000 ~/ timescale,
+      title: tags['©nam'],
+      artist: tags['©ART'],
+      album: tags['©alb'],
+      composer: tags['©wrt'],
+      chapters: await _chaptersIn(moov),
+    );
+  }
+
+  Future<Mp4Chapters?> _chaptersIn(_Box moov) async {
     final nero = await _readChpl(moov);
     if (nero != null && nero.isNotEmpty) {
       return Mp4Chapters(format: Mp4ChapterFormat.nero, chapters: nero);
@@ -265,6 +346,52 @@ final class _Mp4Reader {
     }
     return ByteData.sublistView(await _bytes(box.contentStart + at, 4))
         .getUint32(0);
+  }
+
+  Future<int> _u64At(_Box box, int at) async {
+    if (box.contentLength < at + 8) {
+      throw FormatException('"${box.type}" at ${box.start} is truncated');
+    }
+    return ByteData.sublistView(await _bytes(box.contentStart + at, 8))
+        .getUint64(0);
+  }
+
+  // iTunes-style tags.
+
+  /// Text items under `moov/udta/meta/ilst`, keyed by item type such as `©nam`. Only UTF-8 text
+  /// values are read; cover art and numeric items are skipped.
+  Future<Map<String, String>> _readTags(_Box moov) async {
+    final meta = await _find(const ['udta', 'meta'], moov);
+    if (meta == null) return const {};
+
+    // ISO files make `meta` a full box, with four bytes of version and flags before its children;
+    // QuickTime files do not. The first child is always `hdlr`, which tells the two apart.
+    var childrenStart = meta.contentStart;
+    if (meta.contentLength >= 8) {
+      final probe = await _bytes(meta.contentStart + 4, 4);
+      if (String.fromCharCodes(probe) != 'hdlr') childrenStart += 4;
+    }
+    final ilst = await _findChild('ilst', childrenStart, meta.end);
+    if (ilst == null) return const {};
+
+    final tags = <String, String>{};
+    var offset = ilst.contentStart;
+    while (ilst.end - offset >= 8) {
+      final item = await _boxAt(offset, ilst.end);
+      offset = item.end;
+      final data = await _findChild('data', item.contentStart, item.end);
+      if (data == null || data.contentLength < 8) continue;
+      // type indicator(4): the low three bytes say what the value is, and 1 means UTF-8 text.
+      // locale(4) follows, then the value.
+      if (await _u32At(data, 0) & 0x00FFFFFF != 1) continue;
+      final length = data.contentLength - 8;
+      if (length > _maxTagBytes) continue;
+      tags[item.type] = utf8.decode(
+        await _bytes(data.contentStart + 8, length),
+        allowMalformed: true,
+      );
+    }
+    return tags;
   }
 
   // Nero chpl.
