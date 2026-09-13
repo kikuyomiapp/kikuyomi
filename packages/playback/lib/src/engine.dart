@@ -1,5 +1,7 @@
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
+import 'media.dart';
+
 /// What the playback engine reports.
 ///
 /// §6.1: the engine knows nothing about books or chapters. Everything here is in queue
@@ -52,7 +54,8 @@ final class EngineFailed extends EngineEvent {
 /// Windows does not honour on its own. ADR-0006 records both, and they are stated on [load] and
 /// [seek] so that an implementer cannot miss them.
 abstract interface class PlaybackEngine {
-  /// Loads [items] and positions the engine at [startAt] before playback begins.
+  /// Loads [items], each a physical file already resolved to something the engine can open, and
+  /// positions the engine at [startAt] before playback begins.
   ///
   /// The start position is part of loading deliberately. On just_audio's Windows backend a
   /// combined seek to a position in a different item silently discards the position and lands at
@@ -60,7 +63,7 @@ abstract interface class PlaybackEngine {
   /// Resuming a book is the single most important thing the engine does, so it takes the path
   /// that was measured to work.
   Future<void> load(
-    List<QueueItem> items, {
+    List<EngineItem> items, {
     QueuePosition startAt = const QueuePosition(itemIndex: 0, offsetMs: 0),
   });
 
@@ -77,6 +80,9 @@ abstract interface class PlaybackEngine {
 
   /// §6.5: 0.5x to 3.5x, pitch preserved.
   Future<void> setSpeed(double speed);
+
+  /// 0.0 to 1.0. For the sleep timer's fade (§6.5), not a replacement for the system volume.
+  Future<void> setVolume(double volume);
 
   Stream<EngineEvent> get events;
 

@@ -6,8 +6,12 @@
 /// Pure Dart. This package must never import Flutter or a platform plugin.
 library;
 
+export 'src/coordinator.dart';
 export 'src/engine.dart';
 export 'src/listening_sessions.dart';
+export 'src/media.dart';
+export 'src/playback_store.dart';
+export 'src/player_state.dart';
 export 'src/progress_tracker.dart';
 export 'src/sleep_timer.dart';
 export 'src/smart_rewind.dart';
