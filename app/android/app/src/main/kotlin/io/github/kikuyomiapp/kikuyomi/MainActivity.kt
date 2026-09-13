@@ -1,5 +1,7 @@
 package io.github.kikuyomiapp.kikuyomi
 
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 
-class MainActivity : FlutterActivity()
+// audio_service's activity shares one Flutter engine with its background playback service, so the
+// book keeps playing, and its controls keep working, after the activity is gone.
+class MainActivity : AudioServiceActivity()

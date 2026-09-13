@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
@@ -47,6 +48,15 @@ final class AppServices {
     audioFocus.events.listen(
       (event) => unawaited(coordinator.onSystemAudio(event)),
     );
+    // The lock screen, the notification and headset buttons (§6.5). Its subscriptions keep it alive
+    // for as long as the app runs.
+    MediaSessionSync(
+      coordinator: coordinator,
+      bridge: await AudioServiceBridge.start(skipInterval: _skipInterval),
+      describe: (bookId) => _describeBook(database, bookId),
+      clock: clock,
+      skipInterval: _skipInterval,
+    ).start();
     return AppServices._(
       database: database,
       coordinator: coordinator,
@@ -146,6 +156,32 @@ String _stem(String path) {
   final name = path.split(RegExp(r'[\\/]')).last;
   final dot = name.lastIndexOf('.');
   return dot > 0 ? name.substring(0, dot) : name;
+}
+
+/// How far the system controls' skip buttons move: the same as the player screen's.
+const _skipInterval = Duration(seconds: 30);
+
+/// A book's title and first author, as the system's media controls name it.
+Future<BookDescription> _describeBook(KikuyomiDatabase db, int bookId) async {
+  final book = await (db.select(
+    db.books,
+  )..where((b) => b.id.equals(bookId))).getSingle();
+  final credit =
+      await (db.select(db.bookPeople)
+            ..where(
+              (c) =>
+                  c.bookId.equals(bookId) &
+                  c.role.equalsValue(ContributorRole.author),
+            )
+            ..orderBy([(c) => OrderingTerm.asc(c.ordinal)])
+            ..limit(1))
+          .getSingleOrNull();
+  final author = credit == null
+      ? null
+      : await (db.select(
+          db.people,
+        )..where((p) => p.id.equals(credit.personId))).getSingle();
+  return BookDescription(title: book.title, author: author?.name);
 }
 
 String? _extension(String path) {
