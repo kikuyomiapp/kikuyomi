@@ -1,11 +1,10 @@
-import 'package:kikuyomi_domain/kikuyomi_domain.dart';
+import '../timeline/positions.dart';
+import 'listening_session.dart';
 
-import 'listening_sessions.dart';
-
-/// Where the coordinator persists what playback produces.
+/// Where playback persists what it produces.
 ///
-/// The data layer implements this over the database. Keeping it an interface here is what lets the
-/// coordinator be tested without one, and keeps this package free of Drift.
+/// A service interface, so it lives in the domain (§2.4): the data layer implements it over the
+/// database and the playback coordinator consumes it, and neither has to know about the other.
 abstract interface class PlaybackStore {
   /// Progress for a book. [position] is the truth (§4.5); [globalMs] is derived and cached for
   /// sorting Continue Listening.
