@@ -11,3 +11,5 @@ export 'src/database/database.dart';
 export 'src/database/tables.dart';
 export 'src/merge/book_details.dart';
 export 'src/merge/chapter_sync.dart';
+export 'src/playback/drift_playback_store.dart';
+export 'src/playback/stored_playback.dart';
