@@ -8,6 +8,7 @@ library;
 
 export 'src/clock.dart';
 export 'src/playback/listening_session.dart';
+export 'src/playback/media_resolver.dart';
 export 'src/playback/playback_store.dart';
 export 'src/timeline/positions.dart';
 export 'src/timeline/timeline.dart';
