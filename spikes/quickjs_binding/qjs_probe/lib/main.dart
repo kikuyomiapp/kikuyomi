@@ -43,7 +43,11 @@ Future<void> _probeExpectingThrow(
   try {
     await body();
     final ms = DateTime.now().difference(started).inMilliseconds;
-    _report(name, false, 'completed without throwing, expected a throw (${ms}ms)');
+    _report(
+      name,
+      false,
+      'completed without throwing, expected a throw (${ms}ms)',
+    );
   } catch (e) {
     final ms = DateTime.now().difference(started).inMilliseconds;
     final text = e.toString().replaceAll('\n', ' ');
@@ -125,7 +129,8 @@ Future<void> main() async {
     }
     final result = await engine.evaluate('7 * 6');
     engine.close();
-    if (result != 42) throw StateError('expected 42 after interrupt, got $result');
+    if (result != 42)
+      throw StateError('expected 42 after interrupt, got $result');
     return 'engine usable after interrupt, got $result';
   });
 

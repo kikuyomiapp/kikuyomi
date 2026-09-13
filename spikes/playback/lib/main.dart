@@ -52,13 +52,17 @@ void _near(String name, Duration? actual, Duration expected, int toleranceMs) {
     return;
   }
   final delta = (actual.inMilliseconds - expected.inMilliseconds).abs();
-  final detail = 'got ${actual.inMilliseconds}ms, expected ${expected.inMilliseconds}ms, '
+  final detail =
+      'got ${actual.inMilliseconds}ms, expected ${expected.inMilliseconds}ms, '
       'delta ${delta}ms (tolerance ${toleranceMs}ms)';
   delta <= toleranceMs ? _ok(name, detail) : _bad(name, detail);
 }
 
 /// Polls until [test] passes or [limit] elapses. Returns whether it ended up true.
-Future<bool> _until(bool Function() test, {Duration limit = const Duration(seconds: 10)}) async {
+Future<bool> _until(
+  bool Function() test, {
+  Duration limit = const Duration(seconds: 10),
+}) async {
   final deadline = DateTime.now().add(limit);
   while (DateTime.now().isBefore(deadline)) {
     if (test()) return true;
@@ -72,8 +76,10 @@ String _writeTone(Directory dir, String name, double seconds, double freq) {
   final dataBytes = frames * 2;
   final b = BytesBuilder();
   void ascii(String s) => b.add(s.codeUnits);
-  void u32(int v) => b.add(Uint8List(4)..buffer.asByteData().setUint32(0, v, Endian.little));
-  void u16(int v) => b.add(Uint8List(2)..buffer.asByteData().setUint16(0, v, Endian.little));
+  void u32(int v) =>
+      b.add(Uint8List(4)..buffer.asByteData().setUint32(0, v, Endian.little));
+  void u16(int v) =>
+      b.add(Uint8List(2)..buffer.asByteData().setUint16(0, v, Endian.little));
 
   ascii('RIFF');
   u32(36 + dataBytes);
@@ -123,8 +129,10 @@ Future<void> main() async {
     await p.setVolume(0);
     await p.seek(const Duration(milliseconds: 1500), index: 1);
     await settle(p);
-    stdout.writeln('A  seek(1500ms, index:1) paused        -> idx=${p.currentIndex} '
-        'pos=${p.position.inMilliseconds}ms');
+    stdout.writeln(
+      'A  seek(1500ms, index:1) paused        -> idx=${p.currentIndex} '
+      'pos=${p.position.inMilliseconds}ms',
+    );
     await p.dispose();
   }
 
@@ -137,20 +145,27 @@ Future<void> main() async {
     await settle(p);
     await p.seek(const Duration(milliseconds: 1500));
     await settle(p);
-    stdout.writeln('B  seek(0,index:1) then seek(1500ms)   -> idx=${p.currentIndex} '
-        'pos=${p.position.inMilliseconds}ms');
+    stdout.writeln(
+      'B  seek(0,index:1) then seek(1500ms)   -> idx=${p.currentIndex} '
+      'pos=${p.position.inMilliseconds}ms',
+    );
     await p.dispose();
   }
 
   // C: initialIndex / initialPosition on load. This is the API meant for resume.
   {
     final p = AudioPlayer();
-    await p.setAudioSources(files.map(AudioSource.file).toList(),
-        initialIndex: 1, initialPosition: const Duration(milliseconds: 1500));
+    await p.setAudioSources(
+      files.map(AudioSource.file).toList(),
+      initialIndex: 1,
+      initialPosition: const Duration(milliseconds: 1500),
+    );
     await p.setVolume(0);
     await settle(p);
-    stdout.writeln('C  setAudioSources(initialIndex/Pos)   -> idx=${p.currentIndex} '
-        'pos=${p.position.inMilliseconds}ms');
+    stdout.writeln(
+      'C  setAudioSources(initialIndex/Pos)   -> idx=${p.currentIndex} '
+      'pos=${p.position.inMilliseconds}ms',
+    );
     await p.dispose();
   }
 
@@ -160,12 +175,17 @@ Future<void> main() async {
     await p.setAudioSources(files.map(AudioSource.file).toList());
     await p.setVolume(0);
     unawaited(p.play());
-    await _until(() => p.position.inMilliseconds > 0, limit: const Duration(seconds: 3));
+    await _until(
+      () => p.position.inMilliseconds > 0,
+      limit: const Duration(seconds: 3),
+    );
     await p.seek(const Duration(milliseconds: 1500), index: 1);
     await settle(p);
     await p.pause();
-    stdout.writeln('D  play, then seek(1500ms, index:1)    -> idx=${p.currentIndex} '
-        'pos=${p.position.inMilliseconds}ms');
+    stdout.writeln(
+      'D  play, then seek(1500ms, index:1)    -> idx=${p.currentIndex} '
+      'pos=${p.position.inMilliseconds}ms',
+    );
     await p.dispose();
   }
 
@@ -175,16 +195,23 @@ Future<void> main() async {
     await p.setAudioSource(AudioSource.file(b));
     await p.setVolume(0);
     unawaited(p.play());
-    await _until(() => p.position.inMilliseconds > 800, limit: const Duration(seconds: 5));
+    await _until(
+      () => p.position.inMilliseconds > 800,
+      limit: const Duration(seconds: 5),
+    );
     await p.pause();
     final atPause = p.position.inMilliseconds;
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    stdout.writeln('E  pause mid-file                      -> at pause ${atPause}ms, '
-        '300ms later ${p.position.inMilliseconds}ms');
+    stdout.writeln(
+      'E  pause mid-file                      -> at pause ${atPause}ms, '
+      '300ms later ${p.position.inMilliseconds}ms',
+    );
     await p.dispose();
   }
 
-  try { dir.deleteSync(recursive: true); } catch (_) {}
+  try {
+    dir.deleteSync(recursive: true);
+  } catch (_) {}
   await stdout.flush();
   exit(0);
 }
