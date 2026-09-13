@@ -64,6 +64,8 @@ class _ReadyPlayer extends ConsumerWidget {
       onPreviousChapter: coordinator.previousChapter,
       onNextChapter: coordinator.nextChapter,
       onSpeed: coordinator.setSpeed,
+      onSleepTimer: coordinator.startSleepTimer,
+      onCancelSleepTimer: coordinator.cancelSleepTimer,
     );
   }
 }
