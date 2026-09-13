@@ -3,7 +3,7 @@
 **Question.** Can embedded chapter markers be read out of an M4B in pure Dart, with no platform
 plugin and no ffmpeg at runtime?
 
-**Status: complete. Answer: yes, and cheaply.**
+**Status: complete, both chapter formats. Answer: yes, and cheaply.**
 
 This matters more than it looks. §1.5 lists "one large file with embedded chapter markers" as one
 of the four real-world layouts the Timeline must represent, and §2.4 wants this logic in a
@@ -58,21 +58,41 @@ Because MP4 boxes declare their own size, the walker skips the audio payload ent
 1 GB book costs the same few hundred bytes as this 65 KB one. **The production reader must be the
 seek-based one.**
 
-## The gap: two chapter formats exist, and only one is implemented
+## Both chapter formats are implemented
 
-The fixture carries chapters **twice**: the `chpl` atom this parser reads, and a QuickTime chapter
-track — a second `trak` of timed text, referenced from the audio track through `tref/chap`. The
-probe detects the latter but does not parse it.
+M4B stores chapters in two entirely different places, and files carry one or both:
 
-That is the main piece of remaining work, and it is not optional. `chpl` is a Nero extension that
-ffmpeg and many taggers write, but **Apple's own tools write only the QuickTime chapter track**,
-and a good deal of M4B content in the wild comes from that lineage. A reader that only understands
-`chpl` will silently report "no chapters" for those files and fall back to treating a 20-hour book
-as one undivided item.
+- **`moov/udta/chpl`** — a Nero extension. Simple, flat, written by ffmpeg and most taggers.
+  Read by `bin/probe.dart`.
+- **A QuickTime chapter track** — an ordinary MP4 track of timed text, referenced from the audio
+  track through `tref/chap`. Read by `bin/qt_chapters.dart`.
 
-Parsing the text track is more work than `chpl`: it means reading `stts` for durations, `stsz` for
-sample sizes and `stco` for chunk offsets, then pulling each title from the sample data. All of it
-is still pure Dart and still seek-based.
+Supporting only `chpl` would have been a quiet disaster, because **Apple's own tools write only
+the chapter track**. Such a file would report "no chapters" and a twenty-hour book would be
+presented as one undivided item.
+
+The chapter track is genuinely more work. There is no list of chapters anywhere; it has to be
+reconstructed from the sample tables:
+
+```
+mdia/mdhd            -> timescale
+mdia/minf/stbl/stts  -> per-sample durations (run-length encoded); cumulative sum = start times
+mdia/minf/stbl/stsz  -> per-sample byte sizes
+mdia/minf/stbl/stsc  -> how many samples live in each chunk
+mdia/minf/stbl/stco  -> file offset of each chunk
+each sample          -> uint16 length, then that many UTF-8 bytes, then optional trailing atoms
+```
+
+Both readers were run against the same file and **agree exactly**: 0.000 s, 4.000 s, 9.000 s with
+identical titles.
+
+The fallback was then proved rather than assumed. `fixtures/sample_no_chpl.m4b` is the same file
+with the four bytes `chpl` overwritten as `free` — a standard skip box of identical size, so the
+file stays valid and the atom becomes invisible. Against it the `chpl` reader correctly reports
+nothing while the chapter-track reader still returns all three chapters. That is the Apple-written
+case, simulated exactly.
+
+Cost: 985 bytes read of 65,109 (1.51%), still seek-based, still nothing loaded into memory.
 
 ## Consequences for the design
 
@@ -81,16 +101,20 @@ is still pure Dart and still seek-based.
 - The reader **must** be seek-based. This should be stated wherever the local source is specified,
   because the in-memory version works perfectly on a test fixture and dies on a real book, which
   is the worst possible failure profile.
-- Support for the QuickTime chapter track is required before the Local source ships in Phase 1.
+- **Both readers are required.** Try `chpl` first because it is cheaper, fall back to the chapter
+  track, and treat "neither present" as a single-chapter book rather than an error.
 - Files carrying both formats need a precedence rule. They agree here, but nothing guarantees it,
   and disagreement should be logged rather than silently resolved.
 
 ## Not covered
 
-The QuickTime chapter track parser, files with neither format, malformed and truncated files,
-non-ASCII chapter titles, chapter times that disagree between the two formats, 64-bit box sizes
-(the `largesize` variant, which a file over 4 GB requires), and performance against a genuinely
-large file rather than a 65 KB fixture.
+Files with neither format, malformed and truncated files, non-ASCII chapter titles, chapter times
+that disagree between the two formats, 64-bit box sizes (the `largesize` variant, which a file
+over 4 GB requires), the `co64` variant of `stco` that such a file also requires, and performance
+against a genuinely large file rather than a 65 KB fixture.
+
+`co64` is the one most likely to bite: any M4B over 4 GB uses 64-bit chunk offsets, and the
+current reader would misparse it rather than fail cleanly.
 
 ## Reproducing
 
@@ -100,5 +124,7 @@ fixture only, never a runtime dependency:
 ```
 ./fixtures/make.sh
 dart pub get
-dart run bin/probe.dart fixtures/sample.m4b
+dart run bin/probe.dart fixtures/sample.m4b            # chpl reader
+dart run bin/qt_chapters.dart fixtures/sample.m4b      # QuickTime chapter track reader
+dart run bin/qt_chapters.dart fixtures/sample_no_chpl.m4b   # the Apple-written case
 ```
