@@ -21,7 +21,7 @@ From the roadmap in `docs/architecture.md` §8. Status as of the last commit.
 | `html_selectors/` | **Done** | `package:html` covers what extensions need, but `:has()` is unsupported and `:empty`, `:nth-child(odd)` and `:nth-child(n)` on indented HTML **silently match nothing**. |
 | `playback/` | **Windows done, Android not run** | The stack works. Two undocumented behaviours would each silently corrupt resume; both are now requirements on the `PlaybackEngine` adapter. ADR-0006. |
 | `m4b_chapters/` | **Done** | Both chapter formats read in pure Dart, seek-based, ~1% of the file. No platform plugin and no ffmpeg at runtime. |
-| downloads | **Not started** | Spike (c). Its interesting cases — foreground-service limits, process kill, expiring URLs — are mostly Android. |
+| `downloads/` | **Windows done, Android not run** | 7 of 7 pass against a local origin the probe starts itself. `progress` is a union of a 0-1 fraction and five negative sentinels, so it must never reach the UI. Foreground-service limits, process death and Doze are unobservable on Windows. |
 | iOS canary | **Blocked on hardware** | CI produces the unsigned IPA. Sideloading it needs the physical iPhone. |
 
 ## What is blocking
