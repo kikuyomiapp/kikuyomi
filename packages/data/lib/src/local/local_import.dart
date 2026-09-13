@@ -21,8 +21,9 @@ final class LocalBookFile {
     this.markers = const [],
   });
 
-  /// Absolute path. Also the book's identity within the Local source, so importing the same file
-  /// twice finds the same book.
+  /// Where the file is: an absolute path for a file the user keeps, or a path relative to the media
+  /// root for a file in the app's own storage, as `LocalMediaResolver` describes. Also the book's
+  /// identity within the Local source, so importing the same file twice finds the same book.
   final String path;
 
   /// Probed from the file itself, so stored as exact rather than estimated.
