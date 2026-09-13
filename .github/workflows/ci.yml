@@ -61,9 +61,26 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Test
+      - name: Test app
         run: flutter test
         working-directory: app
+
+      # CLAUDE.md requires unit tests for logic in pure-Dart packages, so CI has to run them.
+      # Only packages with a test/ directory run, so empty scaffolding does not fail the build
+      # for having nothing to test. Flutter packages need flutter test; pure ones use dart test.
+      - name: Test packages
+        run: |
+          set -euo pipefail
+          for dir in packages/*/; do
+            [ -d "${dir}test" ] || continue
+            echo "::group::${dir}"
+            if grep -q 'sdk: flutter' "${dir}pubspec.yaml"; then
+              (cd "$dir" && flutter test)
+            else
+              (cd "$dir" && dart test)
+            fi
+            echo "::endgroup::"
+          done
 
   android:
     name: Android APK

@@ -5,3 +5,7 @@
 ///
 /// Pure Dart. This package must never import Flutter or a platform plugin.
 library;
+
+export 'src/timeline/positions.dart';
+export 'src/timeline/timeline.dart';
+export 'src/timeline/timeline_input.dart';
