@@ -5,3 +5,7 @@
 ///
 /// Pure Dart. This package must never import Flutter or a platform plugin.
 library;
+
+export 'src/engine.dart';
+export 'src/progress_tracker.dart';
+export 'src/smart_rewind.dart';

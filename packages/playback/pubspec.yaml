@@ -21,4 +21,6 @@ dependencies:
     path: ../domain
 
 dev_dependencies:
+  kikuyomi_test_support:
+    path: ../test_support
   test: ^1.25.0
