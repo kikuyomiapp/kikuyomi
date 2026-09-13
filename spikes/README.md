@@ -13,12 +13,27 @@ what happened on each platform, and the numbers.
 
 ## Phase 0 spikes
 
-From the roadmap in `docs/architecture.md` §8.
+From the roadmap in `docs/architecture.md` §8. Status as of the last commit.
 
-| Spike | Question it answers | Target platforms | Produces |
-|---|---|---|---|
-| `quickjs_binding/` | Which QuickJS binding meets the criteria in §3.1: Promise/async with a host-driven job loop, interrupt handler, per-runtime memory limit, builds for Android/Windows/iOS, isolate-safe, maintained? Candidates are an existing Dart FFI package or a thin Rust `rquickjs` layer via `flutter_rust_bridge`. Also: does the Dart `html` parser cover the CSS selectors real sources need? | Android, Windows, iOS | ADR on the script engine binding |
-| `playback/` | Does `just_audio` + `audio_service` handle a multi-file book, custom request headers, speed, notification/SMTC controls, background playback, and audio focus? | Android, Windows | ADR on the playback stack |
-| `downloads/` | Does `background_downloader` survive expiring URLs, process kill, and Android foreground-service limits? What does Windows do? | Android, Windows | ADR on the download transport |
-| `m4b_chapters/` | How do we extract embedded chapter markers from M4B, and how accurate are the resulting offsets? | Android, Windows | ADR on chapter extraction |
-| `ios_canary/` | Does a CI-built unsigned IPA sideload onto the iPhone, launch, and play audio in the background? | iOS | Notes appended to Appendix A |
+| Spike | Status | Outcome |
+|---|---|---|
+| `quickjs_binding/` | **Windows done, Android blocked** | `flutter_qjs` does not run on Dart 3.13 as published, but three lines fix it and all six probes then pass, including an interrupt and an enforced memory cap. ADR-0001, still Proposed. |
+| `html_selectors/` | **Done** | `package:html` covers what extensions need, but `:has()` is unsupported and `:empty`, `:nth-child(odd)` and `:nth-child(n)` on indented HTML **silently match nothing**. |
+| `playback/` | **Windows done, Android not run** | The stack works. Two undocumented behaviours would each silently corrupt resume; both are now requirements on the `PlaybackEngine` adapter. ADR-0006. |
+| `m4b_chapters/` | **Done** | Both chapter formats read in pure Dart, seek-based, ~1% of the file. No platform plugin and no ffmpeg at runtime. |
+| downloads | **Not started** | Spike (c). Its interesting cases — foreground-service limits, process kill, expiring URLs — are mostly Android. |
+| iOS canary | **Blocked on hardware** | CI produces the unsigned IPA. Sideloading it needs the physical iPhone. |
+
+## What is blocking
+
+**The Android emulator will not start on the development machine.** No hypervisor driver is
+installed, although VT-x is enabled in firmware. This blocks the Android half of spikes (a) and
+(b) and most of spike (c). `flutter doctor` reports the Android toolchain as green, because it
+checks the SDK and licences and not whether an emulator can run — so a green doctor is not
+evidence that Android works.
+
+The fix is the SDK Tools tab in Android Studio, which can elevate; the command-line `sdkmanager`
+on this machine is a shim to a new CLI that fails to self-update. A physical Android device would
+also do, and §2.2 already argues for one on the grounds that real devices kill background work in
+ways emulators do not — which is exactly what spikes (b) and (c) need to observe.
+
