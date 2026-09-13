@@ -1,8 +1,12 @@
 name: kikuyomi
-description: "A new Flutter project."
+description: "Kikuyomi: a cross-platform, extension-based audiobook player."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+# Member of the pub workspace rooted at ../pubspec.yaml: resolved there, against the
+# single lockfile at the repository root.
+resolution: workspace
 
 # The following defines the version and build number for your application.
 # A version number is three numbers separated by dots, like 1.2.43
