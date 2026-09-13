@@ -51,9 +51,9 @@ Folder names are short; `pubspec` names use a `kikuyomi_` prefix (e.g. `kikuyomi
 - I develop on Windows with the Android emulator and Windows desktop as run targets. I can test iOS only by sideloading CI-built IPAs onto my iPhone.
 
 ## Common commands
-- `dart pub get` (at repo root, resolves the whole workspace)
-- `flutter run -d windows`
+- `flutter pub get` (at repo root, resolves the whole workspace). Not `dart pub get`: the workspace has a Flutter member, whose `sdk: flutter` dependencies plain pub cannot resolve.
+- `flutter run -d windows` (from `app/`; the repo root is the workspace root, not an app)
 - `flutter run -d <emulator-id>` (see `flutter devices`)
 - `dart test` (inside a pure-Dart package)
 - `flutter analyze`
-- `dart format .`
+- `dart format app packages`. Not `dart format .` at the repo root: the local `flutter/` SDK checkout lives there and `.` walks into it.

@@ -1,0 +1,156 @@
+# Phase 0 CI skeleton.
+#
+# Goal, from the roadmap in docs/architecture.md section 8: every push produces an Android APK, a
+# Windows build, and an unsigned iOS IPA. The iOS job is a canary. It exists from Phase 0 onward
+# so that iOS never silently stops compiling while the target is unattended, and it is expected to
+# be the first job to break after a dependency change.
+#
+# No signing secrets are used anywhere here. The Android release build type is wired to the debug
+# signing config by the Flutter template, so `--release` produces a debug-signed APK, and the iOS
+# build passes --no-codesign. Real signing arrives with the release pipeline, not the skeleton.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes the in-flight run obsolete. macOS runners are the
+# expensive ones, so cancelling matters even on a free public-repo allowance.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Pinned so CI and the development machine agree. Bump deliberately, and expect the iOS canary
+  # to be what tells you a bump went wrong.
+  FLUTTER_VERSION: "3.47.3"
+  # Gradle 9 and AGP 9 both need a JDK newer than the Java 17 bytecode the app targets.
+  JAVA_VERSION: "21"
+
+jobs:
+  analyze:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Run at the repository root: this is a pub workspace, so one resolution covers every
+      # member. `dart pub get` would fail here, because a Flutter member pulls `sdk: flutter`.
+      - name: Resolve workspace
+        run: flutter pub get
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+        working-directory: app
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve workspace
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release
+        working-directory: app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve workspace
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+        working-directory: app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: app/build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: iOS canary (unsigned IPA)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve workspace
+        run: flutter pub get
+
+      - name: Build iOS without code signing
+        run: flutter build ios --release --no-codesign
+        working-directory: app
+
+      # `flutter build ipa` wants an export options plist and a signing identity, neither of which
+      # exists without an Apple developer team. An IPA is just a zip with the .app inside a
+      # Payload directory, so package it by hand. Sideloading tools re-sign it on the way in.
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          mv Runner.app Payload/
+          zip -qr kikuyomi-canary-unsigned.ipa Payload
+        working-directory: app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-canary-ipa
+          path: app/build/ios/iphoneos/kikuyomi-canary-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
