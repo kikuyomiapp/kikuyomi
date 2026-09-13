@@ -50,16 +50,17 @@ jobs:
       - name: Resolve workspace
         run: flutter pub get
 
-      # Scoped to app and packages on purpose, matching the command in CLAUDE.md.
-      # spikes/ is throwaway by design and exempt from the quality bar, so gating CI on its
-      # formatting turns every experiment into a formatting chore. Analysis below is NOT
-      # scoped, because a spike that no longer compiles is a spike whose finding can no
-      # longer be reproduced, and that is worth knowing.
+      # Both checks are scoped to app and packages, matching CLAUDE.md. spikes/ is throwaway by
+      # design and exempt from the quality bar, but scoping analysis is not only policy. Spike
+      # packages are not workspace members, so a fresh checkout never resolves their
+      # dependencies, and unscoped analysis fails on every import it cannot find. It passes on a
+      # development machine only where the spikes happen to have been resolved by hand, which is
+      # exactly how a red CI can hide behind green local runs.
       - name: Check formatting
         run: dart format --output=none --set-exit-if-changed app packages
 
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze app packages
 
       - name: Test app
         run: flutter test

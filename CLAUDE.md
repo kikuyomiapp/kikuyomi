@@ -8,7 +8,7 @@ The approved design is `docs/architecture.md` (v0.3). Individual decisions are r
 ## Current status
 Phase 0: environment setup, CI skeleton, and spikes. Spikes live in `spikes/` and are throwaway; their purpose is to answer the questions listed in the roadmap and produce ADRs. `spikes/README.md` carries the current status of each and what is blocking.
 
-The workspace and the fourteen packages under `packages/` exist. Phase 1 has begun on the pure-Dart core, ahead of Phase 0's Android items: `domain` holds the Timeline and the `Clock` interface, and `playback` holds the `PlaybackEngine` interface, the progress-write rules and smart rewind, all unit tested. The other packages are still empty scaffolding. CI builds an Android APK, a Windows build and an unsigned iOS IPA on every push, and runs `dart test` in every package that has tests.
+The workspace and the fourteen packages under `packages/` exist. Phase 1 has begun on the pure-Dart core, ahead of Phase 0's Android items: `domain` holds the Timeline and the `Clock` interface; `playback` holds the `PlaybackEngine` interface, the progress-write rules and smart rewind; `data` holds the §4.4 chapter-sync planner; and `sources_builtin` holds the M4B chapter reader. All of it is unit tested. The other packages are still empty scaffolding. CI builds an Android APK, a Windows build and an unsigned iOS IPA on every push, and runs `dart test` in every package that has tests.
 
 All fifteen decisions in §9 of the architecture document have ADRs in `docs/adr/`. Fourteen are Accepted; ADR-0001, the QuickJS binding, is still Proposed pending an Android run.
 
@@ -59,5 +59,5 @@ Folder names are short; `pubspec` names use a `kikuyomi_` prefix (e.g. `kikuyomi
 - `flutter run -d windows` (from `app/`; the repo root is the workspace root, not an app)
 - `flutter run -d <emulator-id>` (see `flutter devices`)
 - `dart test` (inside a pure-Dart package)
-- `flutter analyze`
+- `flutter analyze app packages`. Not bare `flutter analyze`: spike packages are not workspace members, so on a fresh checkout their imports are unresolved and analysis fails, while a machine where the spikes were resolved by hand passes. CI runs the scoped form.
 - `dart format app packages`. Not `dart format .` at the repo root: the local `flutter/` SDK checkout lives there and `.` walks into it.
