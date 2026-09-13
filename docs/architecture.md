@@ -142,7 +142,7 @@ Every dependency must support Android, Windows, and iOS, or sit behind an adapte
 
 ### 2.4 Package map
 
-The repository is a Dart pub workspace (with Melos for scripts). Core logic lives in **pure-Dart packages** with no Flutter dependency: they test in seconds with `dart test` on any machine and can be reused by command-line tools. Flutter-dependent code is limited to the app package, the design system, and the platform adapters. UI features live as feature folders inside the app package; splitting every screen into its own package adds overhead without real benefit for a solo developer. Folder names stay short, but each package's `pubspec` name carries a `kikuyomi_` prefix (for example `kikuyomi_domain`) so it can never collide with a published package of the same name.
+The repository is a Dart pub workspace (with Melos for scripts). Core logic lives in **pure-Dart packages** with no Flutter dependency: they test in seconds with `dart test` on any machine and can be reused by command-line tools. Flutter-dependent code is limited to the app package, the design system, and the platform adapters. UI features live as feature folders inside the app package; splitting every screen into its own package adds overhead without real benefit for a solo developer. Folder names stay short, but each package under `packages/` carries a `kikuyomi_` prefix in its `pubspec` name (for example `kikuyomi_domain`) so it can never collide with a published package of the same name. The prefix applies only to those packages: the app package keeps the bare name `kikuyomi`, because its package name feeds the application ID and Android namespace fixed in decision 15.
 
 | Package | Kind | Responsibility | Depends on |
 |---|---|---|---|
@@ -754,7 +754,7 @@ In total that is roughly eight to ten months part-time to 1.0 on Android and Win
 | 12 | License | **Decided:** Apache-2.0 | — |
 | 13 | Sync | Pluggable backends (folder, WebDAV, Audiobookshelf) | A single cloud provider |
 | 14 | Minimum versions | Android 8.0 (API 26), Windows 10, iOS 17 | Lower Android minimum |
-| 15 | Name and application ID | **Decided:** Kikuyomi; application ID `io.github.kikuyomi` (under a `kikuyomi` GitHub organization), with `io.github.<username>.kikuyomi` as the fallback if the organization name is unavailable | — |
+| 15 | Name and application ID | **Decided, final:** Kikuyomi; application ID and Android namespace `io.github.kikuyomiapp.kikuyomi`. The `kikuyomi` GitHub organization name was already taken, so the project owns the `kikuyomiapp` organization and the identifiers follow it. These identifiers are locked: the Flutter app package therefore keeps the bare pubspec name `kikuyomi`, since its name feeds them | — |
 
 These decisions are approved. The next step is Phase 0: environment setup, the CI skeleton, the spikes, and the ADRs that record these decisions.
 
