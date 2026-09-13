@@ -8,7 +8,7 @@ The approved design is `docs/architecture.md` (v0.3). Individual decisions are r
 ## Current status
 Phase 0: environment setup, CI skeleton, and spikes. Spikes live in `spikes/` and are throwaway; their purpose is to answer the questions listed in the roadmap and produce ADRs. `spikes/README.md` carries the current status of each and what is blocking.
 
-The workspace and the fourteen packages under `packages/` exist, but they are empty scaffolding: pubspecs, dependency edges and a library entry point each. **Production code still starts in Phase 1.** CI builds an Android APK, a Windows build and an unsigned iOS IPA on every push.
+The workspace and the fourteen packages under `packages/` exist. Phase 1 has begun on the pure-Dart core, ahead of Phase 0's Android items: `domain` holds the Timeline and the `Clock` interface, and `playback` holds the `PlaybackEngine` interface, the progress-write rules and smart rewind, all unit tested. The other packages are still empty scaffolding. CI builds an Android APK, a Windows build and an unsigned iOS IPA on every push, and runs `dart test` in every package that has tests.
 
 All fifteen decisions in §9 of the architecture document have ADRs in `docs/adr/`. Fourteen are Accepted; ADR-0001, the QuickJS binding, is still Proposed pending an Android run.
 
