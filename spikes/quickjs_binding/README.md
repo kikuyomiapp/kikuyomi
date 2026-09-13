@@ -4,9 +4,9 @@
 This is the most important dependency in the project: the extension runtime is built on it, and
 every source extension ever written runs inside it.
 
-**Status.** Desk evaluation and source-level verification complete. Hands-on build and measurement
-not started. The recommendation below is provisional until a real build runs on Windows and
-Android.
+**Status.** Desk evaluation, source-level verification and a Windows build-and-run are complete.
+`flutter_qjs` is confirmed working on Flutter 3.47.3 / Dart 3.13.3 **after a three-line patch**,
+with both non-negotiable criteria measured end to end. Android is not yet tested.
 
 ## Criteria (§3.1)
 
@@ -114,19 +114,67 @@ Provisional recommendation is **A**, with **B** as the documented fallback, on t
 satisfies the criteria with the least toolchain and no architecture change. That is contingent on
 the build test below.
 
+## Hands-on result (Windows)
+
+`spikes/quickjs_binding/qjs_probe` is a throwaway Flutter app that loads the plugin and probes it.
+It is a console probe wearing a Flutter app as a costume, because the native library only exists
+inside a built Flutter application.
+
+**Published 0.3.7 compiles but does not run.** Every call fails immediately with:
+
+```
+UnsupportedError: Unsupported operation: Pointer.fromFunction cannot be called dynamically.
+```
+
+This is four years of Dart FFI drift, exactly the risk the ADR named. `lib/src/ffi.dart:205`
+calls `Pointer.fromFunction(channelDispacher)` and lets the type argument be inferred from the
+surrounding call. Modern Dart FFI requires it to be explicit and statically known. The callback
+also returns a nullable pointer, which no longer matches the native signature.
+
+**Three lines fix it.** See `flutter_qjs-dart313.patch`: make `channelDispacher` return a
+non-nullable pointer, fall back to `nullptr.cast<JSValue>()`, and give `Pointer.fromFunction` its
+explicit `<_JSChannelNative>` type argument. With that patch applied, all six probes pass:
+
+| Probe | Result | Time |
+|---|---|---|
+| eval arithmetic | `2` | 26 ms |
+| cold runtime start and teardown | ok | 1 ms |
+| async, `await Promise.resolve(40) + 2` | `42` | 21 ms |
+| **interrupt an infinite loop** (`timeout: 1000`) | `InternalError: interrupted` | **1012 ms** |
+| **memory limit** (`memoryLimit: 1 MB`) | `InternalError: out of memory` | 18 ms |
+| **engine reusable after an interrupt** | `42` | 504 ms |
+
+The last row matters for §3.6: an interrupted runtime is **not poisoned**, so a pooled runtime
+survives a hostile extension and can be reused rather than rebuilt.
+
+The interrupt fired 12 ms past a 1000 ms deadline, so on Windows the `clock()`-based handler
+behaves as wall-clock time, as MSVC defines it. On Android `clock()` is CPU time, which for a busy
+loop is nearly the same but for a script that awaits is not. That difference still needs
+measuring before the handler can be trusted equally on both.
+
+### Two caveats about this run
+
+The build failed once on first invocation and succeeded unchanged on the second, which looks like
+the known Flutter Windows plugin-symlink race during initial CMake generation rather than anything
+to do with this package. Worth watching in CI.
+
+The probe's "expected a throw" helper cannot distinguish a throw for the right reason from a throw
+because everything is broken. On the unpatched run it scored two false passes for exactly that
+reason. The passing figures above were re-read individually against their error text.
+
 ## Next, in order
 
-1. **Does `flutter_qjs` still build?** Add it to a throwaway Flutter app and run on Windows, then
-   Android, against Flutter 3.47.3 / Dart 3.13.3. This is the single fact that decides A vs B, and
-   it is a morning's work. If it does not build, measure how far off it is before abandoning it.
-2. Measure: cold runtime start, warm evaluation, memory per runtime, and the interval between the
-   interrupt firing and control returning to Dart.
-3. Confirm `clock()` semantics on Windows versus Android and decide whether the handler needs
-   replacing with a wall-clock deadline.
-4. Prototype the host-callback patch, since the fixed-timeout policy is likely too coarse for
-   §3.6.
-5. If A fails: establish what FRB costs the three CI jobs, and whether `source_runtime` can stay
-   pure Dart.
+1. **Run the same probe on Android.** Windows passes; Android is the other primary target and the
+   one where `clock()` semantics differ. Nothing should be concluded for Android from a Windows
+   result.
+2. Confirm `clock()` behaviour there and decide whether the handler needs replacing with an
+   explicit wall-clock deadline so one timeout value means one thing everywhere.
+3. Prototype the host-callback patch. A fixed timeout cannot cancel a script because the user
+   navigated away, which §3.6 will want.
+4. Measure memory per runtime and the cost of pooling several, since the runtime pool in §2.7
+   assumes several per worker isolate.
+5. Decide how the fork is carried: a vendored copy in `packages/`, or a published fork under the
+   project's own name.
 
 ## Second half of this spike
 
