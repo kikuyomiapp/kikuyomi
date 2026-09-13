@@ -4,8 +4,7 @@
 # every member against one shared version solution and one `pubspec.lock`. Members list
 # `resolution: workspace` in their own pubspec.
 #
-# Packages under `packages/` arrive in Phase 1 and are added to the `workspace` list below as
-# they are created. See docs/architecture.md §2.4 for the target package map.
+# Members are listed in dependency order, following the package map in docs/architecture.md §2.4.
 name: kikuyomi_workspace
 description: Pub workspace root for Kikuyomi. Not a publishable package.
 publish_to: none
@@ -15,3 +14,17 @@ environment:
 
 workspace:
   - app
+  - packages/source_api
+  - packages/domain
+  - packages/data
+  - packages/networking
+  - packages/source_runtime
+  - packages/sources_builtin
+  - packages/extension_manager
+  - packages/downloads
+  - packages/playback
+  - packages/backup
+  - packages/sync
+  - packages/platform_adapters
+  - packages/design_system
+  - packages/test_support

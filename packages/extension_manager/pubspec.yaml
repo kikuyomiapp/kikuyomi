@@ -1,0 +1,30 @@
+# Repositories, index fetching, install and update, signatures, trust store, `SourceRegistry`.
+#
+# Registration is manifest-first: runtimes are created lazily and pooled rather than started for
+# every installed extension at launch.
+#
+# See docs/architecture.md section 2.4. Folder name is short; the package name carries the
+# kikuyomi_ prefix so it cannot collide with a published package.
+name: kikuyomi_extension_manager
+description: "Repositories, index fetching, install and update, signatures, trust store, `SourceRegistry`."
+version: 0.1.0
+publish_to: none
+
+# Member of the pub workspace rooted at ../../pubspec.yaml.
+resolution: workspace
+
+environment:
+  sdk: "^3.13.3"
+
+dependencies:
+  kikuyomi_source_api:
+    path: ../source_api
+  kikuyomi_source_runtime:
+    path: ../source_runtime
+  kikuyomi_sources_builtin:
+    path: ../sources_builtin
+  kikuyomi_domain:
+    path: ../domain
+
+dev_dependencies:
+  test: ^1.25.0

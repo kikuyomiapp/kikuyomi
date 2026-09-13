@@ -1,0 +1,32 @@
+# Per-OS implementations of the interfaces the pure packages declare.
+#
+# Audio backend, media session, download transport, storage locations, folder access, secure
+# storage, WebView challenge, power policy and diagnostics. Platform differences live here, so
+# features never contain a `Platform.isX` check.
+#
+# See docs/architecture.md section 2.4. Folder name is short; the package name carries the
+# kikuyomi_ prefix so it cannot collide with a published package.
+name: kikuyomi_platform_adapters
+description: "Per-OS implementations of the interfaces the pure packages declare."
+version: 0.1.0
+publish_to: none
+
+# Member of the pub workspace rooted at ../../pubspec.yaml.
+resolution: workspace
+
+environment:
+  sdk: "^3.13.3"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  kikuyomi_domain:
+    path: ../domain
+  kikuyomi_playback:
+    path: ../playback
+  kikuyomi_downloads:
+    path: ../downloads
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter

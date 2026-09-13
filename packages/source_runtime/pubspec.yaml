@@ -1,0 +1,26 @@
+# QuickJS host, bridges, worker isolate pool, watchdog and output validation.
+#
+# Extension output is untrusted. It is decoded into strict types and validated at this boundary
+# before anything else in the app sees it.
+#
+# See docs/architecture.md section 2.4. Folder name is short; the package name carries the
+# kikuyomi_ prefix so it cannot collide with a published package.
+name: kikuyomi_source_runtime
+description: "QuickJS host, bridges, worker isolate pool, watchdog and output validation."
+version: 0.1.0
+publish_to: none
+
+# Member of the pub workspace rooted at ../../pubspec.yaml.
+resolution: workspace
+
+environment:
+  sdk: "^3.13.3"
+
+dependencies:
+  kikuyomi_source_api:
+    path: ../source_api
+  kikuyomi_networking:
+    path: ../networking
+
+dev_dependencies:
+  test: ^1.25.0

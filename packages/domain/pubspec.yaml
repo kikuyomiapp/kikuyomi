@@ -1,0 +1,24 @@
+# Entities, use cases, repository and service interfaces, and the Timeline.
+#
+# The Timeline maps logical chapters onto physical audio files, which are not the same thing for
+# most audiobooks. Progress is stored chapter-relative; global position is derived here.
+#
+# See docs/architecture.md section 2.4. Folder name is short; the package name carries the
+# kikuyomi_ prefix so it cannot collide with a published package.
+name: kikuyomi_domain
+description: "Entities, use cases, repository and service interfaces, and the Timeline."
+version: 0.1.0
+publish_to: none
+
+# Member of the pub workspace rooted at ../../pubspec.yaml.
+resolution: workspace
+
+environment:
+  sdk: "^3.13.3"
+
+dependencies:
+  kikuyomi_source_api:
+    path: ../source_api
+
+dev_dependencies:
+  test: ^1.25.0

@@ -1,0 +1,26 @@
+# Download queue, scheduler, state machine, post-processing and storage accounting.
+#
+# Queue items are physical files, not chapters. URLs are resolved just in time, because many
+# sources hand out links that expire. The transport itself sits behind an interface.
+#
+# See docs/architecture.md section 2.4. Folder name is short; the package name carries the
+# kikuyomi_ prefix so it cannot collide with a published package.
+name: kikuyomi_downloads
+description: "Download queue, scheduler, state machine, post-processing and storage accounting."
+version: 0.1.0
+publish_to: none
+
+# Member of the pub workspace rooted at ../../pubspec.yaml.
+resolution: workspace
+
+environment:
+  sdk: "^3.13.3"
+
+dependencies:
+  kikuyomi_domain:
+    path: ../domain
+  kikuyomi_networking:
+    path: ../networking
+
+dev_dependencies:
+  test: ^1.25.0

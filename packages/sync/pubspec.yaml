@@ -1,0 +1,26 @@
+# `SyncBackend` implementations: user-chosen folder, WebDAV, Audiobookshelf.
+#
+# Later work. The package exists now so the dependency direction is fixed before anything is
+# written against it.
+#
+# See docs/architecture.md section 2.4. Folder name is short; the package name carries the
+# kikuyomi_ prefix so it cannot collide with a published package.
+name: kikuyomi_sync
+description: "`SyncBackend` implementations: user-chosen folder, WebDAV, Audiobookshelf."
+version: 0.1.0
+publish_to: none
+
+# Member of the pub workspace rooted at ../../pubspec.yaml.
+resolution: workspace
+
+environment:
+  sdk: "^3.13.3"
+
+dependencies:
+  kikuyomi_domain:
+    path: ../domain
+  kikuyomi_backup:
+    path: ../backup
+
+dev_dependencies:
+  test: ^1.25.0

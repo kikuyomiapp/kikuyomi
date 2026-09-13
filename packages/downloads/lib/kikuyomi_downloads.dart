@@ -1,0 +1,7 @@
+/// Download queue, scheduler, state machine, post-processing and storage accounting.
+///
+/// Queue items are physical files, not chapters. URLs are resolved just in time, because many
+/// sources hand out links that expire. The transport itself sits behind an interface.
+///
+/// Pure Dart. This package must never import Flutter or a platform plugin.
+library;

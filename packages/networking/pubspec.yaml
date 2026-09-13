@@ -1,0 +1,20 @@
+# HTTP client abstraction, per-extension cookie jars, rate limiting and caching.
+#
+# Platform HTTP clients are injected rather than imported, which is what keeps this package free
+# of Flutter.
+#
+# See docs/architecture.md section 2.4. Folder name is short; the package name carries the
+# kikuyomi_ prefix so it cannot collide with a published package.
+name: kikuyomi_networking
+description: "HTTP client abstraction, per-extension cookie jars, rate limiting and caching."
+version: 0.1.0
+publish_to: none
+
+# Member of the pub workspace rooted at ../../pubspec.yaml.
+resolution: workspace
+
+environment:
+  sdk: "^3.13.3"
+
+dev_dependencies:
+  test: ^1.25.0

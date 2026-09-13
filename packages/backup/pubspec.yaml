@@ -1,0 +1,24 @@
+# Protobuf schema, export and import, restore planner.
+#
+# Field numbers are append-only, so a backup taken by a newer build stays readable by an older
+# one and vice versa.
+#
+# See docs/architecture.md section 2.4. Folder name is short; the package name carries the
+# kikuyomi_ prefix so it cannot collide with a published package.
+name: kikuyomi_backup
+description: "Protobuf schema, export and import, restore planner."
+version: 0.1.0
+publish_to: none
+
+# Member of the pub workspace rooted at ../../pubspec.yaml.
+resolution: workspace
+
+environment:
+  sdk: "^3.13.3"
+
+dependencies:
+  kikuyomi_domain:
+    path: ../domain
+
+dev_dependencies:
+  test: ^1.25.0

@@ -1,0 +1,26 @@
+# Built-in native sources: Local files, Audiobookshelf and OPDS.
+#
+# These implement the same contract as extensions, so the app is a complete audiobook player
+# with nothing installed.
+#
+# See docs/architecture.md section 2.4. Folder name is short; the package name carries the
+# kikuyomi_ prefix so it cannot collide with a published package.
+name: kikuyomi_sources_builtin
+description: "Built-in native sources: Local files, Audiobookshelf and OPDS."
+version: 0.1.0
+publish_to: none
+
+# Member of the pub workspace rooted at ../../pubspec.yaml.
+resolution: workspace
+
+environment:
+  sdk: "^3.13.3"
+
+dependencies:
+  kikuyomi_source_api:
+    path: ../source_api
+  kikuyomi_networking:
+    path: ../networking
+
+dev_dependencies:
+  test: ^1.25.0
