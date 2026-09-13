@@ -1,0 +1,21 @@
+;FFMETADATA1
+title=Kikuyomi Spike Fixture
+artist=Generated Tone
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=0
+END=4000
+title=Chapter One
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=4000
+END=9000
+title=Chapter Two
+
+[CHAPTER]
+TIMEBASE=1/1000
+START=9000
+END=15000
+title=Chapter Three

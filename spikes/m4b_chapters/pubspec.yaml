@@ -1,0 +1,7 @@
+# Spike (d). Throwaway, and deliberately not a workspace member.
+name: m4b_chapters_spike
+description: "Extracts embedded chapter markers from an M4B in pure Dart."
+publish_to: none
+
+environment:
+  sdk: "^3.13.3"
