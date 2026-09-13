@@ -6,3 +6,5 @@
 ///
 /// Depends on Flutter by design; see docs/architecture.md section 2.4.
 library;
+
+export 'src/audio/just_audio_engine.dart';
