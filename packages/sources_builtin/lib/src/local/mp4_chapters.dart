@@ -134,8 +134,11 @@ final class Mp4Info {
     required this.durationMs,
     this.title,
     this.artist,
+    this.albumArtist,
     this.album,
     this.composer,
+    this.trackNumber,
+    this.discNumber,
     this.chapters,
   });
 
@@ -148,11 +151,20 @@ final class Mp4Info {
   /// `©ART`, conventionally the author.
   final String? artist;
 
+  /// `aART`, the album artist, which some taggers use for the author instead.
+  final String? albumArtist;
+
   /// `©alb`.
   final String? album;
 
   /// `©wrt`, which audiobook taggers commonly use for the narrator.
   final String? composer;
+
+  /// `trkn`: the file's place among a book's files, when it is one of several.
+  final int? trackNumber;
+
+  /// `disk`.
+  final int? discNumber;
 
   final Mp4Chapters? chapters;
 }
@@ -164,6 +176,9 @@ final class Mp4Info {
 /// timescale, since a book with no duration cannot be played.
 Future<Mp4Info?> readMp4Info(ByteSource source) =>
     _Mp4Reader(source).readInfo();
+
+/// A track or disc number, or null when unset, which taggers write as zero.
+int? _positive(int? number) => number == null || number <= 0 ? null : number;
 
 final class _Box {
   const _Box({
@@ -238,10 +253,13 @@ final class _Mp4Reader {
     final tags = await _readTags(moov);
     return Mp4Info(
       durationMs: duration * 1000 ~/ timescale,
-      title: tags['©nam'],
-      artist: tags['©ART'],
-      album: tags['©alb'],
-      composer: tags['©wrt'],
+      title: tags.text['©nam'],
+      artist: tags.text['©ART'],
+      albumArtist: tags.text['aART'],
+      album: tags.text['©alb'],
+      composer: tags.text['©wrt'],
+      trackNumber: _positive(tags.numbers['trkn']),
+      discNumber: _positive(tags.numbers['disk']),
       chapters: await _chaptersIn(moov),
     );
   }
@@ -358,11 +376,14 @@ final class _Mp4Reader {
 
   // iTunes-style tags.
 
-  /// Text items under `moov/udta/meta/ilst`, keyed by item type such as `©nam`. Only UTF-8 text
-  /// values are read; cover art and numeric items are skipped.
-  Future<Map<String, String>> _readTags(_Box moov) async {
+  /// Items under `moov/udta/meta/ilst`, keyed by item type such as `©nam`: UTF-8 text values, and
+  /// the track and disc numbers. Cover art and other binary items are skipped.
+  Future<({Map<String, String> text, Map<String, int> numbers})> _readTags(
+    _Box moov,
+  ) async {
+    const none = (text: <String, String>{}, numbers: <String, int>{});
     final meta = await _find(const ['udta', 'meta'], moov);
-    if (meta == null) return const {};
+    if (meta == null) return none;
 
     // ISO files make `meta` a full box, with four bytes of version and flags before its children;
     // QuickTime files do not. The first child is always `hdlr`, which tells the two apart.
@@ -372,26 +393,35 @@ final class _Mp4Reader {
       if (String.fromCharCodes(probe) != 'hdlr') childrenStart += 4;
     }
     final ilst = await _findChild('ilst', childrenStart, meta.end);
-    if (ilst == null) return const {};
+    if (ilst == null) return none;
 
-    final tags = <String, String>{};
+    final text = <String, String>{};
+    final numbers = <String, int>{};
     var offset = ilst.contentStart;
     while (ilst.end - offset >= 8) {
       final item = await _boxAt(offset, ilst.end);
       offset = item.end;
       final data = await _findChild('data', item.contentStart, item.end);
       if (data == null || data.contentLength < 8) continue;
-      // type indicator(4): the low three bytes say what the value is, and 1 means UTF-8 text.
-      // locale(4) follows, then the value.
-      if (await _u32At(data, 0) & 0x00FFFFFF != 1) continue;
+      // type indicator(4): the low three bytes say what the value is, 1 meaning UTF-8 text and 0
+      // raw bytes. locale(4) follows, then the value.
+      final kind = await _u32At(data, 0) & 0x00FFFFFF;
       final length = data.contentLength - 8;
-      if (length > _maxTagBytes) continue;
-      tags[item.type] = utf8.decode(
-        await _bytes(data.contentStart + 8, length),
-        allowMalformed: true,
-      );
+      if (kind == 1 && length <= _maxTagBytes) {
+        text[item.type] = utf8.decode(
+          await _bytes(data.contentStart + 8, length),
+          allowMalformed: true,
+        );
+      } else if (kind == 0 &&
+          (item.type == 'trkn' || item.type == 'disk') &&
+          length >= 4) {
+        // reserved(2) number(2) total(2), and for trkn a further reserved(2).
+        numbers[item.type] = ByteData.sublistView(
+          await _bytes(data.contentStart + 10, 2),
+        ).getUint16(0);
+      }
     }
-    return tags;
+    return (text: text, numbers: numbers);
   }
 
   // Nero chpl.

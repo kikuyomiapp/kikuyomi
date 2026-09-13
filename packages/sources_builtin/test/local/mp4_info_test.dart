@@ -33,6 +33,30 @@ List<int> textItem(String type, String value) =>
 List<int> imageItem(String type) =>
     box(type, box('data', [0, 0, 0, 13, 0, 0, 0, 0, 0xFF, 0xD8, 0xFF]));
 
+/// Type 0 is raw bytes, as `trkn` and `disk` store them: reserved(2) number(2) total(2), then a
+/// further reserved(2).
+List<int> numberItem(String type, int number, int total) => box(
+  type,
+  box('data', [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    number >> 8,
+    number & 0xFF,
+    total >> 8,
+    total & 0xFF,
+    0,
+    0,
+  ]),
+);
+
 Uint8List mp4({
   required List<int> header,
   List<int>? tagItems,
@@ -139,6 +163,24 @@ void main() {
       ))!;
       expect(info.title, 'A Long Book');
       expect(info.composer, 'A Narrator');
+    });
+
+    test('include the track and disc numbers and the album artist', () async {
+      final info = (await readMp4Info(
+        MemoryByteSource(
+          mp4(
+            header: movieHeader(version: 0, timescale: 1000, duration: 1000),
+            tagItems: [
+              ...textItem('aART', 'An Album Artist'),
+              ...numberItem('trkn', 3, 12),
+              ...numberItem('disk', 2, 2),
+            ],
+          ),
+        ),
+      ))!;
+      expect(info.albumArtist, 'An Album Artist');
+      expect(info.trackNumber, 3);
+      expect(info.discNumber, 2);
     });
 
     test('are simply absent when a file has none', () async {
