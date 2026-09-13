@@ -1,0 +1,11 @@
+# Spike (a), second half. Throwaway, and deliberately NOT a workspace member: spikes resolve
+# independently so their dependencies never enter the app's shared lockfile.
+name: html_selectors_spike
+description: "Measures CSS selector coverage in the Dart html package."
+publish_to: none
+
+environment:
+  sdk: "^3.13.3"
+
+dependencies:
+  html: ^0.15.0

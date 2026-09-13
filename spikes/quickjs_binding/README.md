@@ -210,5 +210,7 @@ Until one of those happens, ADR-0001 stays Proposed on the strength of the Windo
 
 ## Second half of this spike
 
-CSS selector coverage in the Dart `html` parser, against the selectors real audiobook catalogue
-pages need. Not started.
+CSS selector coverage in the Dart `html` parser: **done**, in `spikes/html_selectors/`.
+20 of 28 probes correct. `:has()`, `:nth-of-type()` and `:nth-child(an+b)` raise
+`UnimplementedError`, while `:empty`, `:nth-child(odd)` and `:nth-child(n)` on indented HTML
+**silently match nothing**, which is the more dangerous half of the result.
