@@ -2,7 +2,6 @@ import 'package:drift/drift.dart' hide isNull;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
-import '../merge/book_details.dart';
 
 /// The database-backed [PlaybackStore]: where the coordinator's progress, listening sessions and
 /// per-book speed end up.

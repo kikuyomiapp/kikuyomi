@@ -2,7 +2,6 @@ import 'package:drift/drift.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
-import '../database/tables.dart';
 import '../playback/stored_playback.dart';
 import 'watch_tables.dart';
 
