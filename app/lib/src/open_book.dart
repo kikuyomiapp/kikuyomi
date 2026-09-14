@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'player_screen.dart';
 import 'providers.dart';
+import 'routes.dart';
 
 /// Opens book [bookId] in the player and shows the player screen.
 ///
@@ -22,7 +22,7 @@ Future<void> openBookInPlayer(
     await services.openBook(bookId);
     if (fromStart) await services.coordinator.seekTo(0);
     if (context.mounted) {
-      await Navigator.of(context).push(PlayerScreen.route());
+      await const PlayerRoute().push<void>(context);
     }
   } catch (error) {
     if (context.mounted) {

@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart' show removeBookFromLibrary;
 
 import 'book_details_view.dart';
 import 'open_book.dart';
 import 'providers.dart';
+import 'routes.dart';
 
 /// A book's details, watched from the database, so progress saved while the book plays shows here
-/// on returning from the player without anything being refreshed.
+/// on returning from the player without anything being refreshed. Reached through [BookRoute].
 class BookDetailsScreen extends ConsumerWidget {
   const BookDetailsScreen({super.key, required this.bookId});
-
-  static Route<void> route(int bookId) =>
-      MaterialPageRoute(builder: (_) => BookDetailsScreen(bookId: bookId));
 
   final int bookId;
 
@@ -61,7 +60,14 @@ class BookDetailsScreen extends ConsumerWidget {
       messenger.showSnackBar(
         SnackBar(content: Text('Removed $title from the library')),
       );
-      if (context.mounted) Navigator.of(context).pop();
+      if (context.mounted) {
+        // A screen opened straight at its location may have nothing beneath it to return to.
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          const HomeRoute().go(context);
+        }
+      }
     } catch (error) {
       messenger.showSnackBar(
         SnackBar(content: Text('Could not remove the book: $error')),

@@ -53,6 +53,7 @@ dependencies:
     path: ../packages/platform_adapters
   kikuyomi_design_system:
     path: ../packages/design_system
+  go_router: 18.0.1
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +65,8 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  build_runner: 2.16.1
+  go_router_builder: 4.5.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

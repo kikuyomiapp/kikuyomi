@@ -3,10 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import 'library_screen.dart';
-import 'player_screen.dart';
 import 'providers.dart';
+import 'routes.dart';
 
 class KikuyomiApp extends ConsumerStatefulWidget {
   const KikuyomiApp({super.key, this.openOnLaunch});
@@ -21,6 +21,10 @@ class KikuyomiApp extends ConsumerStatefulWidget {
 
 class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   final _navigator = GlobalKey<NavigatorState>();
+
+  /// Made once and kept for the life of the app, so rebuilding the app never loses the screens the
+  /// listener has open.
+  late final GoRouter _router = createRouter(navigatorKey: _navigator);
   late final AppLifecycleListener _lifecycle;
 
   @override
@@ -46,6 +50,7 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   @override
   void dispose() {
     _lifecycle.dispose();
+    _router.dispose();
     super.dispose();
   }
 
@@ -56,7 +61,7 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
           ? (await services.addFolderBook(path)).bookId
           : await services.addBookInPlace(path);
       await services.openBook(bookId);
-      await _navigator.currentState?.push(PlayerScreen.route());
+      await _router.push<void>(const PlayerRoute().location);
     } catch (error) {
       _tell('Could not open $path: $error');
     }
@@ -108,12 +113,11 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   @override
   Widget build(BuildContext context) {
     const seed = Color(0xFF3949AB);
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'Kikuyomi',
-      navigatorKey: _navigator,
+      routerConfig: _router,
       theme: ThemeData(colorSchemeSeed: seed),
       darkTheme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.dark),
-      home: const LibraryScreen(),
     );
   }
 }

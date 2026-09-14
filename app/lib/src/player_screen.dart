@@ -12,11 +12,9 @@ import 'player_shortcuts.dart';
 import 'player_view.dart';
 import 'providers.dart';
 
+/// The player for the book the coordinator has open. Reached through `PlayerRoute`.
 class PlayerScreen extends ConsumerWidget {
   const PlayerScreen({super.key});
-
-  static Route<void> route() =>
-      MaterialPageRoute(builder: (_) => const PlayerScreen());
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

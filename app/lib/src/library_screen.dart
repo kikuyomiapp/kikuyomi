@@ -2,12 +2,12 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'book_details_screen.dart';
 import 'book_drop_zone.dart';
 import 'dropped_books.dart';
 import 'home_view.dart';
 import 'open_book.dart';
 import 'providers.dart';
+import 'routes.dart';
 
 /// The files "Add book" offers.
 ///
@@ -79,7 +79,7 @@ class LibraryScreen extends ConsumerWidget {
                 : 'No books yet. Add an audiobook file to start listening.',
             onResume: (bookId) => openBookInPlayer(context, ref, bookId),
             onShowDetails: (bookId) =>
-                Navigator.of(context).push(BookDetailsScreen.route(bookId)),
+                BookRoute(bookId: bookId).push<void>(context),
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) =>
