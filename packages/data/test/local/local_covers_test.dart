@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart' show BookField;
 import 'package:kikuyomi_test_support/kikuyomi_test_support.dart';
 import 'package:test/test.dart';
 

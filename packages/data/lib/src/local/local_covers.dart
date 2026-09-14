@@ -4,7 +4,6 @@ import 'package:drift/drift.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
-import '../merge/book_details.dart';
 import 'local_import.dart' show localSourceId;
 import 'local_media_resolver.dart' show resolveLocalPath;
 
