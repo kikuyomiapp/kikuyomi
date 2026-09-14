@@ -32,13 +32,18 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 /// A whole file plays as itself. Only a stretch cut out of a file is wrapped in a clipping source.
 /// The spike measured plain playback on Windows but not the backend's clipping, so the common case
 /// stays on the path that was measured.
+///
+/// Each item's duration is reported once the player knows it (§4.5), from a ready player only; see
+/// [_reportDuration] for why.
 final class JustAudioEngine implements PlaybackEngine {
   JustAudioEngine() {
     _subscriptions
       ..add(_player.positionStream.listen(_onPosition))
       ..add(_player.currentIndexStream.listen(_onIndex))
       ..add(_player.processingStateStream.listen(_onProcessingState))
-      ..add(_player.playbackEventStream.listen((_) {}, onError: _onError));
+      ..add(
+        _player.playbackEventStream.listen(_onPlaybackEvent, onError: _onError),
+      );
   }
 
   /// Run once, before the first engine is created. Enables the mpv backend on the platforms where
@@ -59,6 +64,13 @@ final class JustAudioEngine implements PlaybackEngine {
   /// What was last loaded, to reload after completion.
   List<EngineItem> _items = const [];
 
+  /// The duration last reported for each item of the loaded queue, so that each is reported once
+  /// rather than with every playback event.
+  final _reportedDurations = <int, Duration>{};
+
+  /// True while a queue is loading, when a playback event may still describe the previous queue.
+  bool _loading = false;
+
   @override
   Stream<EngineEvent> get events => _events.stream;
 
@@ -68,11 +80,19 @@ final class JustAudioEngine implements PlaybackEngine {
     QueuePosition startAt = const QueuePosition(itemIndex: 0, offsetMs: 0),
   }) async {
     _items = List.unmodifiable(items);
-    await _player.setAudioSources(
-      [for (final item in items) _source(item)],
-      initialIndex: startAt.itemIndex,
-      initialPosition: Duration(milliseconds: startAt.offsetMs),
-    );
+    _reportedDurations.clear();
+    _loading = true;
+    try {
+      await _player.setAudioSources(
+        [for (final item in items) _source(item)],
+        initialIndex: startAt.itemIndex,
+        initialPosition: Duration(milliseconds: startAt.offsetMs),
+      );
+    } finally {
+      _loading = false;
+    }
+    // A duration learned while loading arrived when events were being ignored.
+    _reportDuration(_player.playbackEvent);
   }
 
   @override
@@ -149,6 +169,46 @@ final class JustAudioEngine implements PlaybackEngine {
 
   void _onIndex(int? index) {
     if (index != null) _events.add(EngineItemChanged(index));
+  }
+
+  void _onPlaybackEvent(ja.PlaybackEvent event) {
+    if (!_loading) _reportDuration(event);
+  }
+
+  /// Reports how long the current item is, once the player has settled on a figure for it.
+  ///
+  /// Each playback event carries the current item's duration, but not every figure can be trusted:
+  ///
+  /// - Only a ready player's counts. When the Windows backend moves to another item, it fills the
+  ///   still missing duration from mpv's last known one, which belongs to the previous file, so for
+  ///   a moment the new item carries the old item's length. mpv reports the new file's length as it
+  ///   opens the file, before playback is ready.
+  /// - None counts while a queue is loading, when an event already on its way may still pair an
+  ///   index in the previous queue with a length from it. The latest event is read once loading
+  ///   finishes instead.
+  /// - Zero is how the Windows backend says it does not know yet.
+  ///
+  /// The coordinator stores what this reports as exact, so a wrong figure would outlast the session.
+  /// These rules come from reading `just_audio_media_kit` 2.1.0 and `media_kit` 1.2.6, not from a
+  /// measurement: the stale length has not been observed on a device.
+  void _reportDuration(ja.PlaybackEvent event) {
+    final index = event.currentIndex;
+    final duration = event.duration;
+    if (event.processingState != ja.ProcessingState.ready ||
+        index == null ||
+        index >= _items.length ||
+        duration == null ||
+        duration <= Duration.zero ||
+        _reportedDurations[index] == duration) {
+      return;
+    }
+    _reportedDurations[index] = duration;
+    _events.add(
+      EngineItemDurationKnown(
+        itemIndex: index,
+        durationMs: duration.inMilliseconds,
+      ),
+    );
   }
 
   void _onProcessingState(ja.ProcessingState state) {
