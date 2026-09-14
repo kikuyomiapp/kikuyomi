@@ -1,4 +1,4 @@
-/// Tags and duration of MP3 files, read in pure Dart.
+/// Tags, duration and cover art of MP3 files, read in pure Dart.
 ///
 /// §3.10's Local source takes a folder as a book and its files as tracks, and most such folders hold
 /// MP3s. The audio plugins learn a file's duration only once they load it, too late to build a
@@ -6,13 +6,15 @@
 /// VBRI header an encoder writes into the first frame, and otherwise estimated from the bitrate.
 ///
 /// Like the MP4 reader it reads only what it needs through a [ByteSource]: the tag's text frames,
-/// the first audio frames and the last 128 bytes, however large the file.
+/// the first audio frames and the last 128 bytes, however large the file, and one picture when a
+/// cover is asked for.
 library;
 
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'embedded_picture.dart';
 import 'mp4_chapters.dart' show ByteSource;
 
 /// What an MP3 file says about itself.
@@ -27,6 +29,7 @@ final class Mp3Info {
     this.composer,
     this.trackNumber,
     this.discNumber,
+    this.cover,
   });
 
   final int durationMs;
@@ -56,17 +59,27 @@ final class Mp3Info {
 
   /// `TPOS`, without any "of" count.
   final int? discNumber;
+
+  /// `APIC`, or `PIC` in 2.2: the picture the tag marks as the front cover, or failing that its
+  /// first picture. Always null unless [readMp3Info] was asked for it.
+  final EmbeddedPicture? cover;
 }
 
-/// Reads an MP3 file's duration and common tags.
+/// Reads an MP3 file's duration and common tags, and its cover if [withCover] is true.
 ///
 /// Returns null when no run of MPEG audio frames can be found where the audio should start, which
 /// is how a file that is not an MP3 shows. Tags come from an ID3v2 tag, versions 2.2 to 2.4, or
 /// failing that from an ID3v1 tag at the end.
 ///
+/// The cover is off by default. A picture can run to megabytes and is wanted once for a book, while
+/// a folder scan probes every file in the folder for its tags and duration. A picture larger than
+/// 16 MB, or whose image type can be told from neither its bytes nor its frame, is skipped.
+///
 /// Not handled: ID3v2 tags written with unsynchronisation, whose tags are skipped though the audio
-/// is still read; compressed or encrypted frames; MPEG layers I and II; and free-format bitrates.
-Future<Mp3Info?> readMp3Info(ByteSource source) => _Mp3Reader(source).read();
+/// is still read; compressed or encrypted frames, whose text or picture is skipped likewise; MPEG
+/// layers I and II; and free-format bitrates.
+Future<Mp3Info?> readMp3Info(ByteSource source, {bool withCover = false}) =>
+    _Mp3Reader(source, withCover: withCover).read();
 
 /// Layer III bitrates in kbps, by the header's bitrate index. Index 0 is free format and 15 is
 /// invalid; neither is read.
@@ -168,10 +181,75 @@ final class _Frame {
   int get sideInfoBytes => mpeg1 ? (mono ? 17 : 32) : (mono ? 9 : 17);
 }
 
+/// Where the image in an ID3v2 attached picture frame lies in the file.
+final class _PictureFrame {
+  const _PictureFrame({
+    required this.type,
+    required this.format,
+    required this.offset,
+    required this.length,
+  });
+
+  /// Parses [head], the start of a picture frame's body, which is at [offset] in the file and is
+  /// [length] bytes long in all. Returns null when the frame holds no image, or when its fields
+  /// before the image do not end within [head].
+  ///
+  /// `APIC` is encoding(1), a MIME type ending in a zero byte, picture type(1), a description in
+  /// the encoding ending in a null character, then the image. ID3v2.2's `PIC` has a three-letter
+  /// image format such as `JPG` where the MIME type would be.
+  static _PictureFrame? parse(
+    Uint8List head, {
+    required int version,
+    required int offset,
+    required int length,
+  }) {
+    if (head.isEmpty) return null;
+    final encoding = head[0];
+    final String format;
+    final int typeAt;
+    if (version == 2) {
+      if (head.length < 4) return null;
+      format = String.fromCharCodes(head, 1, 4);
+      typeAt = 4;
+    } else {
+      final nul = head.indexOf(0, 1);
+      if (nul < 0) return null;
+      format = String.fromCharCodes(head, 1, nul);
+      typeAt = nul + 1;
+    }
+    // A MIME type of "-->" means the frame holds the address of an image rather than the image.
+    if (format == '-->' || typeAt >= head.length) return null;
+    final imageAt = _pastNull(head, typeAt + 1, encoding);
+    if (imageAt == null || imageAt >= length) return null;
+    return _PictureFrame(
+      type: head[typeAt],
+      format: format,
+      offset: offset + imageAt,
+      length: length - imageAt,
+    );
+  }
+
+  /// What the picture shows: 3 is the front cover, 4 the back cover, 0 anything not listed, and
+  /// other values such things as the artist or a file icon.
+  final int type;
+
+  /// The MIME type, or in ID3v2.2 the image format, as the frame states it.
+  final String format;
+
+  /// Where the image starts in the file.
+  final int offset;
+
+  /// The image's size in bytes.
+  final int length;
+
+  bool get isFrontCover => type == 3;
+}
+
 final class _Mp3Reader {
-  _Mp3Reader(this._source);
+  _Mp3Reader(this._source, {required bool withCover}) : _withCover = withCover;
 
   final ByteSource _source;
+  final bool _withCover;
 
   /// How far past the tag to look for the first frame. Encoders put the audio straight after the
   /// tag; the margin covers padding and stray bytes some taggers leave.
@@ -181,15 +259,23 @@ final class _Mp3Reader {
   /// damaged file claiming a huge one.
   static const _maxTextBytes = 64 * 1024;
 
+  /// How much of a picture frame is read to find where its image begins. The MIME type and the
+  /// description before the image run to a few dozen bytes; a frame whose fields run on past this
+  /// is taken as damaged and skipped.
+  static const _pictureHeadBytes = 4096;
+
   Future<Mp3Info?> read() async {
     final tags = <String, String>{};
-    final audioStart = await _readId3v2(tags);
+    final (:audioStart, :picture) = await _readId3v2(tags);
     final v1 = await _readId3v1();
     final audioEnd = _source.length - (v1 == null ? 0 : 128);
 
     final frame = await _firstFrame(audioStart, audioEnd);
     if (frame == null) return null;
 
+    // Read only once the file has shown itself to be an MP3, so a file that is not one costs no
+    // picture.
+    final cover = picture == null ? null : await _readPicture(picture);
     final frames = await _frameCount(frame);
     final counted = frames != null && frames > 0 ? frames : null;
     String? tag(String key) => tags[key] ?? v1?[key];
@@ -205,43 +291,53 @@ final class _Mp3Reader {
       composer: tag('composer'),
       trackNumber: _number(tag('track')),
       discNumber: _number(tag('disc')),
+      cover: cover,
     );
   }
 
-  /// Reads the text frames of an ID3v2 tag at the start of the file into [tags], and returns where
-  /// the tag ends, which is where the audio begins. Returns zero when there is no tag.
-  Future<int> _readId3v2(Map<String, String> tags) async {
+  /// Reads the text frames of an ID3v2 tag at the start of the file into [tags]. Returns where the
+  /// tag ends, which is where the audio begins and is zero when there is no tag; and, when a cover
+  /// was asked for, the picture frame to take it from.
+  Future<({int audioStart, _PictureFrame? picture})> _readId3v2(
+    Map<String, String> tags,
+  ) async {
+    const noTag = (audioStart: 0, picture: null);
     final header = await _source.read(0, 10);
     if (header.length < 10 ||
         header[0] != 0x49 || // I
         header[1] != 0x44 || // D
         header[2] != 0x33) {
       // 3
-      return 0;
+      return noTag;
     }
     final version = header[3];
     final flags = header[5];
     final size = _syncsafe(header, 6);
-    if (size == null || version < 2 || version > 4) return 0;
+    if (size == null || version < 2 || version > 4) return noTag;
     final end = 10 + size;
     final tagEnd = end + (version == 4 && flags & 0x10 != 0 ? 10 : 0);
+    final unread = (audioStart: tagEnd, picture: null);
 
     // Unsynchronisation rewrites the tag's bytes, so its frame sizes no longer walk it. It is rare
     // enough that the tags are skipped rather than the rewriting undone.
-    if (flags & 0x80 != 0) return tagEnd;
+    if (flags & 0x80 != 0) return unread;
 
     var p = 10;
     if (version >= 3 && flags & 0x40 != 0) {
       final extended = await _source.read(10, 4);
-      if (extended.length < 4) return tagEnd;
+      if (extended.length < 4) return unread;
       // 2.4 counts the size field itself in the extended header's size; 2.3 does not.
       final extendedSize = version == 4
           ? _syncsafe(extended, 0)
           : ByteData.sublistView(extended).getUint32(0) + 4;
-      if (extendedSize == null) return tagEnd;
+      if (extendedSize == null) return unread;
       p += extendedSize;
     }
 
+    // The front cover if the tag marks one, and otherwise the first picture. Once the front cover
+    // is found, later pictures are not looked at.
+    _PictureFrame? firstPicture;
+    _PictureFrame? frontCover;
     final headerBytes = version == 2 ? 6 : 10;
     while (end - p >= headerBytes) {
       final frameHeader = await _source.read(p, headerBytes);
@@ -261,7 +357,7 @@ final class _Mp3Reader {
 
       final key = _frameKeys[id];
       if (key != null && frameSize <= _maxTextBytes) {
-        final bodyStart = _textBodyStart(version, frameHeader);
+        final bodyStart = _bodyStart(version, frameHeader);
         if (bodyStart != null) {
           final body = await _source.read(p + headerBytes, frameSize);
           final value = _text(
@@ -270,14 +366,30 @@ final class _Mp3Reader {
           if (value != null) tags.putIfAbsent(key, () => value);
         }
       }
+      if (_withCover &&
+          frontCover == null &&
+          id == (version == 2 ? 'PIC' : 'APIC') &&
+          frameSize <= maxPictureBytes) {
+        final picture = await _findPicture(
+          version,
+          frameHeader,
+          p + headerBytes,
+          frameSize,
+        );
+        if (picture != null) {
+          firstPicture ??= picture;
+          if (picture.isFrontCover) frontCover = picture;
+        }
+      }
       p += headerBytes + frameSize;
     }
-    return tagEnd;
+    return (audioStart: tagEnd, picture: frontCover ?? firstPicture);
   }
 
-  /// Where a text frame's value starts within its body, or null for a frame that cannot be read as
-  /// it stands: compressed, encrypted, or in 2.4 unsynchronised frame by frame.
-  int? _textBodyStart(int version, Uint8List frameHeader) {
+  /// Where a frame's content starts within its body, past the bytes its format flags add, or null
+  /// for a frame that cannot be read as it stands: compressed, encrypted, or in 2.4 unsynchronised
+  /// frame by frame.
+  int? _bodyStart(int version, Uint8List frameHeader) {
     if (version == 2) return 0;
     final format = frameHeader[9];
     if (version == 3) {
@@ -289,6 +401,38 @@ final class _Mp3Reader {
     // length indicator 0x01 adds four.
     if (format & 0x0E != 0) return null;
     return (format & 0x40 != 0 ? 1 : 0) + (format & 0x01 != 0 ? 4 : 0);
+  }
+
+  /// Locates the image in the picture frame whose body of [size] bytes starts at [offset], reading
+  /// only the fields before the image. Null for a frame this reader cannot use.
+  Future<_PictureFrame?> _findPicture(
+    int version,
+    Uint8List frameHeader,
+    int offset,
+    int size,
+  ) async {
+    final bodyStart = _bodyStart(version, frameHeader);
+    if (bodyStart == null || bodyStart >= size) return null;
+    final start = offset + bodyStart;
+    final length = size - bodyStart;
+    final head = await _source.read(start, math.min(length, _pictureHeadBytes));
+    return _PictureFrame.parse(
+      head,
+      version: version,
+      offset: start,
+      length: length,
+    );
+  }
+
+  /// Reads the image [picture] locates. Null when the file ends before the image does, or when its
+  /// type can be told from neither its bytes nor its frame.
+  Future<EmbeddedPicture?> _readPicture(_PictureFrame picture) async {
+    final bytes = await _source.read(picture.offset, picture.length);
+    if (bytes.length < picture.length) return null;
+    final mimeType = pictureMimeType(bytes, declared: picture.format);
+    return mimeType == null
+        ? null
+        : EmbeddedPicture(mimeType: mimeType, bytes: bytes);
   }
 
   /// The ID3v1 tag in the last 128 bytes, keyed as the ID3v2 tags are, or null if there is none.
@@ -413,6 +557,24 @@ String _utf16(Uint8List bytes, {required bool bigEndian}) {
     for (var i = hasMark ? 2 : 0; i + 1 < bytes.length; i += 2)
       bigEndian ? bytes[i] << 8 | bytes[i + 1] : bytes[i + 1] << 8 | bytes[i],
   ]);
+}
+
+/// Where a string in text encoding [encoding] that starts at [from] in [bytes] ends: just past its
+/// null character, which is one zero byte in Latin-1 and UTF-8, and in UTF-16 two zero bytes that
+/// make one character. Null when there is none, or the encoding is unknown.
+int? _pastNull(Uint8List bytes, int from, int encoding) {
+  switch (encoding) {
+    case 0 || 3:
+      final nul = bytes.indexOf(0, from);
+      return nul < 0 ? null : nul + 1;
+    case 1 || 2:
+      // Stepping a character at a time, so the zero high byte of one character and the zero low
+      // byte of the next are not taken for a null character.
+      for (var i = from; i + 1 < bytes.length; i += 2) {
+        if (bytes[i] == 0 && bytes[i + 1] == 0) return i + 2;
+      }
+  }
+  return null;
 }
 
 /// "3" or "3/12" as 3. Null for anything that is not a positive number.

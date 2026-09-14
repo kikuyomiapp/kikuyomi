@@ -13,42 +13,84 @@ List<int> syncsafe(int v) => [
   v & 0x7F,
 ];
 
-/// An ID3v2.3 text frame. The value is Latin-1 unless [encoding] says otherwise.
-List<int> frame3(String id, List<int> value, {int encoding = 0}) => [
+/// An ID3v2.3 frame holding [body] as given, with [format] as its format flags.
+List<int> rawFrame3(String id, List<int> body, {int format = 0}) => [
   ...ascii.encode(id),
-  ...u32(value.length + 1),
+  ...u32(body.length),
   0,
-  0,
-  encoding,
-  ...value,
+  format,
+  ...body,
 ];
 
-/// An ID3v2.4 text frame in UTF-8, with its syncsafe size.
-List<int> frame4(String id, String value) {
-  final bytes = utf8.encode(value);
-  return [
-    ...ascii.encode(id),
-    ...syncsafe(bytes.length + 1),
-    0,
-    0,
-    3,
-    ...bytes,
-  ];
-}
+/// An ID3v2.4 frame holding [body] as given, with its syncsafe size and [format] as its format
+/// flags.
+List<int> rawFrame4(String id, List<int> body, {int format = 0}) => [
+  ...ascii.encode(id),
+  ...syncsafe(body.length),
+  0,
+  format,
+  ...body,
+];
 
-/// An ID3v2.2 text frame: a three-letter id and a three-byte size.
-List<int> frame2(String id, String value) {
-  final bytes = latin1.encode(value);
-  final size = bytes.length + 1;
-  return [
-    ...ascii.encode(id),
-    size >> 16 & 0xFF,
-    size >> 8 & 0xFF,
-    size & 0xFF,
-    0,
-    ...bytes,
-  ];
-}
+/// An ID3v2.2 frame holding [body] as given: a three-letter id and a three-byte size.
+List<int> rawFrame2(String id, List<int> body) => [
+  ...ascii.encode(id),
+  body.length >> 16 & 0xFF,
+  body.length >> 8 & 0xFF,
+  body.length & 0xFF,
+  ...body,
+];
+
+/// An ID3v2.3 text frame. The value is Latin-1 unless [encoding] says otherwise.
+List<int> frame3(String id, List<int> value, {int encoding = 0}) =>
+    rawFrame3(id, [encoding, ...value]);
+
+/// An ID3v2.4 text frame in UTF-8, with its syncsafe size.
+List<int> frame4(String id, String value) =>
+    rawFrame4(id, [3, ...utf8.encode(value)]);
+
+/// An ID3v2.2 text frame in Latin-1.
+List<int> frame2(String id, String value) =>
+    rawFrame2(id, [0, ...latin1.encode(value)]);
+
+/// The null character that ends a string in text [encoding]: two bytes in UTF-16, one otherwise.
+List<int> _terminator(int encoding) =>
+    encoding == 1 || encoding == 2 ? const [0, 0] : const [0];
+
+/// The body of an attached picture frame, `APIC`. [description] is given already in [encoding],
+/// and its null character is added. [pictureType] 3 is the front cover.
+List<int> apicBody({
+  required String mimeType,
+  required List<int> image,
+  int pictureType = 3,
+  int encoding = 0,
+  List<int> description = const [],
+}) => [
+  encoding,
+  ...ascii.encode(mimeType),
+  0,
+  pictureType,
+  ...description,
+  ..._terminator(encoding),
+  ...image,
+];
+
+/// The body of an ID3v2.2 picture frame, `PIC`, which has a three-letter image [format] where
+/// `APIC` has a MIME type.
+List<int> picBody({
+  required String format,
+  required List<int> image,
+  int pictureType = 3,
+  int encoding = 0,
+  List<int> description = const [],
+}) => [
+  encoding,
+  ...ascii.encode(format),
+  pictureType,
+  ...description,
+  ..._terminator(encoding),
+  ...image,
+];
 
 List<int> id3(int version, List<int> frames, {int padding = 32}) => [
   ...ascii.encode('ID3'),
