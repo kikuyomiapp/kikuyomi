@@ -12,6 +12,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'embedded_picture.dart';
+
 /// Random access to bytes.
 ///
 /// The reader never holds a file in memory. Real audiobooks reach a gigabyte, and a whole-file read
@@ -140,6 +142,7 @@ final class Mp4Info {
     this.trackNumber,
     this.discNumber,
     this.chapters,
+    this.cover,
   });
 
   /// From the movie header, so exact rather than estimated.
@@ -167,15 +170,23 @@ final class Mp4Info {
   final int? discNumber;
 
   final Mp4Chapters? chapters;
+
+  /// `covr`: the first image in the cover item. Always null unless [readMp4Info] was asked for it.
+  final EmbeddedPicture? cover;
 }
 
-/// Reads a file's duration, its common text tags and its chapters.
+/// Reads a file's duration, its common text tags and its chapters, and its cover if [withCover] is
+/// true.
 ///
 /// Returns null when the bytes hold no movie box at all. Throws [FormatException] for a damaged
 /// file, as [readMp4Chapters] does, and also when the movie header is missing or has a zero
 /// timescale, since a book with no duration cannot be played.
-Future<Mp4Info?> readMp4Info(ByteSource source) =>
-    _Mp4Reader(source).readInfo();
+///
+/// The cover is off by default, as it is for `readMp3Info`: a picture can run to megabytes and is
+/// wanted once for a book, while a folder scan probes every file. A cover larger than 16 MB, or
+/// whose image type can be told from neither its bytes nor its data type, is skipped.
+Future<Mp4Info?> readMp4Info(ByteSource source, {bool withCover = false}) =>
+    _Mp4Reader(source, withCover: withCover).readInfo();
 
 /// A track or disc number, or null when unset, which taggers write as zero.
 int? _positive(int? number) => number == null || number <= 0 ? null : number;
@@ -203,9 +214,10 @@ final class _Box {
 }
 
 final class _Mp4Reader {
-  _Mp4Reader(this._source);
+  _Mp4Reader(this._source, {bool withCover = false}) : _withCover = withCover;
 
   final ByteSource _source;
+  final bool _withCover;
 
   /// No chapter table is remotely this large. The bound exists so that a damaged or hostile file
   /// claiming a multi-gigabyte table fails fast instead of allocating it.
@@ -261,6 +273,7 @@ final class _Mp4Reader {
       trackNumber: _positive(tags.numbers['trkn']),
       discNumber: _positive(tags.numbers['disk']),
       chapters: await _chaptersIn(moov),
+      cover: tags.cover,
     );
   }
 
@@ -377,11 +390,21 @@ final class _Mp4Reader {
   // iTunes-style tags.
 
   /// Items under `moov/udta/meta/ilst`, keyed by item type such as `©nam`: UTF-8 text values, and
-  /// the track and disc numbers. Cover art and other binary items are skipped.
-  Future<({Map<String, String> text, Map<String, int> numbers})> _readTags(
-    _Box moov,
-  ) async {
-    const none = (text: <String, String>{}, numbers: <String, int>{});
+  /// the track and disc numbers; and, when a cover was asked for, the first image in the `covr`
+  /// item. Other binary items are skipped.
+  Future<
+    ({
+      Map<String, String> text,
+      Map<String, int> numbers,
+      EmbeddedPicture? cover,
+    })
+  >
+  _readTags(_Box moov) async {
+    const none = (
+      text: <String, String>{},
+      numbers: <String, int>{},
+      cover: null,
+    );
     final meta = await _find(const ['udta', 'meta'], moov);
     if (meta == null) return none;
 
@@ -397,6 +420,7 @@ final class _Mp4Reader {
 
     final text = <String, String>{};
     final numbers = <String, int>{};
+    EmbeddedPicture? cover;
     var offset = ilst.contentStart;
     while (ilst.end - offset >= 8) {
       final item = await _boxAt(offset, ilst.end);
@@ -419,9 +443,35 @@ final class _Mp4Reader {
         numbers[item.type] = ByteData.sublistView(
           await _bytes(data.contentStart + 10, 2),
         ).getUint16(0);
+      } else if (_withCover &&
+          cover == null &&
+          item.type == 'covr' &&
+          length > 0 &&
+          length <= maxPictureBytes) {
+        // The item's first data box, found above, so a cover item holding several images gives the
+        // first of them.
+        cover = await _coverImage(kind, data.contentStart + 8, length);
       }
     }
-    return (text: text, numbers: numbers);
+    return (text: text, numbers: numbers, cover: cover);
+  }
+
+  /// The image in a `covr` data box, whose type indicator [kind] names its format: 13 for JPEG, 14
+  /// for PNG and 27 for BMP. Null when the format can be told from neither the bytes nor [kind].
+  Future<EmbeddedPicture?> _coverImage(int kind, int offset, int length) async {
+    final bytes = await _bytes(offset, length);
+    final mimeType = pictureMimeType(
+      bytes,
+      declared: switch (kind) {
+        13 => 'image/jpeg',
+        14 => 'image/png',
+        27 => 'image/bmp',
+        _ => null,
+      },
+    );
+    return mimeType == null
+        ? null
+        : EmbeddedPicture(mimeType: mimeType, bytes: bytes);
   }
 
   // Nero chpl.

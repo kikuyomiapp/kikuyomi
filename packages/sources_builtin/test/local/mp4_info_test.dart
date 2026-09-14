@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart';
 import 'package:test/test.dart';
 
+import 'support/image_bytes.dart';
+
 List<int> u32(int v) => (ByteData(4)..setUint32(0, v)).buffer.asUint8List();
 List<int> u64(int v) => (ByteData(8)..setUint64(0, v)).buffer.asUint8List();
 
@@ -29,9 +31,12 @@ List<int> movieHeader({
 List<int> textItem(String type, String value) =>
     box(type, box('data', [0, 0, 0, 1, 0, 0, 0, 0, ...utf8.encode(value)]));
 
-/// Type 13 is JPEG, as cover art is stored.
-List<int> imageItem(String type) =>
-    box(type, box('data', [0, 0, 0, 13, 0, 0, 0, 0, 0xFF, 0xD8, 0xFF]));
+/// A cover item holding a data box for each of [images], each with its type indicator: 13 is JPEG
+/// and 14 PNG.
+List<int> coverItem(List<(int, List<int>)> images) => box('covr', [
+  for (final (kind, bytes) in images)
+    ...box('data', [0, 0, 0, kind, 0, 0, 0, 0, ...bytes]),
+]);
 
 /// Type 0 is raw bytes, as `trkn` and `disk` store them: reserved(2) number(2) total(2), then a
 /// further reserved(2).
@@ -133,7 +138,7 @@ void main() {
       ...textItem('©ART', 'An Author'),
       ...textItem('©alb', 'The Series'),
       ...textItem('©wrt', 'A Narrator'),
-      ...imageItem('covr'),
+      ...coverItem([(13, jpegBytes())]),
     ];
 
     test('are read from ISO-style metadata', () async {
@@ -192,6 +197,59 @@ void main() {
       expect(info.title, isNull);
       expect(info.artist, isNull);
       expect(info.chapters, isNull);
+    });
+  });
+
+  group('cover', () {
+    Future<Mp4Info> read(List<int> tagItems, {bool withCover = true}) async =>
+        (await readMp4Info(
+          MemoryByteSource(
+            mp4(
+              header: movieHeader(version: 0, timescale: 1000, duration: 1000),
+              tagItems: tagItems,
+            ),
+          ),
+          withCover: withCover,
+        ))!;
+
+    test('is not read unless asked for', () async {
+      final info = await read([
+        ...textItem('©nam', 'A Long Book'),
+        ...coverItem([(13, jpegBytes())]),
+      ], withCover: false);
+      expect(info.title, 'A Long Book');
+      expect(info.cover, isNull);
+    });
+
+    test('is read from a covr item holding a JPEG', () async {
+      final image = jpegBytes(length: 500);
+      final info = await read([
+        ...textItem('©nam', 'A Long Book'),
+        ...coverItem([(13, image)]),
+        ...textItem('©ART', 'An Author'),
+      ]);
+      expect(info.cover!.mimeType, 'image/jpeg');
+      expect(info.cover!.bytes, image);
+      expect(info.title, 'A Long Book');
+      expect(info.artist, 'An Author');
+    });
+
+    test('is read from a covr item holding a PNG', () async {
+      final image = pngBytes();
+      final info = await read(coverItem([(14, image)]));
+      expect(info.cover!.mimeType, 'image/png');
+      expect(info.cover!.bytes, image);
+    });
+
+    test('is the first image when the item holds several', () async {
+      final first = pngBytes();
+      final info = await read(coverItem([(14, first), (13, jpegBytes())]));
+      expect(info.cover!.bytes, first);
+    });
+
+    test('is null when the file has no covr item', () async {
+      final info = await read(textItem('©nam', 'A Long Book'));
+      expect(info.cover, isNull);
     });
   });
 
