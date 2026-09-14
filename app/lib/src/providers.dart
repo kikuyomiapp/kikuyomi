@@ -54,3 +54,18 @@ final navigationProvider = FutureProvider.autoDispose
       final db = ref.watch(servicesProvider).database;
       return (await loadStoredPlayback(db, bookId)).timeline.navigation;
     });
+
+/// Continue Listening, straight from the database: the started, unfinished books in the library,
+/// most recently played first. It emits again on every progress save, so a book's place on the
+/// shelf keeps up while it plays.
+final continueListeningProvider = StreamProvider<List<ContinueListeningBook>>(
+  (ref) => watchContinueListening(ref.watch(servicesProvider).database),
+);
+
+/// A book's details, straight from the database. Disposed once no screen shows the book, so a
+/// details screen visited once does not keep its queries running for the life of the app.
+final bookOverviewProvider = StreamProvider.autoDispose
+    .family<BookOverview?, int>(
+      (ref, bookId) =>
+          watchBookOverview(ref.watch(servicesProvider).database, bookId),
+    );

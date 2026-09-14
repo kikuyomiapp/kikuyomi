@@ -2,8 +2,9 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'format.dart';
-import 'player_screen.dart';
+import 'book_details_screen.dart';
+import 'home_view.dart';
+import 'open_book.dart';
 import 'providers.dart';
 
 /// The files "Add book" offers.
@@ -24,16 +25,22 @@ const _audiobooks = XTypeGroup(
 
 enum _Adding { file, folder }
 
+/// The app's home: the books to continue listening to, above the library, and where books are
+/// added.
+///
+/// §2.6's adaptive shell will split this into Home and Library tabs. Until that shell exists, this
+/// one screen is both.
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final library = ref.watch(libraryProvider);
+    final continueListening = ref.watch(continueListeningProvider);
     final locations = ref.watch(servicesProvider).locations;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Library'),
+        title: const Text('Kikuyomi'),
         actions: [
           if (locations.importFolderIsVisible)
             IconButton(
@@ -49,36 +56,21 @@ class LibraryScreen extends ConsumerWidget {
         label: const Text('Add book'),
       ),
       body: library.when(
-        data: (books) => books.isEmpty
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    locations.importFolderIsVisible
-                        ? 'No books yet. Add an audiobook file, or copy books '
-                              'into the Import folder under Kikuyomi in the '
-                              'Files app.'
-                        : locations.canPickFolders
-                        ? 'No books yet. Add an audiobook file, or a folder of '
-                              'audio files, to start listening.'
-                        : 'No books yet. Add an audiobook file to start '
-                              'listening.',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              )
-            : ListView.builder(
-                itemCount: books.length,
-                itemBuilder: (context, index) {
-                  final book = books[index];
-                  return ListTile(
-                    leading: const Icon(Icons.headphones),
-                    title: Text(book.title),
-                    subtitle: Text(formatClock(book.totalDurationMs ?? 0)),
-                    onTap: () => _open(context, ref, book.id),
-                  );
-                },
-              ),
+        data: (books) => HomeView(
+          // The library does not wait for Continue Listening; the shelf fills in when it arrives.
+          continueListening: continueListening.value ?? const [],
+          library: books,
+          emptyMessage: locations.importFolderIsVisible
+              ? 'No books yet. Add an audiobook file, or copy books into the '
+                    'Import folder under Kikuyomi in the Files app.'
+              : locations.canPickFolders
+              ? 'No books yet. Add an audiobook file, or a folder of audio '
+                    'files, to start listening.'
+              : 'No books yet. Add an audiobook file to start listening.',
+          onResume: (bookId) => openBookInPlayer(context, ref, bookId),
+          onShowDetails: (bookId) =>
+              Navigator.of(context).push(BookDetailsScreen.route(bookId)),
+        ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) =>
             Center(child: Text('Could not load the library: $error')),
@@ -155,19 +147,6 @@ class LibraryScreen extends ConsumerWidget {
     } catch (error) {
       if (context.mounted) {
         _tell(context, 'Could not look for new books: $error');
-      }
-    }
-  }
-
-  Future<void> _open(BuildContext context, WidgetRef ref, int bookId) async {
-    try {
-      await ref.read(servicesProvider).openBook(bookId);
-      if (context.mounted) {
-        await Navigator.of(context).push(PlayerScreen.route());
-      }
-    } catch (error) {
-      if (context.mounted) {
-        _tell(context, 'Could not open the book: $error');
       }
     }
   }
