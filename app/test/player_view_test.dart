@@ -27,6 +27,7 @@ PlayerReady readyAt({
   bool playing = false,
   SleepTimerState sleepTimer = const SleepTimerOff(),
   NavigationEntry? entry,
+  List<NavigationEntry> navigation = chapters,
   double speed = 1.0,
 }) => PlayerReady(
   bookId: 1,
@@ -34,6 +35,7 @@ PlayerReady readyAt({
   globalMs: 65000,
   totalMs: 3725000,
   entry: entry ?? chapters[1],
+  navigation: navigation,
   playing: playing,
   buffering: false,
   speed: speed,
@@ -43,11 +45,7 @@ PlayerReady readyAt({
 
 /// A player view for [state], with its keyboard shortcuts around it as the player screen has them,
 /// that records what was pressed in [pressed].
-Widget player(
-  PlayerReady state, {
-  List<String>? pressed,
-  List<NavigationEntry> navigation = chapters,
-}) {
+Widget player(PlayerReady state, {List<String>? pressed}) {
   void press(String what) => pressed?.add(what);
   void playPause() => press('play');
   void skip(Duration by) => press('skip ${by.inSeconds}');
@@ -62,7 +60,6 @@ Widget player(
         body: PlayerView(
           title: 'A Book',
           state: state,
-          navigation: navigation,
           onPlayPause: playPause,
           onSeek: (ms) => press('seek $ms'),
           onSkip: skip,
@@ -229,25 +226,12 @@ void main() {
           ),
       ];
       await tester.pumpWidget(
-        player(readyAt(entry: many[30]), navigation: many),
+        player(readyAt(entry: many[30], navigation: many)),
       );
       await toggleChapters(tester);
 
       expect(inList('Chapter 31').hitTestable(), findsOneWidget);
       expect(inList('Chapter 1'), findsNothing);
-    });
-
-    testWidgets('cannot be opened before the chapters have loaded', (
-      tester,
-    ) async {
-      await tester.pumpWidget(player(readyAt(), navigation: const []));
-      final button = tester.widget<IconButton>(
-        find.ancestor(
-          of: find.byIcon(Icons.format_list_bulleted),
-          matching: find.byType(IconButton),
-        ),
-      );
-      expect(button.onPressed, isNull);
     });
 
     testWidgets('on a wide screen opens beside the controls and stays open', (

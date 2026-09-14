@@ -1,7 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart';
-import 'package:kikuyomi_domain/kikuyomi_domain.dart' show NavigationEntry;
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
 import 'services.dart';
@@ -41,19 +40,6 @@ final playerStateProvider = StreamProvider<PlayerState>((ref) {
     controller.onCancel = subscription.cancel;
   });
 });
-
-/// A book's navigation for the player's chapter list: its chapters, or the markers embedded in its
-/// file standing in for them (§4.5), in book-global time.
-///
-/// Read once from the stored layout, as opening the book reads it, rather than watched: the
-/// coordinator goes on playing the Timeline it was opened with, so a list read the same way stays in
-/// step with what plays. Disposed with the screen that shows it, so a book opened again is read
-/// afresh.
-final navigationProvider = FutureProvider.autoDispose
-    .family<List<NavigationEntry>, int>((ref, bookId) async {
-      final db = ref.watch(servicesProvider).database;
-      return (await loadStoredPlayback(db, bookId)).timeline.navigation;
-    });
 
 /// Continue Listening, straight from the database: the started, unfinished books in the library,
 /// most recently played first. It emits again on every progress save, so a book's place on the

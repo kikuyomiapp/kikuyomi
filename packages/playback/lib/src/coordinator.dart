@@ -663,6 +663,7 @@ final class PlaybackCoordinator {
         globalMs: global,
         totalMs: timeline.totalDurationMs,
         entry: timeline.navigationEntryAt(global),
+        navigation: timeline.navigation,
         playing: session.playing,
         buffering: session.buffering,
         speed: session.speed,

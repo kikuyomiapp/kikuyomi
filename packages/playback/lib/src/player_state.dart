@@ -27,6 +27,7 @@ final class PlayerReady extends PlayerState {
     required this.globalMs,
     required this.totalMs,
     required this.entry,
+    required this.navigation,
     required this.playing,
     required this.buffering,
     required this.speed,
@@ -45,6 +46,11 @@ final class PlayerReady extends PlayerState {
 
   /// The chapter, or embedded marker presented as one, that playback is in.
   final NavigationEntry entry;
+
+  /// Every chapter, or embedded marker presented as one (§4.5), in order and covering the whole
+  /// book. Taken from the Timeline being played, so when a file's estimated duration is refined
+  /// mid-book the list moves with the position rather than going stale.
+  final List<NavigationEntry> navigation;
   final bool playing;
   final bool buffering;
   final double speed;

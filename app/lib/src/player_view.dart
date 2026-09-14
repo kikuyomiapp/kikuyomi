@@ -41,7 +41,6 @@ class PlayerView extends StatefulWidget {
     super.key,
     required this.title,
     required this.state,
-    required this.navigation,
     required this.onPlayPause,
     required this.onSeek,
     required this.onSkip,
@@ -59,10 +58,6 @@ class PlayerView extends StatefulWidget {
 
   final String title;
   final PlayerReady state;
-
-  /// The book's chapters, or the embedded markers standing in for them (§4.5), in order. Empty
-  /// until they have loaded; the chapter list cannot be opened before then.
-  final List<NavigationEntry> navigation;
 
   final VoidCallback onPlayPause;
 
@@ -93,7 +88,7 @@ class _PlayerViewState extends State<PlayerView> {
     builder: (sheetContext) => SafeArea(
       top: false,
       child: _ChapterPanel(
-        entries: widget.navigation,
+        entries: widget.state.navigation,
         current: widget.state.entry,
         onSelected: (entry) {
           Navigator.pop(sheetContext);
@@ -108,8 +103,7 @@ class _PlayerViewState extends State<PlayerView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= _sidePanelMinWidth;
-        final panelShown =
-            wide && _chaptersOpen && widget.navigation.isNotEmpty;
+        final panelShown = wide && _chaptersOpen;
         // One row whether or not the panel shows, so opening it does not rebuild the controls.
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -125,7 +119,7 @@ class _PlayerViewState extends State<PlayerView> {
                   left: false,
                   top: false,
                   child: _ChapterPanel(
-                    entries: widget.navigation,
+                    entries: widget.state.navigation,
                     current: widget.state.entry,
                     // The panel stays open, to go on browsing from.
                     onSelected: (entry) => widget.onSeek(entry.startMs),
@@ -234,9 +228,7 @@ class _PlayerViewState extends State<PlayerView> {
                     tooltip: 'Chapters',
                     isSelected: panelShown,
                     icon: const Icon(Icons.format_list_bulleted),
-                    onPressed: widget.navigation.isEmpty
-                        ? null
-                        : wide
+                    onPressed: wide
                         ? () => setState(() => _chaptersOpen = !_chaptersOpen)
                         : _showChapterSheet,
                   ),

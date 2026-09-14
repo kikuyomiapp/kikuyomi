@@ -364,6 +364,11 @@ void main() {
       expect(state.globalMs, 672 * s);
       expect(state.totalMs, 912 * s);
       expect(state.entry.startMs, 612 * s);
+      expect(
+        [for (final entry in state.navigation) entry.startMs],
+        [0, 312 * s, 612 * s],
+        reason: 'the chapter list moves with the refined file',
+      );
       expect(engine.calls, isEmpty, reason: 'nothing needs reloading');
 
       await coordinator.play();
