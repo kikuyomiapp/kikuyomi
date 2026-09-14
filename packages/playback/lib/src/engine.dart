@@ -27,6 +27,22 @@ final class EngineItemChanged extends EngineEvent {
   final int itemIndex;
 }
 
+/// The engine found out how long a queue item is.
+///
+/// §4.5: durations are estimated until known and refined as files load, and this is how they become
+/// known. It is the item's length as the engine plays it, so for an item clipped out of its file it
+/// is the clip's length, not the file's. An item may be reported again, with the same length, after
+/// a reload.
+final class EngineItemDurationKnown extends EngineEvent {
+  const EngineItemDurationKnown({
+    required this.itemIndex,
+    required this.durationMs,
+  });
+
+  final int itemIndex;
+  final int durationMs;
+}
+
 /// The engine started or stopped waiting for data.
 final class EngineBufferingChanged extends EngineEvent {
   const EngineBufferingChanged({required this.buffering});

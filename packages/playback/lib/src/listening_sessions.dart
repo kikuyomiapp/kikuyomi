@@ -50,7 +50,28 @@ final class ListeningSessionRecorder {
   bool get isRecording => _open != null;
 
   /// Swaps in a Timeline rebuilt after a duration was refined.
-  void updateTimeline(Timeline timeline) => _timeline = timeline;
+  ///
+  /// A session already open keeps its start where it was in its chapter, moved into the new
+  /// Timeline's global time, so that the row it becomes measures its start and its end on the same
+  /// scale.
+  void updateTimeline(Timeline timeline) {
+    final open = _open;
+    if (open != null) {
+      final chapterStart = _timeline.chapterRange(open.chapterId).startMs;
+      _open = _OpenSession(
+        chapterId: open.chapterId,
+        startedAt: open.startedAt,
+        startGlobalMs: timeline.globalOf(
+          ChapterPosition(
+            chapterId: open.chapterId,
+            offsetMs: open.startGlobalMs - chapterStart,
+          ),
+        ),
+        speed: open.speed,
+      );
+    }
+    _timeline = timeline;
+  }
 
   /// Playback started at [globalMs]. Ignored if a session is already open.
   void onPlay({required int globalMs, required double speed}) {

@@ -59,6 +59,27 @@ Timeline oneFileBook() => Timeline.build(
   ],
 );
 
+/// Three chapters, one 300 s file each, with file [estimated]'s duration only an estimate.
+Timeline estimatedBook({int estimated = 1, bool estimate = true}) =>
+    Timeline.build(
+      files: [
+        for (final id in [1, 2, 3])
+          TimelineFile(
+            id: id,
+            durationMs: 300 * s,
+            durationIsEstimate: estimate && id == estimated,
+          ),
+      ],
+      chapters: [
+        for (final (id, title) in [(1, 'One'), (2, 'Two'), (3, 'Three')])
+          TimelineChapter(
+            id: id,
+            title: title,
+            segments: [TimelineSegment(fileId: id)],
+          ),
+      ],
+    );
+
 void main() {
   late FakeClock clock;
   late FakeEngine engine;
@@ -324,6 +345,186 @@ void main() {
         await emit(EnginePositionChanged(q(0, 390 * s)));
         expect(ready().globalMs, 390 * s);
       });
+    });
+  });
+
+  group('learning a duration (§4.5)', () {
+    EngineItemDurationKnown known(int item, int durationMs) =>
+        EngineItemDurationKnown(itemIndex: item, durationMs: durationMs);
+
+    test('an estimate refined mid-book keeps the chapter position and moves global positions', () async {
+      await openBook(timeline: estimatedBook(), resumeFrom: at(3, 60 * s));
+      expect(ready().globalMs, 660 * s);
+      engine.calls.clear();
+
+      await emit(known(0, 312 * s));
+
+      final state = ready();
+      expect(state.position, at(3, 60 * s));
+      expect(state.globalMs, 672 * s);
+      expect(state.totalMs, 912 * s);
+      expect(state.entry.startMs, 612 * s);
+      expect(engine.calls, isEmpty, reason: 'nothing needs reloading');
+
+      await coordinator.play();
+      await emit(EnginePositionChanged(q(2, 65 * s)));
+      expect(store.progress.last.position, at(3, 65 * s));
+      expect(store.progress.last.globalMs, 677 * s);
+    });
+
+    test('the store receives the learned duration', () async {
+      await openBook(timeline: estimatedBook());
+      await emit(known(0, 312 * s));
+      expect(store.durations.single, (
+        bookId: 1,
+        fileId: 1,
+        durationMs: 312 * s,
+      ));
+    });
+
+    test('a file longer than its estimate is no longer cut short', () async {
+      // Before the refinement, 320 s into a file estimated at 300 s reads as the next chapter.
+      await openBook(timeline: estimatedBook());
+      await coordinator.play();
+      await emit(known(0, 330 * s));
+      await emit(EnginePositionChanged(q(0, 320 * s)));
+      expect(ready().position, at(1, 320 * s));
+      expect(store.progress.last.position, at(1, 320 * s));
+    });
+
+    test('an exact duration is left alone', () async {
+      await openBook(timeline: estimatedBook(estimate: false));
+      await emit(known(0, 312 * s));
+      expect(ready().totalMs, 900 * s);
+      expect(store.durations, isEmpty);
+    });
+
+    test('a difference below the threshold is ignored', () async {
+      await openBook(timeline: estimatedBook());
+      await emit(known(0, 300 * s + 400));
+      expect(ready().totalMs, 900 * s);
+      expect(store.durations, isEmpty);
+    });
+
+    test('a clipped item says nothing about its file', () async {
+      final timeline = Timeline.build(
+        files: const [
+          TimelineFile(id: 1, durationMs: 600 * s, durationIsEstimate: true),
+          TimelineFile(id: 2, durationMs: 300 * s),
+        ],
+        chapters: [
+          TimelineChapter(
+            id: 1,
+            title: 'One',
+            segments: const [TimelineSegment(fileId: 1, endMs: 200 * s)],
+          ),
+          TimelineChapter(
+            id: 2,
+            title: 'Two',
+            segments: const [TimelineSegment(fileId: 2)],
+          ),
+          TimelineChapter(
+            id: 3,
+            title: 'Three',
+            segments: const [TimelineSegment(fileId: 1, startMs: 400 * s)],
+          ),
+        ],
+      );
+      await openBook(timeline: timeline);
+      await emit(known(0, 250 * s));
+      await emit(known(2, 250 * s));
+      expect(ready().totalMs, 700 * s);
+      expect(store.durations, isEmpty);
+    });
+
+    test('a duration the layout cannot fit is ignored', () async {
+      // Chapter two ends at 400 s into the file, which cannot hold that if it lasts 350 s.
+      final timeline = Timeline.build(
+        files: const [
+          TimelineFile(id: 1, durationMs: 600 * s, durationIsEstimate: true),
+        ],
+        chapters: [
+          TimelineChapter(
+            id: 1,
+            title: 'One',
+            segments: const [TimelineSegment(fileId: 1, endMs: 200 * s)],
+          ),
+          TimelineChapter(
+            id: 2,
+            title: 'Two',
+            segments: const [
+              TimelineSegment(fileId: 1, startMs: 200 * s, endMs: 400 * s),
+            ],
+          ),
+          TimelineChapter(
+            id: 3,
+            title: 'Three',
+            segments: const [TimelineSegment(fileId: 1, startMs: 400 * s)],
+          ),
+        ],
+      );
+      await openBook(timeline: timeline);
+      await emit(known(0, 350 * s));
+      expect(ready().totalMs, 600 * s);
+      expect(store.durations, isEmpty);
+    });
+
+    test(
+      'a seek that lands just short of its destination still lands there',
+      () async {
+        final timeline = Timeline.build(
+          files: const [
+            TimelineFile(id: 1, durationMs: 300 * s, durationIsEstimate: true),
+            TimelineFile(id: 2, durationMs: 600 * s),
+          ],
+          chapters: [
+            TimelineChapter(
+              id: 1,
+              title: 'One',
+              segments: const [TimelineSegment(fileId: 1)],
+            ),
+            TimelineChapter(
+              id: 2,
+              title: 'Two',
+              segments: const [TimelineSegment(fileId: 2, endMs: 200 * s)],
+            ),
+            TimelineChapter(
+              id: 3,
+              title: 'Three',
+              segments: const [TimelineSegment(fileId: 2, startMs: 200 * s)],
+            ),
+          ],
+        );
+        await openBook(timeline: timeline, resumeFrom: at(3, 0));
+        await emit(known(0, 312 * s));
+        await emit(EnginePositionChanged(q(1, 200 * s - 1)));
+        expect(ready().entry.title, 'Three');
+        expect(ready().globalMs, 512 * s);
+      },
+    );
+
+    test('an end-of-chapter sleep timer waits for the refined end', () async {
+      await openBook(timeline: estimatedBook());
+      await coordinator.play();
+      await emit(EnginePositionChanged(q(0, 290 * s)));
+      await coordinator.startSleepTimer(const SleepAtEndOfChapter());
+
+      await emit(known(0, 330 * s));
+      await emit(EnginePositionChanged(q(0, 305 * s)));
+
+      expect(engine.playing, isTrue);
+      expect((ready().sleepTimer as SleepTimerRunning).remaining, sec(25));
+    });
+
+    test('a finished book stays at its end', () async {
+      await openBook(timeline: estimatedBook(estimated: 3));
+      await coordinator.play();
+      await emit(const EngineCompleted());
+      await emit(known(2, 330 * s));
+      final state = ready();
+      expect(state.finished, isTrue);
+      expect(state.totalMs, 930 * s);
+      expect(state.globalMs, 930 * s);
     });
   });
 

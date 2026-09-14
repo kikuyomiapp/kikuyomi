@@ -60,6 +60,7 @@ final class PlaybackCoordinator {
     SleepTimer? sleepTimer,
     this.previousChapterThreshold = const Duration(seconds: 3),
     this.seekLandingTolerance = const Duration(milliseconds: 500),
+    this.durationRefinementThreshold = const Duration(seconds: 1),
   }) : _engine = engine,
        _resolver = resolver,
        _store = store,
@@ -87,6 +88,16 @@ final class PlaybackCoordinator {
   /// itself. The margin is generous because nothing else reports such a position: playback only
   /// moves forwards from where it was sent.
   final Duration seekLandingTolerance;
+
+  /// How far a duration the engine reports must differ from a file's estimate before the book is
+  /// rebuilt around it and the duration stored (§4.5).
+  ///
+  /// A smaller difference leaves the estimate standing, still marked as one. A bitrate estimate of a
+  /// constant-bitrate MP3 usually lands within a few frames, tens of milliseconds, of what the
+  /// engine finds, and the player shows whole seconds, so rebuilding for that would move nothing a
+  /// listener can see. The estimates worth correcting, such as a variable-bitrate file judged by its
+  /// first frame, are out by seconds or minutes.
+  final Duration durationRefinementThreshold;
 
   final PlaybackEngine _engine;
   final MediaResolver _resolver;
@@ -322,6 +333,8 @@ final class PlaybackCoordinator {
       case EngineItemChanged():
         // Positions arrive with their item index, so there is nothing extra to track.
         break;
+      case EngineItemDurationKnown(:final itemIndex, :final durationMs):
+        await _learnDuration(session, itemIndex, durationMs);
       case EngineBufferingChanged(:final buffering):
         session.buffering = buffering;
         _publish();
@@ -429,6 +442,90 @@ final class PlaybackCoordinator {
     return shortBy > 0 && shortBy <= seekLandingTolerance.inMilliseconds
         ? session.landing
         : reported;
+  }
+
+  /// §4.5: the engine reports that queue item [itemIndex] lasts [durationMs], which refines the book
+  /// when it replaces an estimate.
+  ///
+  /// Only an item that plays its whole file says how long the file is. An item clipped at its end
+  /// reports the clip it was asked to play. One clipped only at its start reports what is left of
+  /// the file after the clip, from which the file's length could be worked out, but only by trusting
+  /// every backend to clip the same way, which spike (b) never measured; a wrong figure would be
+  /// stored as exact and never corrected. Clipped items are ignored.
+  ///
+  /// Nothing changes for a file whose duration is already exact, for a report within
+  /// [durationRefinementThreshold] of the estimate, or for one the book's layout cannot fit.
+  ///
+  /// The engine's position and the last seek's destination stay as they are, in queue coordinates.
+  /// The refinement moves no item within the engine, only where items fall in global time, so the
+  /// same queue position is the same audio before and after: the listener's chapter position
+  /// carries over, global positions from the refined file on shift, and [_settle] still compares
+  /// what the engine reports with where it was sent. Nothing needs reloading either, because a
+  /// whole-file item is loaded without an end, so the engine was never limited to the estimate.
+  Future<void> _learnDuration(
+    _Session session,
+    int itemIndex,
+    int durationMs,
+  ) async {
+    final before = session.timeline;
+    if (itemIndex < 0 || itemIndex >= before.queue.length) return;
+    final item = before.queue[itemIndex];
+    if (!item.startsAtFileStart || !item.endsAtFileEnd) return;
+    final file = before.file(item.fileId);
+    final difference = (durationMs - file.durationMs).abs();
+    if (!file.durationIsEstimate ||
+        difference < durationRefinementThreshold.inMilliseconds) {
+      return;
+    }
+
+    final Timeline after;
+    try {
+      after = before.withLearnedDuration(file.id, durationMs);
+    } on InvalidTimelineException {
+      // The stored layout ends a segment beyond what the file turned out to hold. Stored, the
+      // duration would leave the book unable to load, so the estimate stands; playback reaches the
+      // end of the file a little sooner than the Timeline expects, and moves on.
+      return;
+    }
+
+    session.timeline = after;
+    session.tracker.updateTimeline(after);
+    session.recorder.updateTimeline(after);
+    final pinned = session.sleepChapterEndMs;
+    if (pinned != null) {
+      session.sleepChapterEndMs = _entryEndAfterRefinement(
+        before,
+        after,
+        pinned,
+      );
+    }
+    if (session.finished) {
+      // A finished book stays at its end, wherever the end now is.
+      session.position = after.queuePositionAt(after.totalDurationMs);
+    }
+    await _store.saveLearnedDuration(
+      bookId: session.bookId,
+      fileId: file.id,
+      durationMs: durationMs,
+    );
+    await _applySleepTimer(session);
+    _publish();
+  }
+
+  /// Where the navigation entry that ends at [endMs] in [before] ends in [after].
+  ///
+  /// The entry is found again by its start, taken as a chapter position, because a refinement
+  /// leaves that the same place in the book, whereas the entry's end in global time is exactly what
+  /// a refinement moves.
+  static int _entryEndAfterRefinement(
+    Timeline before,
+    Timeline after,
+    int endMs,
+  ) {
+    // Entries are never empty, so the millisecond before an entry's end is inside it.
+    final entry = before.navigationEntryAt(endMs - 1);
+    final start = before.chapterPositionAt(entry.startMs);
+    return after.navigationEntryAt(after.globalOf(start)).endMs;
   }
 
   /// Re-resolves every file and reloads at the current position. Returns whether it worked.
@@ -607,7 +704,9 @@ final class _Session {
   }) : landing = position;
 
   final int bookId;
-  final Timeline timeline;
+
+  /// Replaced when a duration the engine learns refines the book (§4.5).
+  Timeline timeline;
   final ProgressTracker tracker;
   final ListeningSessionRecorder recorder;
   double speed;

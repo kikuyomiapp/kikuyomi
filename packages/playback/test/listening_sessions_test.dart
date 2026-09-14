@@ -133,6 +133,49 @@ void main() {
       expect(recorder.onStop(430 * s)!.chapterId, 2);
     });
 
+    test(
+      'not when a refined duration moves the chapter, which keeps its start',
+      () {
+        Timeline twoFiles({required int firstFileMs, bool estimate = false}) =>
+            Timeline.build(
+              files: [
+                TimelineFile(
+                  id: 1,
+                  durationMs: firstFileMs,
+                  durationIsEstimate: estimate,
+                ),
+                const TimelineFile(id: 2, durationMs: 300 * s),
+              ],
+              chapters: [
+                TimelineChapter(
+                  id: 1,
+                  title: 'One',
+                  segments: const [TimelineSegment(fileId: 1)],
+                ),
+                TimelineChapter(
+                  id: 2,
+                  title: 'Two',
+                  segments: const [TimelineSegment(fileId: 2)],
+                ),
+              ],
+            );
+        recorder = ListeningSessionRecorder(
+          bookId: 1,
+          timeline: twoFiles(firstFileMs: 300 * s, estimate: true),
+          clock: clock,
+        );
+
+        recorder.onPlay(globalMs: 310 * s, speed: 1.0);
+        clock.advance(sec(30));
+        recorder.updateTimeline(twoFiles(firstFileMs: 312 * s));
+        final session = recorder.onStop(352 * s)!;
+
+        expect(session.chapterId, 2);
+        expect(session.startGlobalMs, 322 * s);
+        expect(session.endGlobalMs, 352 * s);
+      },
+    );
+
     test('without losing any time listened', () {
       recorder.onPlay(globalMs: 0, speed: 1.0);
       final sessions = <ListeningSession?>[];
