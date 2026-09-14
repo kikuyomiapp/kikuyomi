@@ -41,7 +41,12 @@ dependencies:
   # Rust crate to: a newer Dart runtime refuses to load them, and the controls would fail at start.
   # Move it only together with `smtc_windows`.
   flutter_rust_bridge: 2.11.1
+  # §4.3's settings store. Flutter-team maintained, BSD-3-Clause, on Android, iOS and Windows.
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Its in-memory store, standing in for the platform's in tests. Already resolved through
+  # shared_preferences.
+  shared_preferences_platform_interface: ^2.4.2

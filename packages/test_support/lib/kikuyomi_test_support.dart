@@ -6,3 +6,4 @@
 library;
 
 export 'src/fake_clock.dart';
+export 'src/in_memory_settings_store.dart';

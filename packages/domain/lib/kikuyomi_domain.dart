@@ -15,6 +15,8 @@ export 'src/library/contributor_role.dart';
 export 'src/playback/listening_session.dart';
 export 'src/playback/media_resolver.dart';
 export 'src/playback/playback_store.dart';
+export 'src/settings/app_settings.dart';
+export 'src/settings/settings_store.dart';
 export 'src/timeline/positions.dart';
 export 'src/timeline/timeline.dart';
 export 'src/timeline/timeline_input.dart';
