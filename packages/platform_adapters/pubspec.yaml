@@ -43,6 +43,15 @@ dependencies:
   flutter_rust_bridge: 2.11.1
   # §4.3's settings store. Flutter-team maintained, BSD-3-Clause, on Android, iOS and Windows.
   shared_preferences: ^2.5.5
+  # The platform's folder dialog, for choosing a backup folder on desktop (§5.1). Already the app's
+  # for adding books.
+  file_selector: ^1.1.0
+  # Android's Storage Access Framework (§5.1): a document tree picked with a persistable permission,
+  # and listing, renaming and deleting documents in it. BSD-3-Clause; Android only, so the adapter
+  # uses it only there.
+  saf_util: ^3.1.0
+  # Reading and writing documents in such a tree. BSD-3-Clause; Android only, like saf_util.
+  saf_stream: ^4.0.1
 
 dev_dependencies:
   flutter_test:
