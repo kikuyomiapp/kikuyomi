@@ -56,6 +56,84 @@ void main() {
     });
   });
 
+  group('learning a duration (§4.5)', () {
+    final before = diagramBook(firstFileEstimated: true);
+
+    test('the files a Timeline was built from can be looked up', () {
+      expect(before.file(1).durationMs, 40 * m);
+      expect(before.file(1).durationIsEstimate, isTrue);
+      expect(before.file(3).durationIsEstimate, isFalse);
+      expect(() => before.file(99), throwsArgumentError);
+    });
+
+    test('rebuilds the book as if the duration had been known all along', () {
+      final learned = before.withLearnedDuration(1, 40 * m + 12 * s);
+      final known = diagramBook(firstFileMs: 40 * m + 12 * s);
+
+      expect(learned.file(1).durationMs, 40 * m + 12 * s);
+      expect(learned.file(1).durationIsEstimate, isFalse);
+      expect(learned.isEstimate, isFalse);
+      expect(learned.totalDurationMs, before.totalDurationMs + 12 * s);
+      expect(learned.queue, known.queue);
+      expect(learned.navigation, known.navigation);
+      expect(learned.chapterIds, before.chapterIds);
+    });
+
+    test('leaves the other files as they were', () {
+      final book = Timeline.build(
+        files: const [
+          TimelineFile(id: 1, durationMs: 300 * s, durationIsEstimate: true),
+          TimelineFile(id: 2, durationMs: 300 * s, durationIsEstimate: true),
+        ],
+        chapters: [
+          chapter(1, [seg(1)]),
+          chapter(2, [seg(2)]),
+        ],
+      );
+      final learned = book.withLearnedDuration(1, 312 * s);
+      expect(learned.file(2).durationMs, 300 * s);
+      expect(learned.file(2).durationIsEstimate, isTrue);
+      expect(learned.chapterDurationIsEstimate(1), isFalse);
+      expect(learned.chapterDurationIsEstimate(2), isTrue);
+    });
+
+    test('keeps embedded markers, which may now reach further', () {
+      final book = Timeline.build(
+        files: const [
+          TimelineFile(id: 1, durationMs: 1000 * s, durationIsEstimate: true),
+        ],
+        chapters: [
+          chapter(1, [seg(1)]),
+        ],
+        markersByFile: const {
+          1: [
+            TimelineMarker(title: 'Opening', startMs: 0),
+            TimelineMarker(title: 'Coda', startMs: 1050 * s),
+          ],
+        },
+      );
+      expect(book.navigation, const [
+        MarkerEntry(title: 'Opening', startMs: 0, endMs: 1000 * s),
+      ]);
+      expect(book.withLearnedDuration(1, 1100 * s).navigation, const [
+        MarkerEntry(title: 'Opening', startMs: 0, endMs: 1050 * s),
+        MarkerEntry(title: 'Coda', startMs: 1050 * s, endMs: 1100 * s),
+      ]);
+    });
+
+    test('a file the book does not have is rejected', () {
+      expect(() => before.withLearnedDuration(99, 10 * m), throwsArgumentError);
+    });
+
+    test('a duration the layout cannot fit is rejected', () {
+      // The first chapter ends 15 minutes into the first file, explicitly.
+      expect(
+        () => before.withLearnedDuration(1, 10 * m),
+        throwsA(isA<InvalidTimelineException>()),
+      );
+    });
+  });
+
   group('embedded markers as virtual chapters (§4.5)', () {
     const file = TimelineFile(id: 1, durationMs: 1000 * s);
 

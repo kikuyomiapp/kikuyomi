@@ -22,6 +22,8 @@ int listenedThresholdMs(int chapterDurationMs) {
 /// entire reason progress is persisted chapter-relative.
 final class Timeline {
   Timeline._({
+    required Map<int, TimelineFile> fileById,
+    required Map<int, List<TimelineMarker>> markersByFile,
     required List<TimelineChapter> chapters,
     required List<QueueItem> queue,
     required List<_Span> spans,
@@ -31,7 +33,9 @@ final class Timeline {
     required List<bool> chapterIsEstimate,
     required Map<int, int> chapterIndexById,
     required List<NavigationEntry> navigation,
-  }) : _chapters = chapters,
+  }) : _fileById = fileById,
+       _markersByFile = markersByFile,
+       _chapters = chapters,
        queue = List.unmodifiable(queue),
        _spans = spans,
        _chapterStartMs = chapterStartMs,
@@ -165,6 +169,12 @@ final class Timeline {
         ];
 
     return Timeline._(
+      fileById: Map.unmodifiable(fileById),
+      // Kept, like the files and chapters, so that a learned duration can rebuild the book.
+      markersByFile: Map.unmodifiable({
+        for (final MapEntry(:key, :value) in markersByFile.entries)
+          key: List<TimelineMarker>.unmodifiable(value),
+      }),
       chapters: List.unmodifiable(chapters),
       queue: queue,
       spans: List.unmodifiable(spans),
@@ -177,6 +187,8 @@ final class Timeline {
     );
   }
 
+  final Map<int, TimelineFile> _fileById;
+  final Map<int, List<TimelineMarker>> _markersByFile;
   final List<TimelineChapter> _chapters;
   final List<_Span> _spans;
   final List<int> _chapterStartMs;
@@ -218,6 +230,37 @@ final class Timeline {
   /// True if this chapter's length rests on an estimated file duration.
   bool chapterDurationIsEstimate(int chapterId) =>
       _chapterIsEstimate[_chapterIndex(chapterId)];
+
+  /// File [fileId] as this Timeline was built from it, including whether its duration is an
+  /// estimate.
+  ///
+  /// Throws [ArgumentError] if the book has no such file.
+  TimelineFile file(int fileId) =>
+      _fileById[fileId] ??
+      (throw ArgumentError.value(fileId, 'fileId', 'not in this book'));
+
+  /// This book again, with file [fileId]'s duration learned to be [durationMs] and no longer an
+  /// estimate.
+  ///
+  /// §4.5: durations are estimated until known and refined as files load. A Timeline is immutable,
+  /// so a refinement is a new one, built from the same chapters, files and markers as this one. As
+  /// the class documentation says, chapter positions carry over while global positions after the
+  /// file shift.
+  ///
+  /// Throws [ArgumentError] if the book has no such file, and [InvalidTimelineException] if the
+  /// book's layout cannot fit the learned duration, such as a segment that ends at an explicit
+  /// offset beyond it.
+  Timeline withLearnedDuration(int fileId, int durationMs) {
+    file(fileId);
+    return Timeline.build(
+      files: [
+        for (final f in _fileById.values)
+          f.id == fileId ? TimelineFile(id: fileId, durationMs: durationMs) : f,
+      ],
+      chapters: _chapters,
+      markersByFile: _markersByFile,
+    );
+  }
 
   // Conversions. Global positions outside the book are clamped into it, as are offsets past the
   // end of a chapter or item: a stale position should land somewhere sensible, not throw.

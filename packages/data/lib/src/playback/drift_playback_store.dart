@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' hide isNull;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
+import '../merge/book_details.dart';
 
 /// The database-backed [PlaybackStore]: where the coordinator's progress, listening sessions and
 /// per-book speed end up.
@@ -75,5 +76,56 @@ final class DriftPlaybackStore implements PlaybackStore {
         updatedAt: Value(_clock.now()),
       ),
     );
+  }
+
+  /// Replaces the file's estimate and corrects the book's length by as much as the file's changed.
+  ///
+  /// The length is corrected by the difference rather than summed afresh from the files, because it
+  /// is not always their sum: a source may supply its own figure (§4.4), and a correction keeps
+  /// whatever that figure rests on. A length the user edited is theirs and stays as they wrote it,
+  /// and a book with no length is left without one.
+  ///
+  /// It all happens in one transaction that first checks the stored file is still an estimate, so
+  /// a duration probed exactly in the meantime is never overwritten, and saving the same duration
+  /// twice corrects the book's length only once.
+  @override
+  Future<void> saveLearnedDuration({
+    required int bookId,
+    required int fileId,
+    required int durationMs,
+  }) {
+    return _db.transaction(() async {
+      final file =
+          await (_db.select(_db.mediaFiles)
+                ..where((f) => f.id.equals(fileId) & f.bookId.equals(bookId)))
+              .getSingleOrNull();
+      if (file == null || !file.durationIsEstimate) return;
+
+      await (_db.update(
+        _db.mediaFiles,
+      )..where((f) => f.id.equals(fileId))).write(
+        MediaFilesCompanion(
+          durationMs: Value(durationMs),
+          durationIsEstimate: const Value(false),
+        ),
+      );
+
+      final estimate = file.durationMs;
+      final book = await (_db.select(
+        _db.books,
+      )..where((b) => b.id.equals(bookId))).getSingle();
+      final total = book.totalDurationMs;
+      if (estimate == null ||
+          total == null ||
+          book.userOverrides.contains(BookField.totalDurationMs)) {
+        return;
+      }
+      await (_db.update(_db.books)..where((b) => b.id.equals(bookId))).write(
+        BooksCompanion(
+          totalDurationMs: Value(total + durationMs - estimate),
+          updatedAt: Value(_clock.now()),
+        ),
+      );
+    });
   }
 }

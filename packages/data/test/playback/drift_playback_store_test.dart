@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' hide isNull;
 import 'package:kikuyomi_data/kikuyomi_data.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_test_support/kikuyomi_test_support.dart';
@@ -92,5 +93,115 @@ void main() {
     await store.saveSpeed(bookId: book.book, speed: 1.75);
     final stored = await loadStoredPlayback(db, book.book);
     expect(stored.speed, 1.75);
+  });
+
+  group('a learned duration (§4.5)', () {
+    late int bookId;
+    late int estimated;
+    late int exact;
+
+    Future<MediaFileRow> fileRow(int id) =>
+        (db.select(db.mediaFiles)..where((f) => f.id.equals(id))).getSingle();
+
+    Future<BookRow> bookRow() =>
+        (db.select(db.books)..where((b) => b.id.equals(bookId))).getSingle();
+
+    setUp(() async {
+      // A folder book of two MP3s: the first estimated from its bitrate, the second counted.
+      bookId = await addBook(db, key: 'folder');
+      estimated = await addFile(
+        db,
+        bookId,
+        'one.mp3',
+        durationMs: 300000,
+        estimate: true,
+      );
+      exact = await addFile(db, bookId, 'two.mp3', durationMs: 200000);
+      final c1 = await addChapter(db, bookId, 'one', 0);
+      final c2 = await addChapter(db, bookId, 'two', 1);
+      await addSegment(db, c1, 0, estimated);
+      await addSegment(db, c2, 0, exact);
+      await (db.update(db.books)..where((b) => b.id.equals(bookId))).write(
+        const BooksCompanion(totalDurationMs: Value(500000)),
+      );
+    });
+
+    test('replaces the estimate and is no longer one', () async {
+      await store.saveLearnedDuration(
+        bookId: bookId,
+        fileId: estimated,
+        durationMs: 312000,
+      );
+      final file = await fileRow(estimated);
+      expect(file.durationMs, 312000);
+      expect(file.durationIsEstimate, isFalse);
+    });
+
+    test("corrects the book's length by the difference", () async {
+      await store.saveLearnedDuration(
+        bookId: bookId,
+        fileId: estimated,
+        durationMs: 312000,
+      );
+      final row = await bookRow();
+      expect(row.totalDurationMs, 512000);
+      expect(row.updatedAt.isAtSameMomentAs(clock.now()), isTrue);
+    });
+
+    test('is what the book plays with next time', () async {
+      await store.saveLearnedDuration(
+        bookId: bookId,
+        fileId: estimated,
+        durationMs: 312000,
+      );
+      final timeline = (await loadStoredPlayback(db, bookId)).timeline;
+      expect(timeline.isEstimate, isFalse);
+      expect(timeline.totalDurationMs, 512000);
+    });
+
+    test('never overwrites a duration that is already exact', () async {
+      await store.saveLearnedDuration(
+        bookId: bookId,
+        fileId: exact,
+        durationMs: 205000,
+      );
+      final file = await fileRow(exact);
+      expect(file.durationMs, 200000);
+      expect(file.durationIsEstimate, isFalse);
+      expect((await bookRow()).totalDurationMs, 500000);
+    });
+
+    test("saved twice, corrects the book's length once", () async {
+      for (var i = 0; i < 2; i++) {
+        await store.saveLearnedDuration(
+          bookId: bookId,
+          fileId: estimated,
+          durationMs: 312000,
+        );
+      }
+      expect((await bookRow()).totalDurationMs, 512000);
+    });
+
+    test('leaves a length the user edited as they wrote it', () async {
+      await (db.update(db.books)..where((b) => b.id.equals(bookId))).write(
+        const BooksCompanion(userOverrides: Value({BookField.totalDurationMs})),
+      );
+      await store.saveLearnedDuration(
+        bookId: bookId,
+        fileId: estimated,
+        durationMs: 312000,
+      );
+      expect((await bookRow()).totalDurationMs, 500000);
+      expect((await fileRow(estimated)).durationMs, 312000);
+    });
+
+    test('ignores a file that belongs to another book', () async {
+      await store.saveLearnedDuration(
+        bookId: book.book,
+        fileId: estimated,
+        durationMs: 312000,
+      );
+      expect((await fileRow(estimated)).durationIsEstimate, isTrue);
+    });
   });
 }

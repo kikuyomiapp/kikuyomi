@@ -76,6 +76,7 @@ final class FakeStore implements PlaybackStore {
   final progress = <({int bookId, ChapterPosition position, int globalMs})>[];
   final sessions = <ListeningSession>[];
   final speeds = <({int bookId, double speed})>[];
+  final durations = <({int bookId, int fileId, int durationMs})>[];
 
   @override
   Future<void> saveProgress({
@@ -92,4 +93,12 @@ final class FakeStore implements PlaybackStore {
   @override
   Future<void> saveSpeed({required int bookId, required double speed}) async =>
       speeds.add((bookId: bookId, speed: speed));
+
+  @override
+  Future<void> saveLearnedDuration({
+    required int bookId,
+    required int fileId,
+    required int durationMs,
+  }) async =>
+      durations.add((bookId: bookId, fileId: fileId, durationMs: durationMs));
 }
