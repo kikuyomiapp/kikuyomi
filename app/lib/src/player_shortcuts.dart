@@ -15,8 +15,9 @@ import 'player_view.dart';
 /// app bar included, so that every control on the screen is inside it:
 ///
 /// * It holds focus itself, taken as the screen opens, so the keys work before anything is clicked.
-/// * It is a focus scope, so when a focused control leaves the screen, focus falls back here rather
-///   than to the route above it, out of the keys' reach.
+/// * It is a focus scope. Focus that a control on the screen lets go of with nowhere earlier to
+///   return to, as unfocusing it does, lands here rather than on the route above, out of the keys'
+///   reach.
 /// * A key travels up from the focused control, and the app binds space to pressing that control
 ///   further up than this, so here space plays or pauses and presses nothing. Enter still does.
 class PlayerShortcuts extends StatelessWidget {

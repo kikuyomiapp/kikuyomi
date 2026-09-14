@@ -357,6 +357,20 @@ void main() {
       expect(pressed, ['play']);
     });
 
+    testWidgets('the keys still work after a control lets go of focus', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await focus(tester, find.byIcon(Icons.forward_30));
+      // Unfocusing forgets what had focus before, so focus cannot simply return there.
+      primaryFocus!.unfocus();
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      expect(pressed, ['play']);
+    });
+
     testWidgets('the keys do nothing while no book is ready', (tester) async {
       final pressed = <String>[];
       await tester.pumpWidget(
