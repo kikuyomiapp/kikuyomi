@@ -5,28 +5,7 @@
 /// pure: it returns the merged details and what changed, and writes nothing.
 library;
 
-/// The book fields a source provides and a user can edit.
-///
-/// These mirror the source-provided columns of the `book` table in §4.3. Authors and narrators live
-/// in `book_person` and merge separately.
-enum BookField {
-  title,
-  subtitle,
-  description,
-  coverUrl,
-  seriesName,
-  seriesIndex,
-  genres,
-  language,
-  publisher,
-  publishedDate,
-  isbn,
-  abridged,
-  status,
-  contentRating,
-  totalDurationMs,
-  webUrl,
-}
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 /// A book's source-provided details. Immutable.
 final class BookDetails {

@@ -1,7 +1,7 @@
-import 'dart:io';
+// The database's side of backups, through the domain's interfaces and hand-built plans only. What the
+// codec and the planner decide is tested in the backup package, against an in-memory library.
 
 import 'package:drift/drift.dart' hide isNull;
-import 'package:kikuyomi_backup/kikuyomi_backup.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_test_support/kikuyomi_test_support.dart';
@@ -9,18 +9,63 @@ import 'package:test/test.dart';
 
 import 'library_fixtures.dart';
 
-Future<List<int>> backUp(KikuyomiDatabase db) => createBackup(
-  DriftBackupStore(db),
-  clock: FakeClock(DateTime.utc(2026, 9, 2)),
-  appVersion: '0.1.0+1',
-  deviceId: 'this-pc',
+/// A plan restoring the whole of [library] into a library holding none of it.
+RestorePlan everything(LibrarySnapshot library) => RestorePlan(
+  newSources: library.sources,
+  newCategories: library.categories,
+  newBooks: library.books,
 );
 
-Future<RestoreReport> restoreInto(KikuyomiDatabase db, List<int> file) =>
-    restoreBackup(file, library: DriftBackupStore(db));
+/// What [library] lists, in the order it lists it, by identity.
+List<Object?> orderOf(LibrarySnapshot library) => [
+  [for (final source in library.sources) source.id],
+  [for (final category in library.categories) category.name],
+  for (final book in library.books)
+    [
+      book.sourceId,
+      book.key,
+      [for (final credit in book.contributors) credit.name],
+      [for (final file in book.mediaFiles) file.fileKey],
+      [
+        for (final chapter in book.chapters)
+          [
+            chapter.key,
+            for (final segment in chapter.segments) segment.fileKey,
+          ],
+      ],
+      [
+        for (final session in book.sessions)
+          session.startedAt.millisecondsSinceEpoch,
+      ],
+      [for (final bookmark in book.bookmarks) bookmark.positionMs],
+      book.categories,
+    ],
+];
+
+/// [book] with every list it holds reversed, except chapter layouts, whose order is their meaning.
+BookSnapshot reversed(BookSnapshot book) => BookSnapshot(
+  sourceId: book.sourceId,
+  key: book.key,
+  details: book.details,
+  userOverrides: book.userOverrides,
+  contributors: book.contributors.reversed.toList(),
+  inLibrary: book.inLibrary,
+  dateAdded: book.dateAdded,
+  lastRefreshedAt: book.lastRefreshedAt,
+  detailsFetched: book.detailsFetched,
+  playbackSpeed: book.playbackSpeed,
+  createdAt: book.createdAt,
+  updatedAt: book.updatedAt,
+  mediaFiles: book.mediaFiles.reversed.toList(),
+  chapters: book.chapters.reversed.toList(),
+  progress: book.progress,
+  sessions: book.sessions.reversed.toList(),
+  bookmarks: book.bookmarks.reversed.toList(),
+  categories: book.categories.reversed.toList(),
+);
 
 void main() {
-  // Each test opens two databases, the one backed up and the one restored into, each on its own
+  // Each test opens two databases, the one read from and the one restored into, each on its own
   // in-memory executor. Drift's warning is about two databases sharing one executor, not this.
   driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
 
@@ -38,19 +83,12 @@ void main() {
     await restored.close();
   });
 
-  group('into a fresh database', () {
-    test('a library comes back column for column, apart from what backups leave out', () async {
-      final report = await restoreInto(restored, await backUp(original));
-      expect(report.backup.skipped, isEmpty);
+  group('what is read can be written back', () {
+    test('column for column, apart from the cached cover', () async {
+      final library = await DriftBackupStore(original).readLibrary();
+      await DriftBackupStore(restored).restore((_) => everything(library));
 
-      // Left out on purpose: the book only browsed past, the source only it used, and the cached
-      // cover image.
-      await (original.delete(
-        original.books,
-      )..where((b) => b.key.equals('browsed'))).go();
-      await (original.delete(
-        original.sources,
-      )..where((s) => s.id.equals(browsedSourceId))).go();
+      // A snapshot does not carry the cover image cached on this device, which is fetched again.
       await original
           .update(original.books)
           .write(
@@ -59,14 +97,14 @@ void main() {
               coverUpdatedAt: Value(null),
             ),
           );
-
       expect(await dumpLibrary(restored), await dumpLibrary(original));
     });
 
     test(
-      'a restored book plays on from where it was left, at its speed',
+      'so that a book plays on from where it was left, at its speed',
       () async {
-        await restoreInto(restored, await backUp(original));
+        final library = await DriftBackupStore(original).readLibrary();
+        await DriftBackupStore(restored).restore((_) => everything(library));
 
         final book = await bookByKey(restored, aBook);
         final two = await chapterByKey(restored, book.id, 'two');
@@ -80,255 +118,312 @@ void main() {
       },
     );
 
-    test('the restored library backs up to the same file', () async {
-      await restoreInto(restored, await backUp(original));
-      expect(await backUp(restored), await backUp(original));
-    });
-
-    test('restoring the same backup again changes nothing', () async {
-      final file = await backUp(original);
-      await restoreInto(restored, file);
-      final before = await dumpLibrary(restored);
-
-      final again = await restoreInto(restored, file);
-      expect(again.plan.isEmpty, isTrue);
-      expect(await dumpLibrary(restored), before);
-    });
-  });
-
-  group('into a library already in use', () {
     test(
-      'merges into the books it has, adds the rest, and duplicates nothing',
+      'and reads back in an order set by identities, not by database ids',
       () async {
-        await restored
-            .into(restored.sources)
-            .insert(
-              const SourcesCompanion(
-                id: Value(localSourceId),
-                key: Value('local'),
-                name: Value('Local files'),
-                lang: Value('und'),
-              ),
-            );
-        for (final (name, sortOrder) in [('Mine', 0), ('Next up', 1)]) {
-          await restored
-              .into(restored.categories)
-              .insert(
-                CategoriesCompanion(
-                  name: Value(name),
-                  sortOrder: Value(sortOrder),
-                ),
-              );
-        }
-        await restored
-            .into(restored.books)
-            .insert(
-              BooksCompanion(
-                sourceId: const Value(localSourceId),
-                key: const Value('mine'),
-                title: const Value('My Own Book'),
-                inLibrary: const Value(true),
-                createdAt: Value(at(500)),
-                updatedAt: Value(at(500)),
-              ),
-            );
-        // The started book, added here since, but not yet played.
-        await addStartedBook(restored, updatedAt: at(500), inLibrary: true);
-
-        await restoreInto(restored, await backUp(original));
-
-        final books = await restored.select(restored.books).get();
-        expect({for (final b in books) b.key}, {aBook, startedBook, 'mine'});
-
-        final started = await bookByKey(restored, startedBook);
-        expect(started.inLibrary, isTrue);
-        final whole = await chapterByKey(restored, started.id, 'whole');
-        expect(
-          (await loadStoredPlayback(restored, started.id)).resumeFrom,
-          ChapterPosition(chapterId: whole.id, offsetMs: 5000),
-        );
-        expect(
-          await restored.select(restored.chapters).get(),
-          hasLength(4),
-          reason:
-              'three chapters of the restored book, one of the started book',
-        );
-
-        final categories = await (restored.select(
-          restored.categories,
-        )..orderBy([(c) => OrderingTerm.asc(c.sortOrder)])).get();
-        expect(
-          [for (final c in categories) (c.name, c.sortOrder)],
-          [('Mine', 0), ('Next up', 1), ('Empty', 2)],
-        );
-        final restoredBook = await bookByKey(restored, aBook);
-        final membership = await (restored.select(
-          restored.bookCategories,
-        )..where((m) => m.bookId.equals(restoredBook.id))).getSingle();
-        expect(membership.categoryId, categories[1].id);
-      },
-    );
-
-    test('newer progress here is not overwritten by an older backup', () async {
-      final file = await backUp(original);
-      await restoreInto(restored, file);
-
-      // Listening goes on here after the backup was taken.
-      final book = await bookByKey(restored, aBook);
-      final one = await chapterByKey(restored, book.id, 'one');
-      await DriftPlaybackStore(
-        restored,
-        deviceId: 'this-pc',
-        clock: FakeClock(at(900)),
-      ).saveProgress(
-        bookId: book.id,
-        position: ChapterPosition(chapterId: one.id, offsetMs: 1000),
-        globalMs: 1000,
-      );
-
-      final report = await restoreInto(restored, file);
-      expect(report.plan.isEmpty, isTrue);
-      expect(
-        (await loadStoredPlayback(restored, book.id)).resumeFrom,
-        ChapterPosition(chapterId: one.id, offsetMs: 1000),
-      );
-      final chapter = await chapterByKey(restored, book.id, 'one');
-      expect(chapter.lastPositionMs, 1000);
-    });
-
-    test('newer progress in a backup replaces older progress here', () async {
-      await restoreInto(restored, await backUp(original));
-
-      // Listening goes on on the original device, which backs up again.
-      final book = await bookByKey(original, aBook);
-      final one = await chapterByKey(original, book.id, 'one');
-      await DriftPlaybackStore(
-        original,
-        deviceId: 'phone',
-        clock: FakeClock(at(900)),
-      ).saveProgress(
-        bookId: book.id,
-        position: ChapterPosition(chapterId: one.id, offsetMs: 2000),
-        globalMs: 2000,
-      );
-      await restoreInto(restored, await backUp(original));
-
-      final here = await bookByKey(restored, aBook);
-      final oneHere = await chapterByKey(restored, here.id, 'one');
-      expect(
-        (await loadStoredPlayback(restored, here.id)).resumeFrom,
-        ChapterPosition(chapterId: oneHere.id, offsetMs: 2000),
-      );
-      expect(oneHere.lastPositionMs, 2000);
-      final state = await restored.select(restored.playbackStates).get();
-      expect(
-        {for (final s in state) s.deviceId},
-        {'phone', 'this-pc'},
-        reason: 'the book progressed on the phone; the started book did not',
-      );
-    });
-
-    test(
-      'a book imported again before restoring gets its progress back',
-      () async {
-        const file = LocalBookFile(
-          path: r'C:\Books\Again.m4b',
-          durationMs: 60000,
-        );
-        const again = LocalBookImport(file: file, title: 'Again');
-        final before = openDatabase();
-        addTearDown(before.close);
-        final id = await importLocalBook(
-          before,
-          again,
-          clock: FakeClock(at(0)),
-        );
-        final whole = await chapterByKey(before, id, 'whole');
-        await DriftPlaybackStore(
-          before,
-          deviceId: 'this-pc',
-          clock: FakeClock(at(10)),
-        ).saveProgress(
-          bookId: id,
-          position: ChapterPosition(chapterId: whole.id, offsetMs: 42000),
-          globalMs: 42000,
-        );
-        final backup = await backUp(before);
-
-        // After a reinstall, the book is added again before the backup is restored, so its chapter is
-        // newer than the backup's and has nothing listened.
-        final idHere = await importLocalBook(
-          restored,
-          again,
-          clock: FakeClock(at(1000)),
-        );
-        await restoreInto(restored, backup);
-
-        final wholeHere = await chapterByKey(restored, idHere, 'whole');
-        expect(
-          (await loadStoredPlayback(restored, idHere)).resumeFrom,
-          ChapterPosition(chapterId: wholeHere.id, offsetMs: 42000),
-        );
-        expect(wholeHere.lastPositionMs, 42000);
-      },
-    );
-  });
-
-  group('a file that cannot be restored from', () {
-    test(
-      'when corrupt or cut short, is reported and leaves the library as it was',
-      () async {
-        final file = await backUp(original);
-        await restoreInto(restored, await backUp(original));
-        await (restored.delete(
-          restored.bookmarks,
-        )..where((b) => b.positionMs.equals(5))).go();
-        final before = await dumpLibrary(restored);
-
-        await expectLater(
-          restoreInto(restored, file.sublist(0, file.length - 10)),
-          throwsA(isA<CorruptBackupException>()),
-        );
-        final damaged = [...file]..[file.length ~/ 2] ^= 0xff;
-        await expectLater(
-          restoreInto(restored, damaged),
-          throwsA(isA<CorruptBackupException>()),
-        );
-        expect(await dumpLibrary(restored), before);
-      },
-    );
-
-    test('when from a newer format this build cannot restore, is refused saying so', () async {
-      final file = await backUp(original);
-      // Protobuf keeps the last value it reads for a field, so appending min_reader_version (field 2,
-      // a varint) makes the backup demand a newer reader than this build.
-      final future = gzip.encode([...gzip.decode(file), 0x10, 0x02]);
-
-      await expectLater(
-        restoreInto(restored, future),
-        throwsA(
-          isA<UnsupportedBackupVersionException>().having(
-            (e) => e.message,
-            'message',
-            contains('format version 2'),
+        final library = await DriftBackupStore(original).readLibrary();
+        // Written in the opposite order, every row gets a different id.
+        await DriftBackupStore(restored).restore(
+          (_) => everything(
+            LibrarySnapshot(
+              sources: library.sources.reversed.toList(),
+              categories: library.categories.reversed.toList(),
+              books: [
+                for (final book in library.books.reversed) reversed(book),
+              ],
+            ),
           ),
+        );
+
+        final reread = await DriftBackupStore(restored).readLibrary();
+        expect(orderOf(reread), orderOf(library));
+      },
+    );
+  });
+
+  group('a restore', () {
+    test(
+      'is planned against the library as it is inside the transaction',
+      () async {
+        LibrarySnapshot? seen;
+        final applied = await DriftBackupStore(original).restore((current) {
+          seen = current;
+          return const RestorePlan();
+        });
+
+        expect(applied.isEmpty, isTrue);
+        expect([
+          for (final book in seen!.books) book.key,
+        ], unorderedEquals([aBook, startedBook, 'browsed']));
+      },
+    );
+
+    test('writes everything a plan adds to a book the library has', () async {
+      final store = DriftBackupStore(original);
+      final before = await bookByKey(original, aBook);
+      await (original.update(
+        original.books,
+      )..where((b) => b.id.equals(before.id))).write(
+        const BooksCompanion(
+          inLibrary: Value(false),
+          playbackSpeed: Value(null),
         ),
       );
-      expect(await restored.select(restored.books).get(), isEmpty);
+
+      await store.restore(
+        (_) => RestorePlan(
+          newCategories: const [
+            CategorySnapshot(name: 'Later', sortOrder: 2, flags: 3),
+          ],
+          mergedBooks: [
+            BookMerge(
+              sourceId: catalogSourceId,
+              key: aBook,
+              updatedAt: at(700),
+              edits: (
+                details: BookDetailsSnapshot(
+                  title: 'My Title',
+                  subtitle: 'My Subtitle',
+                ),
+                userOverrides: const {BookField.title, BookField.subtitle},
+              ),
+              addToLibrary: true,
+              dateAdded: at(701),
+              playbackSpeed: 1.5,
+              newFiles: const [
+                MediaFileSnapshot(
+                  fileKey: 'old.mp3',
+                  durationMs: 1000,
+                  durationIsEstimate: false,
+                ),
+              ],
+              newChapters: [
+                ChapterSnapshot(
+                  key: 'old',
+                  title: 'An Old Chapter',
+                  sourceIndex: 9,
+                  createdAt: at(702),
+                  updatedAt: at(702),
+                  lastPositionMs: 400,
+                  removedFromSource: true,
+                  segments: const [SegmentSnapshot(fileKey: 'old.mp3')],
+                ),
+              ],
+              chapterProgress: [
+                ChapterProgress(
+                  chapterKey: 'two',
+                  isListened: true,
+                  listenedAt: at(703),
+                  lastPositionMs: 150000,
+                  updatedAt: at(703),
+                ),
+              ],
+              progress: ProgressSnapshot(
+                chapterKey: 'old',
+                chapterPositionMs: 400,
+                globalPositionMs: 400,
+                updatedAt: at(704),
+                deviceId: 'phone',
+              ),
+              newSessions: [
+                SessionSnapshot(
+                  chapterKey: 'old',
+                  startedAt: at(705),
+                  endedAt: at(706),
+                  startGlobalMs: 0,
+                  endGlobalMs: 400,
+                  speed: 1.5,
+                  deviceId: 'phone',
+                ),
+                SessionSnapshot(
+                  startedAt: at(707),
+                  endedAt: at(708),
+                  startGlobalMs: 0,
+                  endGlobalMs: 400,
+                  speed: 1.5,
+                  deviceId: 'phone',
+                ),
+              ],
+              newBookmarks: [
+                BookmarkSnapshot(
+                  chapterKey: 'two',
+                  positionMs: 777,
+                  createdAt: at(709),
+                  note: 'From the phone.',
+                ),
+              ],
+              newCategories: const ['Later', 'Empty'],
+            ),
+          ],
+        ),
+      );
+
+      final book = await bookByKey(original, aBook);
+      expect(book.id, before.id, reason: 'merged, not added again');
+      expect(book.title, 'My Title');
+      expect(book.subtitle, 'My Subtitle');
+      expect(book.description, isNull, reason: 'edits replace the details');
+      expect(book.userOverrides, {BookField.title, BookField.subtitle});
+      expect(book.inLibrary, isTrue);
+      expect(book.dateAdded!.toUtc(), at(701));
+      expect(book.playbackSpeed, 1.5);
+      expect(book.updatedAt.toUtc(), at(700));
+
+      final old = await chapterByKey(original, book.id, 'old');
+      expect(old.removedFromSource, isTrue);
+      expect(old.lastPositionMs, 400);
+      final layout = await (original.select(
+        original.chapterSegments,
+      )..where((s) => s.chapterId.equals(old.id))).getSingle();
+      final file = await (original.select(
+        original.mediaFiles,
+      )..where((f) => f.id.equals(layout.mediaFileId))).getSingle();
+      expect(file.fileKey, 'old.mp3');
+
+      final two = await chapterByKey(original, book.id, 'two');
+      expect(two.isListened, isTrue);
+      expect(two.lastPositionMs, 150000);
+      expect(two.updatedAt.toUtc(), at(703));
+
+      final progress = await (original.select(
+        original.playbackStates,
+      )..where((p) => p.bookId.equals(book.id))).getSingle();
+      expect(progress.chapterId, old.id);
+      expect(progress.deviceId, 'phone');
+
+      final sessions = await (original.select(
+        original.listeningSessions,
+      )..where((s) => s.bookId.equals(book.id))).get();
+      expect(sessions, hasLength(4));
+      expect(sessions.where((s) => s.chapterId == old.id), hasLength(1));
+      expect(
+        await (original.select(
+          original.bookmarks,
+        )..where((b) => b.bookId.equals(book.id))).get(),
+        hasLength(3),
+      );
+
+      final categoryNames = {
+        for (final c in await original.select(original.categories).get())
+          c.id: c.name,
+      };
+      final memberships = await (original.select(
+        original.bookCategories,
+      )..where((m) => m.bookId.equals(book.id))).get();
+      expect(
+        {for (final m in memberships) categoryNames[m.categoryId]},
+        {'Next up', 'Later', 'Empty'},
+      );
+    });
+
+    test(
+      'joins books to the categories the library already has, by name',
+      () async {
+        await restored
+            .into(restored.categories)
+            .insert(
+              const CategoriesCompanion(
+                name: Value('Next up'),
+                sortOrder: Value(5),
+              ),
+            );
+        final library = await DriftBackupStore(original).readLibrary();
+        final book = library.books.firstWhere((b) => b.key == aBook);
+
+        await DriftBackupStore(restored).restore(
+          (_) => RestorePlan(
+            newSources: [
+              library.sources.firstWhere((s) => s.id == catalogSourceId),
+            ],
+            newBooks: [book],
+          ),
+        );
+
+        final categories = await restored.select(restored.categories).get();
+        expect(categories, hasLength(1));
+        final membership = await restored
+            .select(restored.bookCategories)
+            .getSingle();
+        expect(membership.categoryId, categories.single.id);
+      },
+    );
+
+    test('into a book imported again brings its progress back', () async {
+      const path = r'C:\Books\Again.m4b';
+      final id = await importLocalBook(
+        restored,
+        const LocalBookImport(
+          file: LocalBookFile(path: path, durationMs: 60000),
+          title: 'Again',
+        ),
+        clock: FakeClock(at(1000)),
+      );
+
+      await DriftBackupStore(restored).restore(
+        (_) => RestorePlan(
+          mergedBooks: [
+            BookMerge(
+              sourceId: localSourceId,
+              key: path,
+              updatedAt: at(1000),
+              chapterProgress: [
+                ChapterProgress(
+                  chapterKey: 'whole',
+                  isListened: false,
+                  listenedAt: null,
+                  lastPositionMs: 42000,
+                  updatedAt: at(10),
+                ),
+              ],
+              progress: ProgressSnapshot(
+                chapterKey: 'whole',
+                chapterPositionMs: 42000,
+                globalPositionMs: 42000,
+                updatedAt: at(10),
+                deviceId: 'this-pc',
+              ),
+            ),
+          ],
+        ),
+      );
+
+      final whole = await chapterByKey(restored, id, 'whole');
+      expect(whole.lastPositionMs, 42000);
+      expect(
+        (await loadStoredPlayback(restored, id)).resumeFrom,
+        ChapterPosition(chapterId: whole.id, offsetMs: 42000),
+      );
+    });
+
+    test('whose plan refers to something the library lacks fails, and writes none of it', () async {
+      final before = await dumpLibrary(original);
+
+      await expectLater(
+        DriftBackupStore(original).restore(
+          (_) => RestorePlan(
+            newCategories: const [
+              CategorySnapshot(name: 'Later', sortOrder: 2),
+            ],
+            mergedBooks: [
+              BookMerge(
+                sourceId: catalogSourceId,
+                key: aBook,
+                updatedAt: at(700),
+                playbackSpeed: 2,
+                newBookmarks: [
+                  BookmarkSnapshot(
+                    chapterKey: 'missing',
+                    positionMs: 1,
+                    createdAt: at(700),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        throwsStateError,
+      );
+      expect(await dumpLibrary(original), before);
     });
   });
-
-  test(
-    'edited fields and credit roles have the same names in both packages',
-    () {
-      expect(
-        [for (final field in BookField.values) field.name],
-        [for (final field in BookDetailField.values) field.name],
-      );
-      expect(
-        [for (final role in ContributorRole.values) role.name],
-        [for (final role in CreditRole.values) role.name],
-      );
-    },
-  );
 }

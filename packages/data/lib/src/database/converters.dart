@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
-import '../merge/book_details.dart';
-
 /// A list of strings stored as a JSON array, such as a book's genres.
 final class StringListConverter extends TypeConverter<List<String>, String> {
   const StringListConverter();

@@ -1,7 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
-import '../merge/book_details.dart';
 import 'converters.dart';
 import 'tables.dart';
 

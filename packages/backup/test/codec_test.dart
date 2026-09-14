@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:fixnum/fixnum.dart';
 import 'package:kikuyomi_backup/kikuyomi_backup.dart';
 import 'package:kikuyomi_backup/src/generated/backup.pb.dart' as pb;
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:protobuf/protobuf.dart';
 import 'package:test/test.dart';
 
@@ -215,10 +216,7 @@ void main() {
       final decoded = decodeBackup(wrap(message));
       final restored = decoded.library.books.single;
       expect(decoded.skipped, isEmpty);
-      expect(restored.userOverrides, {
-        BookDetailField.title,
-        BookDetailField.coverUrl,
-      });
+      expect(restored.userOverrides, {BookField.title, BookField.coverUrl});
       expect([for (final c in restored.contributors) c.name], ['An Author']);
     });
   });

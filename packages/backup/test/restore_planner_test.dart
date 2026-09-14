@@ -1,4 +1,5 @@
 import 'package:kikuyomi_backup/kikuyomi_backup.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:test/test.dart';
 
 import 'fixtures.dart';
@@ -68,7 +69,7 @@ BookSnapshot book({
   int sourceId = 1,
   String key = 'book',
   BookDetailsSnapshot? details,
-  Set<BookDetailField> userOverrides = const {},
+  Set<BookField> userOverrides = const {},
   bool inLibrary = true,
   DateTime? dateAdded,
   double? speed,
@@ -427,7 +428,7 @@ void main() {
             title: 'My Title',
             description: 'From the source, then.',
           ),
-          userOverrides: const {BookDetailField.title},
+          userOverrides: const {BookField.title},
         ),
         here: book(
           details: BookDetailsSnapshot(
@@ -439,7 +440,7 @@ void main() {
       final edits = merge.edits!;
       expect(edits.details.title, 'My Title');
       expect(edits.details.description, 'From the source, now.');
-      expect(edits.userOverrides, {BookDetailField.title});
+      expect(edits.userOverrides, {BookField.title});
       expect(merge.changesBook, isTrue);
     });
 
@@ -450,23 +451,17 @@ void main() {
             title: 'Backed-up Title',
             subtitle: 'Backed-up Subtitle',
           ),
-          userOverrides: const {
-            BookDetailField.title,
-            BookDetailField.subtitle,
-          },
+          userOverrides: const {BookField.title, BookField.subtitle},
         ),
         here: book(
           details: BookDetailsSnapshot(title: 'My Title'),
-          userOverrides: const {BookDetailField.title},
+          userOverrides: const {BookField.title},
         ),
       );
       final edits = merge.edits!;
       expect(edits.details.title, 'My Title');
       expect(edits.details.subtitle, 'Backed-up Subtitle');
-      expect(edits.userOverrides, {
-        BookDetailField.title,
-        BookDetailField.subtitle,
-      });
+      expect(edits.userOverrides, {BookField.title, BookField.subtitle});
     });
   });
 

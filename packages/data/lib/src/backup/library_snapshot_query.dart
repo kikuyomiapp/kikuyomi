@@ -1,8 +1,7 @@
 import 'package:drift/drift.dart';
-import 'package:kikuyomi_backup/kikuyomi_backup.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
-import '../database/tables.dart';
 
 /// Reads everything stored as a [LibrarySnapshot], for backing up and for planning a restore.
 ///
@@ -81,18 +80,12 @@ Future<LibrarySnapshot> readLibrarySnapshot(KikuyomiDatabase db) async {
     (membership) => membership.bookId,
   );
 
-  // A name this build does not know was written by a newer one; the converter already drops those.
-  final detailFields = BookDetailField.values.asNameMap();
-
   BookSnapshot snapshotOf(BookRow book) {
     final contributors = [
       for (final credit in creditsByBook[book.id] ?? const <BookPersonRow>[])
         ContributorSnapshot(
           name: people[credit.personId]!,
-          role: switch (credit.role) {
-            ContributorRole.author => CreditRole.author,
-            ContributorRole.narrator => CreditRole.narrator,
-          },
+          role: credit.role,
           ordinal: credit.ordinal,
         ),
     ]..sort(_byCredit);
@@ -155,9 +148,7 @@ Future<LibrarySnapshot> readLibrarySnapshot(KikuyomiDatabase db) async {
         totalDurationMs: book.totalDurationMs,
         webUrl: book.webUrl,
       ),
-      userOverrides: {
-        for (final field in book.userOverrides) ?detailFields[field.name],
-      },
+      userOverrides: book.userOverrides,
       contributors: contributors,
       inLibrary: book.inLibrary,
       dateAdded: book.dateAdded,

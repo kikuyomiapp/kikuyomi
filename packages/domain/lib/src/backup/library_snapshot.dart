@@ -1,21 +1,27 @@
-/// What a backup holds, as immutable values.
+/// A library as backup and restore exchange it: immutable values with no database ids.
 ///
-/// The messages generated from `proto/backup.proto` are a wire format: mutable, full of `Int64`s,
-/// and unable to tell a missing value from a default except field by field. They never leave the
-/// codec. Everything else, in this package and in the database code that implements its interfaces,
-/// works with these snapshots instead, the same separation §4.1 keeps between extension DTOs, domain
-/// entities and database rows.
+/// Two packages meet here. The `backup` package writes snapshots into backup files and plans restores
+/// from them; the data package reads snapshots from the database and writes restores into it. §2.4
+/// lets neither depend on the other, so the values they share live in the domain, just as
+/// `PlaybackStore` joins playback to the database. ADR-0008 already defines the backup format in
+/// terms of domain values rather than tables.
 ///
-/// A snapshot holds no database ids. Like the format, it refers to things by the identities §4.4
-/// defines: a source by its stable id, a book by its source and key, chapters and files by key within
-/// their book, and categories by name. That is what lets a snapshot of one library be compared with,
-/// and restored into, another.
+/// A snapshot is not the backup format itself. The protobuf messages a backup file is written in are
+/// mutable, full of `Int64`s, and unable to tell a missing value from a default except field by
+/// field, so they never leave the `backup` package's codec.
+///
+/// A snapshot refers to things by the identities §4.4 defines, as the format does: a source by its
+/// stable id, a book by its source and key, chapters and files by key within their book, and
+/// categories by name. That is what lets a snapshot of one library be compared with, and restored
+/// into, another.
 ///
 /// Lists are not copied on the way in. Whoever builds a snapshot hands over lists it will not change
-/// afterwards, and the decoder hands out unmodifiable ones.
+/// afterwards.
 library;
 
-import 'package:kikuyomi_domain/kikuyomi_domain.dart';
+import '../library/book_field.dart';
+import '../library/contributor_role.dart';
+import '../timeline/timeline_input.dart';
 
 /// A whole library, or the part of one that a backup holds.
 final class LibrarySnapshot {
@@ -73,34 +79,10 @@ final class CategorySnapshot {
   final int flags;
 }
 
-/// The book fields a source provides and a user can edit.
-///
-/// The same fields, under the same names, as `BookField` in the data package, which records a user's
-/// edits by name. Backups store those names, so the two lists have to agree, and a test in the data
-/// package holds them to it.
-enum BookDetailField {
-  title,
-  subtitle,
-  description,
-  coverUrl,
-  seriesName,
-  seriesIndex,
-  genres,
-  language,
-  publisher,
-  publishedDate,
-  isbn,
-  abridged,
-  status,
-  contentRating,
-  totalDurationMs,
-  webUrl,
-}
-
 /// A book's source-provided details. Immutable.
 ///
-/// Values are kept by [BookDetailField], so that a restore can take individual fields from one set
-/// of details into another, which is how it carries over a user's edits.
+/// Values are kept by [BookField], so that a restore can take individual fields from one set of
+/// details into another, which is how it carries over a user's edits.
 final class BookDetailsSnapshot {
   BookDetailsSnapshot({
     required String title,
@@ -119,57 +101,55 @@ final class BookDetailsSnapshot {
     String? contentRating,
     int? totalDurationMs,
     String? webUrl,
-  }) : _values = Map.unmodifiable(<BookDetailField, Object?>{
-         BookDetailField.title: title,
-         BookDetailField.subtitle: subtitle,
-         BookDetailField.description: description,
-         BookDetailField.coverUrl: coverUrl,
-         BookDetailField.seriesName: seriesName,
-         BookDetailField.seriesIndex: seriesIndex,
-         BookDetailField.genres: List<String>.unmodifiable(genres),
-         BookDetailField.language: language,
-         BookDetailField.publisher: publisher,
-         BookDetailField.publishedDate: publishedDate,
-         BookDetailField.isbn: isbn,
-         BookDetailField.abridged: abridged,
-         BookDetailField.status: status,
-         BookDetailField.contentRating: contentRating,
-         BookDetailField.totalDurationMs: totalDurationMs,
-         BookDetailField.webUrl: webUrl,
+  }) : _values = Map.unmodifiable(<BookField, Object?>{
+         BookField.title: title,
+         BookField.subtitle: subtitle,
+         BookField.description: description,
+         BookField.coverUrl: coverUrl,
+         BookField.seriesName: seriesName,
+         BookField.seriesIndex: seriesIndex,
+         BookField.genres: List<String>.unmodifiable(genres),
+         BookField.language: language,
+         BookField.publisher: publisher,
+         BookField.publishedDate: publishedDate,
+         BookField.isbn: isbn,
+         BookField.abridged: abridged,
+         BookField.status: status,
+         BookField.contentRating: contentRating,
+         BookField.totalDurationMs: totalDurationMs,
+         BookField.webUrl: webUrl,
        });
 
   BookDetailsSnapshot._(this._values);
 
-  final Map<BookDetailField, Object?> _values;
+  final Map<BookField, Object?> _values;
 
-  String get title => _values[BookDetailField.title]! as String;
-  String? get subtitle => _values[BookDetailField.subtitle] as String?;
-  String? get description => _values[BookDetailField.description] as String?;
-  String? get coverUrl => _values[BookDetailField.coverUrl] as String?;
-  String? get seriesName => _values[BookDetailField.seriesName] as String?;
-  double? get seriesIndex => _values[BookDetailField.seriesIndex] as double?;
-  List<String> get genres => _values[BookDetailField.genres]! as List<String>;
-  String? get language => _values[BookDetailField.language] as String?;
-  String? get publisher => _values[BookDetailField.publisher] as String?;
-  String? get publishedDate =>
-      _values[BookDetailField.publishedDate] as String?;
-  String? get isbn => _values[BookDetailField.isbn] as String?;
-  bool? get abridged => _values[BookDetailField.abridged] as bool?;
-  String? get status => _values[BookDetailField.status] as String?;
-  String? get contentRating =>
-      _values[BookDetailField.contentRating] as String?;
-  int? get totalDurationMs => _values[BookDetailField.totalDurationMs] as int?;
-  String? get webUrl => _values[BookDetailField.webUrl] as String?;
+  String get title => _values[BookField.title]! as String;
+  String? get subtitle => _values[BookField.subtitle] as String?;
+  String? get description => _values[BookField.description] as String?;
+  String? get coverUrl => _values[BookField.coverUrl] as String?;
+  String? get seriesName => _values[BookField.seriesName] as String?;
+  double? get seriesIndex => _values[BookField.seriesIndex] as double?;
+  List<String> get genres => _values[BookField.genres]! as List<String>;
+  String? get language => _values[BookField.language] as String?;
+  String? get publisher => _values[BookField.publisher] as String?;
+  String? get publishedDate => _values[BookField.publishedDate] as String?;
+  String? get isbn => _values[BookField.isbn] as String?;
+  bool? get abridged => _values[BookField.abridged] as bool?;
+  String? get status => _values[BookField.status] as String?;
+  String? get contentRating => _values[BookField.contentRating] as String?;
+  int? get totalDurationMs => _values[BookField.totalDurationMs] as int?;
+  String? get webUrl => _values[BookField.webUrl] as String?;
 
   /// The value of [field], for code that treats fields uniformly.
-  Object? operator [](BookDetailField field) => _values[field];
+  Object? operator [](BookField field) => _values[field];
 
   /// These details, with the values of [fields] taken from [other] instead.
   BookDetailsSnapshot withFieldsFrom(
     BookDetailsSnapshot other,
-    Iterable<BookDetailField> fields,
+    Iterable<BookField> fields,
   ) => BookDetailsSnapshot._(
-    Map.unmodifiable(<BookDetailField, Object?>{
+    Map.unmodifiable(<BookField, Object?>{
       ..._values,
       for (final field in fields) field: other._values[field],
     }),
@@ -178,13 +158,13 @@ final class BookDetailsSnapshot {
   @override
   bool operator ==(Object other) =>
       other is BookDetailsSnapshot &&
-      BookDetailField.values.every(
+      BookField.values.every(
         (field) => _sameValue(_values[field], other._values[field]),
       );
 
   @override
   int get hashCode => Object.hashAll([
-    for (final field in BookDetailField.values)
+    for (final field in BookField.values)
       switch (_values[field]) {
         final List<Object?> list => Object.hashAll(list),
         final value => value,
@@ -203,12 +183,6 @@ bool _sameValue(Object? a, Object? b) {
   return a == b;
 }
 
-/// The part a person played in making a book.
-///
-/// Named apart from the data package's `ContributorRole` so that code using both packages never has
-/// two types of one name in scope.
-enum CreditRole { author, narrator }
-
 /// An author or narrator credit.
 final class ContributorSnapshot {
   const ContributorSnapshot({
@@ -218,7 +192,7 @@ final class ContributorSnapshot {
   });
 
   final String name;
-  final CreditRole role;
+  final ContributorRole role;
 
   /// Credit order within the role.
   final int ordinal;
@@ -254,7 +228,7 @@ final class BookSnapshot {
   final BookDetailsSnapshot details;
 
   /// The fields of [details] the user has edited.
-  final Set<BookDetailField> userOverrides;
+  final Set<BookField> userOverrides;
 
   final List<ContributorSnapshot> contributors;
   final bool inLibrary;
@@ -317,8 +291,8 @@ final class MediaFileSnapshot {
   /// same as probed and found to have none.
   final List<TimelineMarker>? embeddedMarkers;
 
-  /// Where the file is on the device the snapshot was taken on. `proto/backup.proto` explains why a
-  /// backup carries it.
+  /// Where the file is on the device the snapshot was taken on. The backup format's schema,
+  /// `packages/backup/proto/backup.proto`, explains why a backup carries it.
   final String? localPath;
 
   final DateTime? downloadedAt;

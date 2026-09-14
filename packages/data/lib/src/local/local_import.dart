@@ -2,7 +2,6 @@ import 'package:drift/drift.dart' hide isNull;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
-import '../database/tables.dart';
 
 /// The built-in Local files source (§3.10).
 ///

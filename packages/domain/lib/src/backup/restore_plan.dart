@@ -1,15 +1,18 @@
 /// What a restore will change, worked out before anything is changed.
 ///
-/// Like chapter synchronisation in the data package, planning is pure: the planner compares a backup
-/// with the library and returns a plan, and a `RestoreWriter` applies it. Every merge rule can then be
-/// tested without a database, and a restore that would change nothing is recognisable as such.
+/// The `backup` package's planner compares a backup with the library and returns a plan, and a
+/// `RestoreWriter`, which the data package implements over the database, applies it. Like the
+/// snapshots a plan is made from, it lives in the domain so that neither package depends on the other
+/// (§2.4). Planning is pure, like chapter synchronisation, so every merge rule can be tested without
+/// a database, and a restore that would change nothing is recognisable as such.
 ///
 /// A plan has no way to express a deletion, on purpose. A restore only adds to the library and brings
 /// back progress. It never removes a book, chapter, category, bookmark or listening session, whatever
 /// the backup lacks.
 library;
 
-import 'snapshot.dart';
+import '../library/book_field.dart';
+import 'library_snapshot.dart';
 
 /// Everything a restore changes.
 final class RestorePlan {
@@ -43,7 +46,7 @@ final class RestorePlan {
 /// A book's details, with the set of fields in them that the user has edited.
 typedef EditedDetails = ({
   BookDetailsSnapshot details,
-  Set<BookDetailField> userOverrides,
+  Set<BookField> userOverrides,
 });
 
 /// What a restore changes in a book the library already has.

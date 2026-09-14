@@ -3,6 +3,11 @@
 The backup format, reading and writing backup files, and the restore planner. Pure Dart: it depends
 only on `kikuyomi_domain`, plus `protobuf` and `fixnum` for the format itself.
 
+The values it works with, library snapshots and restore plans, and the interfaces through which it
+reads and restores the library, live in `kikuyomi_domain` under `lib/src/backup/`. The data package
+implements those interfaces over the database, so neither package depends on the other (§2.4 of the
+architecture), the same arrangement as `PlaybackStore`.
+
 The format is gzipped protobuf, as [ADR-0008](../../docs/adr/0008-gzipped-protobuf-backups.md)
 decided. Backups exist so that an Android uninstall or an iOS re-sign loses nothing, which means a
 backup has to restore cleanly into a build that is newer *or older* than the one that wrote it.
@@ -60,8 +65,8 @@ formatting.
 3. Regenerate, as above.
 4. Raise `backupFormatVersion` in `lib/src/codec.dart`. Leave `backupMinReaderVersion` alone unless
    older readers would restore the new backups incorrectly, which deserves an ADR of its own.
-5. Write and read it in `lib/src/codec.dart`, and set it in `fullLibrary()` in
-   `test/fixtures.dart`. The test `sets every field of the format from a fully populated library`
+5. Add it to the snapshot types in `packages/domain/lib/src/backup/library_snapshot.dart`, write and
+   read it in `lib/src/codec.dart`, and set it in `fullLibrary()` in `test/fixtures.dart`. The test `sets every field of the format from a fully populated library`
    fails until both are done.
 6. Carry it through the database reader and writer in `packages/data/lib/src/backup/`, whose
    round-trip test compares every column.

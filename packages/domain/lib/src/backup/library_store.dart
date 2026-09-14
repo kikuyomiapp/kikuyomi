@@ -1,12 +1,13 @@
 /// The library, as backup and restore need it, behind interfaces.
 ///
-/// §2.4 lets this package depend on the domain alone, so it cannot reach the database. It says here
-/// what it needs instead, and the data package implements it over Drift, the same way the domain's
-/// `PlaybackStore` joins playback to the database without either knowing the other.
+/// The `backup` package turns what a [LibrarySnapshotReader] reads into backup files, and plans what a
+/// [RestoreWriter] applies; the data package implements both over Drift. §2.4 lets neither of those
+/// packages depend on the other, so the interfaces sit here in the domain, exactly as
+/// `PlaybackStore` joins playback to the database.
 library;
 
+import 'library_snapshot.dart';
 import 'restore_plan.dart';
-import 'snapshot.dart';
 
 /// Reads the library as it is now.
 abstract interface class LibrarySnapshotReader {
@@ -14,7 +15,7 @@ abstract interface class LibrarySnapshotReader {
   /// with everything that hangs off it.
   ///
   /// Books outside the library are included because a restore has to match against them too. Which
-  /// books a backup keeps is decided afterwards, by `selectForBackup`.
+  /// books a backup keeps is decided afterwards, by the `backup` package's `selectForBackup`.
   ///
   /// Lists come in a stable order that depends on identities, never on database ids, so that two
   /// databases holding the same library read identically: sources by id, categories by sort order

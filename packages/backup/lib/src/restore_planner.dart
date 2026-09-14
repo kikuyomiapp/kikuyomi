@@ -10,8 +10,7 @@ library;
 
 import 'dart:math' as math;
 
-import 'restore_plan.dart';
-import 'snapshot.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 /// Plans restoring [backup] into [current], the library as it is now.
 ///

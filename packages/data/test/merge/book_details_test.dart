@@ -1,4 +1,5 @@
 import 'package:kikuyomi_data/kikuyomi_data.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:test/test.dart';
 
 BookDetails storedBook() => BookDetails(

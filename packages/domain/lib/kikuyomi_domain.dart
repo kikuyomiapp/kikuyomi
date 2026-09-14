@@ -6,7 +6,12 @@
 /// Pure Dart. This package must never import Flutter or a platform plugin.
 library;
 
+export 'src/backup/library_snapshot.dart';
+export 'src/backup/library_store.dart';
+export 'src/backup/restore_plan.dart';
 export 'src/clock.dart';
+export 'src/library/book_field.dart';
+export 'src/library/contributor_role.dart';
 export 'src/playback/listening_session.dart';
 export 'src/playback/media_resolver.dart';
 export 'src/playback/playback_store.dart';

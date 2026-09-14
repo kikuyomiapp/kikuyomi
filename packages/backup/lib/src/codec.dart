@@ -23,7 +23,6 @@ import 'package:protobuf/protobuf.dart';
 
 import 'generated/backup.pb.dart' as pb;
 import 'gzip_frame.dart';
-import 'snapshot.dart';
 
 /// The format version this build writes, and the newest one it knows.
 ///
@@ -229,8 +228,10 @@ pb.Book _encodeBook(BookSnapshot book) {
         pb.Contributor(
           name: credit.name,
           role: switch (credit.role) {
-            CreditRole.author => pb.ContributorRole.CONTRIBUTOR_ROLE_AUTHOR,
-            CreditRole.narrator => pb.ContributorRole.CONTRIBUTOR_ROLE_NARRATOR,
+            ContributorRole.author =>
+              pb.ContributorRole.CONTRIBUTOR_ROLE_AUTHOR,
+            ContributorRole.narrator =>
+              pb.ContributorRole.CONTRIBUTOR_ROLE_NARRATOR,
           },
           ordinal: credit.ordinal,
         ),
@@ -441,17 +442,18 @@ final class _Decoder {
         : null;
 
     // Names this build does not know come from a newer one, and are skipped as unknown fields are.
-    final knownFields = BookDetailField.values.asNameMap();
-    final userOverrides = Set<BookDetailField>.unmodifiable({
+    final knownFields = BookField.values.asNameMap();
+    final userOverrides = Set<BookField>.unmodifiable({
       for (final name in book.userOverrides) ?knownFields[name],
     });
 
     final contributors = <ContributorSnapshot>[];
-    final credited = <(String, CreditRole)>{};
+    final credited = <(String, ContributorRole)>{};
     for (final credit in book.contributors) {
       final role = switch (credit.role) {
-        pb.ContributorRole.CONTRIBUTOR_ROLE_AUTHOR => CreditRole.author,
-        pb.ContributorRole.CONTRIBUTOR_ROLE_NARRATOR => CreditRole.narrator,
+        pb.ContributorRole.CONTRIBUTOR_ROLE_AUTHOR => ContributorRole.author,
+        pb.ContributorRole.CONTRIBUTOR_ROLE_NARRATOR =>
+          ContributorRole.narrator,
         // A role from a newer build, skipped like an unknown field.
         _ => null,
       };

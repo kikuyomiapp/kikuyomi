@@ -1,14 +1,14 @@
-import 'package:kikuyomi_backup/kikuyomi_backup.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
 import 'library_snapshot_query.dart';
 import 'restore_plan_writes.dart';
 
-/// The database's part in backups: the `backup` package's [LibrarySnapshotReader] and
-/// [RestoreWriter], over Drift.
+/// The database's part in backups: the domain's [LibrarySnapshotReader] and [RestoreWriter], over
+/// Drift.
 ///
-/// Everything else about backups is pure Dart in that package, which §2.4 does not let depend on
-/// this one. It states what it needs of the library as interfaces, and this is their implementation.
+/// The `backup` package encodes what this reads and plans what this writes. Like `PlaybackStore`, the
+/// interfaces live in the domain, so that neither package depends on the other (§2.4).
 final class DriftBackupStore implements LibrarySnapshotReader, RestoreWriter {
   DriftBackupStore(this._db);
 

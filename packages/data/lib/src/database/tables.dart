@@ -11,6 +11,7 @@
 library;
 
 import 'package:drift/drift.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import 'converters.dart';
 
@@ -91,8 +92,6 @@ class People extends Table {
   /// sharing a name will merge; that is the accepted cost of not having an identity from sources.
   TextColumn get name => text().unique()();
 }
-
-enum ContributorRole { author, narrator }
 
 @DataClassName('BookPersonRow')
 class BookPeople extends Table {

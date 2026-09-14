@@ -15,13 +15,15 @@ final info = BackupInfo(
   deviceId: 'this-pc',
 );
 
+/// The id of [fullLibrary]'s source: negative, to exercise all 64 bits of a hashed id.
+const catalogSourceId = -4242424242424242424;
+
 /// A library in which every field of the format holds something other than its default, so that a
 /// field the codec forgets to write shows up as unset.
 LibrarySnapshot fullLibrary() => LibrarySnapshot(
   sources: [
     SourceSnapshot(
-      // Negative, to exercise all 64 bits of a hashed id.
-      id: -4242424242424242424,
+      id: catalogSourceId,
       extensionId: 'org.example.catalog',
       key: 'catalog',
       name: 'A Catalog',
@@ -35,7 +37,7 @@ LibrarySnapshot fullLibrary() => LibrarySnapshot(
   categories: const [CategorySnapshot(name: 'Next up', sortOrder: 3, flags: 5)],
   books: [
     BookSnapshot(
-      sourceId: -4242424242424242424,
+      sourceId: catalogSourceId,
       key: '/books/a-book',
       details: BookDetailsSnapshot(
         title: 'A Book',
@@ -55,11 +57,11 @@ LibrarySnapshot fullLibrary() => LibrarySnapshot(
         totalDurationMs: 600000,
         webUrl: 'https://example.org/a-book',
       ),
-      userOverrides: const {BookDetailField.title, BookDetailField.coverUrl},
+      userOverrides: const {BookField.title, BookField.coverUrl},
       contributors: const [
         ContributorSnapshot(
           name: 'An Author',
-          role: CreditRole.author,
+          role: ContributorRole.author,
           ordinal: 1,
         ),
       ],

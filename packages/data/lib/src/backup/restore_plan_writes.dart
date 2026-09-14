@@ -1,9 +1,7 @@
 import 'package:drift/drift.dart';
-import 'package:kikuyomi_backup/kikuyomi_backup.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
-import '../database/tables.dart';
-import '../merge/book_details.dart';
 
 /// Writes a [RestorePlan] to the database.
 ///
@@ -166,7 +164,7 @@ Future<void> _mergeBook(
 /// The detail columns of a book row.
 BooksCompanion _details(
   BookDetailsSnapshot details,
-  Set<BookDetailField> userOverrides,
+  Set<BookField> userOverrides,
 ) => BooksCompanion(
   title: Value(details.title),
   subtitle: Value(details.subtitle),
@@ -184,10 +182,7 @@ BooksCompanion _details(
   contentRating: Value(details.contentRating),
   totalDurationMs: Value(details.totalDurationMs),
   webUrl: Value(details.webUrl),
-  // The two enums share their names, which a test holds them to.
-  userOverrides: Value({
-    for (final field in userOverrides) BookField.values.byName(field.name),
-  }),
+  userOverrides: Value(userOverrides),
 );
 
 /// Credits people by name, creating each person the first time, as importing a book does.
@@ -212,10 +207,7 @@ Future<void> _credit(
           BookPeopleCompanion(
             bookId: Value(bookId),
             personId: Value(person.id),
-            role: Value(switch (credit.role) {
-              CreditRole.author => ContributorRole.author,
-              CreditRole.narrator => ContributorRole.narrator,
-            }),
+            role: Value(credit.role),
             ordinal: Value(credit.ordinal),
           ),
           mode: InsertMode.insertOrIgnore,
