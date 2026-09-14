@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart';
 import 'package:test/test.dart';
 
+import 'support/image_bytes.dart';
 import 'support/mp3_bytes.dart';
 
 /// An MP3 carrying whichever tags are given.
@@ -130,6 +131,58 @@ void main() {
     expect(tracks[0].durationIsEstimate, isFalse);
     expect(tracks[1].durationIsEstimate, isTrue);
     expect(tracks[1].format, 'mp3');
+  });
+
+  group('cover', () {
+    test('is the image named cover, before folder, front or any other, in any case', () async {
+      await put('01.mp3', mp3());
+      await put('back.jpg', jpegBytes());
+      await put('Front.png', pngBytes());
+      await put('FOLDER.JPG', jpegBytes());
+      await put('Cover.jpeg', jpegBytes());
+      expect((await read()).coverFileName, 'Cover.jpeg');
+    });
+
+    test('is the image named folder, before front', () async {
+      await put('01.mp3', mp3());
+      await put('front.jpg', jpegBytes());
+      await put('Folder.png', pngBytes());
+      await put('back.jpg', jpegBytes());
+      expect((await read()).coverFileName, 'Folder.png');
+    });
+
+    test(
+      'is the image named front when none is named cover or folder',
+      () async {
+        await put('01.mp3', mp3());
+        await put('Front.JPG', jpegBytes());
+        await put('back.png', pngBytes());
+        expect((await read()).coverFileName, 'Front.JPG');
+      },
+    );
+
+    test('is the folder\'s only image, whatever its name', () async {
+      await put('01.mp3', mp3());
+      await put('artwork.png', pngBytes());
+      await put('cover.txt', utf8.encode('Not an image.'));
+      expect((await read()).coverFileName, 'artwork.png');
+    });
+
+    test(
+      'is unknown among several images with none named as a cover',
+      () async {
+        await put('01.mp3', mp3());
+        await put('back.jpg', jpegBytes());
+        await put('disc.png', pngBytes());
+        expect((await read()).coverFileName, isNull);
+      },
+    );
+
+    test('is unknown when the only image is hidden', () async {
+      await put('01.mp3', mp3());
+      await put('._cover.jpg', jpegBytes());
+      expect((await read()).coverFileName, isNull);
+    });
   });
 
   group('other files', () {

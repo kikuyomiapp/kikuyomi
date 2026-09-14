@@ -11,9 +11,13 @@ import 'dart:math' as math;
 import 'mp3_info.dart';
 import 'mp4_chapters.dart';
 
-/// The extensions read as a book's audio. Anything else in a folder, such as a cover image, a
-/// playlist or a text file, is ignored.
+/// The extensions read as a book's audio. Anything else in a folder, such as a playlist or a text
+/// file, is ignored, apart from a cover image: see [readFolderBook].
 const audioExtensions = {'mp3', 'm4a', 'm4b', 'mp4'};
+
+/// The extensions of an image beside a book's audio that may be its cover: the formats rippers and
+/// taggers save cover art in, which every platform can decode.
+const _imageExtensions = {'jpg', 'jpeg', 'png'};
 
 /// One audio file of a folder book.
 final class FolderTrack {
@@ -51,6 +55,7 @@ final class FolderBook {
     required this.narrators,
     required this.tracks,
     required this.unreadable,
+    this.coverFileName,
   });
 
   final String title;
@@ -63,6 +68,11 @@ final class FolderBook {
   /// Audio files, by name, that could not be read. They are left out of the book rather than failing
   /// it, so one damaged file does not cost the rest.
   final List<String> unreadable;
+
+  /// The name of the image in the folder to show as the book's cover, or null when there is none
+  /// or no telling which one it is. Only the name is known: the image is not read, so it may yet
+  /// fail to decode.
+  final String? coverFileName;
 }
 
 /// Reads [folder] as a book, or returns null when it holds no audio that can be read.
@@ -74,9 +84,16 @@ final class FolderBook {
 /// share one, and otherwise in natural order of their file names, so that "Chapter 2" comes before
 /// "Chapter 10". Partial or repeated numbers are common enough in hand-made rips that trusting them
 /// would scramble the book.
+///
+/// The cover is the image named `cover`, `folder` or `front`, tried in that order and in any case,
+/// which are the names music players have long looked for; failing those, the folder's only image.
+/// Among several images with other names none is chosen, since nothing tells a front cover from a
+/// back cover or a disc scan. Only names are looked at here: a cover embedded in the audio comes
+/// from [readMp3Info] or [readMp4Info] when asked for.
 Future<FolderBook?> readFolderBook(Directory folder) async {
   final probed = <_Probed>[];
   final unreadable = <String>[];
+  final images = <String>[];
   final files = await folder
       .list(followLinks: false)
       .where((entity) => entity is File)
@@ -85,7 +102,12 @@ Future<FolderBook?> readFolderBook(Directory folder) async {
   for (final file in files) {
     final name = _lastSegment(file.path);
     final format = _extension(name);
-    if (name.startsWith('.') || !audioExtensions.contains(format)) continue;
+    if (name.startsWith('.')) continue;
+    if (_imageExtensions.contains(format)) {
+      images.add(name);
+      continue;
+    }
+    if (!audioExtensions.contains(format)) continue;
     final info = await _probe(file, name, format);
     if (info == null) {
       unreadable.add(name);
@@ -145,7 +167,21 @@ Future<FolderBook?> readFolderBook(Directory folder) async {
         ),
     ],
     unreadable: unreadable,
+    coverFileName: _coverFileName(images),
   );
+}
+
+/// The cover among a folder's [images], by name, as [readFolderBook] describes it.
+String? _coverFileName(List<String> images) {
+  for (final stem in const ['cover', 'folder', 'front']) {
+    final named = [
+      for (final name in images)
+        if (_stem(name).toLowerCase() == stem) name,
+    ];
+    // Several, such as cover.jpg beside cover.png, are told apart only by a fixed order.
+    if (named.isNotEmpty) return (named..sort()).first;
+  }
+  return images.length == 1 ? images.single : null;
 }
 
 /// What reading one file found, before the folder is put in order.
