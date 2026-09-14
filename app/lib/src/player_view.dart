@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart' show NavigationEntry;
 import 'package:kikuyomi_playback/kikuyomi_playback.dart'
     show
         PlayerReady,
@@ -9,6 +10,7 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart'
         SleepTimerRunning,
         SleepTimerTarget;
 
+import 'chapter_list.dart';
 import 'format.dart';
 
 /// The sleep timer's menu: §6.5's presets and "end of chapter". A custom duration comes later.
@@ -28,6 +30,10 @@ enum _SleepChoice {
   final SleepTimerTarget? target;
 }
 
+/// From Material's expanded window width up, the chapter list opens beside the controls, where it
+/// can stay open while the book plays, rather than in a sheet over them (§2.6's adaptive layout).
+const _sidePanelMinWidth = 840.0;
+
 /// The player's controls for an open book. Pure: it renders a [PlayerReady] and reports gestures,
 /// and knows nothing of the coordinator, which keeps it testable as a widget on its own.
 class PlayerView extends StatefulWidget {
@@ -35,6 +41,7 @@ class PlayerView extends StatefulWidget {
     super.key,
     required this.title,
     required this.state,
+    required this.navigation,
     required this.onPlayPause,
     required this.onSeek,
     required this.onSkip,
@@ -49,7 +56,15 @@ class PlayerView extends StatefulWidget {
 
   final String title;
   final PlayerReady state;
+
+  /// The book's chapters, or the embedded markers standing in for them (§4.5), in order. Empty
+  /// until they have loaded; the chapter list cannot be opened before then.
+  final List<NavigationEntry> navigation;
+
   final VoidCallback onPlayPause;
+
+  /// A seek to a position in book-global time: from the scrubber, or to the start of a chapter
+  /// picked from the list.
   final ValueChanged<int> onSeek;
   final ValueChanged<Duration> onSkip;
   final VoidCallback onPreviousChapter;
@@ -66,8 +81,66 @@ class _PlayerViewState extends State<PlayerView> {
   /// Where the thumb is while being dragged, so incoming positions do not fight the finger.
   double? _dragging;
 
+  /// Whether the side panel is open. Only a wide layout shows it; a narrow one opens a sheet instead.
+  bool _chaptersOpen = false;
+
+  Future<void> _showChapterSheet() => showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      top: false,
+      child: _ChapterPanel(
+        entries: widget.navigation,
+        current: widget.state.entry,
+        onSelected: (entry) {
+          Navigator.pop(sheetContext);
+          widget.onSeek(entry.startMs);
+        },
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= _sidePanelMinWidth;
+        final panelShown =
+            wide && _chaptersOpen && widget.navigation.isNotEmpty;
+        // One row whether or not the panel shows, so opening it does not rebuild the controls.
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: _controls(context, wide: wide, panelShown: panelShown),
+            ),
+            if (panelShown) ...[
+              const VerticalDivider(width: 1),
+              SizedBox(
+                width: 360,
+                child: SafeArea(
+                  left: false,
+                  top: false,
+                  child: _ChapterPanel(
+                    entries: widget.navigation,
+                    current: widget.state.entry,
+                    // The panel stays open, to go on browsing from.
+                    onSelected: (entry) => widget.onSeek(entry.startMs),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _controls(
+    BuildContext context, {
+    required bool wide,
+    required bool panelShown,
+  }) {
     final state = widget.state;
     final theme = Theme.of(context);
     final total = math.max(state.totalMs, 1).toDouble();
@@ -155,6 +228,17 @@ class _PlayerViewState extends State<PlayerView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  IconButton(
+                    tooltip: 'Chapters',
+                    isSelected: panelShown,
+                    icon: const Icon(Icons.format_list_bulleted),
+                    onPressed: widget.navigation.isEmpty
+                        ? null
+                        : wide
+                        ? () => setState(() => _chaptersOpen = !_chaptersOpen)
+                        : _showChapterSheet,
+                  ),
+                  const SizedBox(width: 16),
                   PopupMenuButton<double>(
                     tooltip: 'Playback speed',
                     initialValue: state.speed,
@@ -220,6 +304,43 @@ class _PlayerViewState extends State<PlayerView> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The chapter list under its heading, as the bottom sheet and the side panel both show it.
+class _ChapterPanel extends StatelessWidget {
+  const _ChapterPanel({
+    required this.entries,
+    required this.current,
+    required this.onSelected,
+  });
+
+  final List<NavigationEntry> entries;
+  final NavigationEntry current;
+  final ValueChanged<NavigationEntry> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+          child: Text(
+            'Chapters',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
+        Flexible(
+          child: ChapterList(
+            entries: entries,
+            current: current,
+            onSelected: onSelected,
+          ),
+        ),
+      ],
     );
   }
 }

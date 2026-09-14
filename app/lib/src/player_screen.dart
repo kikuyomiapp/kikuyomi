@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart' show NavigationEntry;
 import 'package:kikuyomi_playback/kikuyomi_playback.dart'
     show PlayerFailed, PlayerIdle, PlayerLoading, PlayerReady;
 
@@ -54,9 +55,18 @@ class _ReadyPlayer extends ConsumerWidget {
           loading: () => '',
           error: (_, _) => '',
         );
+    final navigation = ref
+        .watch(navigationProvider(state.bookId))
+        .when(
+          data: (entries) => entries,
+          // Until the chapters have loaded, or if they cannot be, the player offers no list.
+          loading: () => const <NavigationEntry>[],
+          error: (_, _) => const <NavigationEntry>[],
+        );
     return PlayerView(
       title: title,
       state: state,
+      navigation: navigation,
       onPlayPause: () =>
           state.playing ? coordinator.pause() : coordinator.play(),
       onSeek: coordinator.seekTo,
