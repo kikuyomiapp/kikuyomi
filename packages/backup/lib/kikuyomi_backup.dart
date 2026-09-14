@@ -5,3 +5,6 @@
 ///
 /// Pure Dart. This package must never import Flutter or a platform plugin.
 library;
+
+export 'src/codec.dart';
+export 'src/snapshot.dart';

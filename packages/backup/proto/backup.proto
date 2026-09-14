@@ -1,0 +1,288 @@
+// Kikuyomi's backup format.
+//
+// docs/adr/0008-gzipped-protobuf-backups.md chose gzipped protobuf because field numbers make
+// forward and backward compatibility structural rather than a convention. That holds only while
+// these rules do, and breaking one silently corrupts restores in a way no round-trip test of the
+// current version will catch:
+//
+// - A field number, once shipped, is permanent. It is never renumbered and never reused for a
+//   different meaning. A removed field's number and name go into a `reserved` statement.
+// - A field's meaning never changes, and its type changes only to a wire-compatible one.
+// - Adding a field is always safe: an older build skips it, and a newer build reading an older
+//   backup sees the field's default. So a new field's default has to be a correct reading of every
+//   backup written before it existed.
+// - Scalars whose absence must be told apart from zero or empty are `optional`, mirroring the
+//   nullable columns of docs/architecture.md §4.3.
+//
+// Every timestamp is milliseconds since the Unix epoch, UTC, in a field ending `_at_ms`. Durations
+// and positions are milliseconds, in fields ending `_ms`.
+//
+// No database surrogate id appears anywhere. They mean nothing outside the database that assigned
+// them, so references use the identities §4.4 defines instead: a source by its stable id, a book by
+// its source and key, a chapter by its key within its book, a file by its key within its book, and a
+// category by its name.
+//
+// Left out on purpose, and why:
+//
+// - Books that are neither in the library nor carrying user data. They are details cached while
+//   browsing, and opening the book fetches them again.
+// - Sources that no backed-up book refers to. A source row exists so that books have somewhere to
+//   point, which §3.9 relies on when an extension is uninstalled.
+// - Download tasks (§5.2). They are the queue of one device's transport, holding URLs that expire
+//   within minutes; a restored library downloads again.
+// - The cached cover image and when it was fetched (`cover_local_path`, `cover_updated_at`). The
+//   image is fetched again from `cover_url`. A custom cover image is therefore not carried yet;
+//   carrying it is a new field, not a change to an existing one.
+// - Tables that do not exist yet: repositories, extensions and their preferences, smart
+//   collections, tracker links. Each arrives as new fields here with its phase. App preferences
+//   that should survive a restore (§4.3) will get their own message once the settings store exists.
+//
+// After editing this file, regenerate the Dart code as packages/backup/README.md describes.
+
+syntax = "proto3";
+
+package kikuyomi.backup;
+
+// One backup: the whole content of one backup file, before gzip.
+message Backup {
+  // The version of this schema the writer implemented. Informational: it says which fields a reader
+  // may expect, and helps diagnose a bad restore. It rises with every change to this file that
+  // matters to a reader, including purely additive ones.
+  uint32 format_version = 1;
+
+  // The oldest format version a reader can implement and still restore this backup correctly.
+  // Additive changes leave it alone, which is what lets an older build read a newer backup, as
+  // ADR-0008 requires. It rises only for a change an older reader would silently get wrong by
+  // skipping what it does not know, and a reader older than it refuses the backup rather than
+  // restoring it partially.
+  uint32 min_reader_version = 2;
+
+  int64 created_at_ms = 3;
+
+  // The app version that wrote the backup, as the app reports it. For diagnostics only.
+  string app_version = 4;
+
+  // The device that wrote the backup, in the same form as `PlaybackState.device_id`.
+  string device_id = 5;
+
+  repeated Source sources = 6;
+  repeated Category categories = 7;
+  repeated Book books = 8;
+}
+
+// A content source, as §4.3's `source` table describes it.
+message Source {
+  // The stable 64-bit id from §3.7: a hash, so its bits are uniformly spread and a fixed-width
+  // encoding is smaller than a varint.
+  sfixed64 id = 1;
+
+  // Absent for a built-in source.
+  optional string extension_id = 2;
+
+  string key = 3;
+  string name = 4;
+  string lang = 5;
+  optional string content_rating = 6;
+  bool is_enabled = 7;
+  bool is_pinned = 8;
+  optional int64 last_used_at_ms = 9;
+}
+
+// A manual library category (ADR-0009). Identified by its name.
+message Category {
+  string name = 1;
+  int32 sort_order = 2;
+
+  // Per-category sort, filter and display settings, packed as §4.3 describes.
+  int64 flags = 3;
+}
+
+// A book, with everything that hangs off it.
+message Book {
+  // With `key`, the book's identity (§4.4).
+  sfixed64 source_id = 1;
+  string key = 2;
+
+  string title = 3;
+  optional string subtitle = 4;
+  optional string description = 5;
+  optional string cover_url = 6;
+  optional string series_name = 7;
+  optional double series_index = 8;
+  repeated string genres = 9;
+  optional string language = 10;
+  optional string publisher = 11;
+  optional string published_date = 12;
+  optional string isbn = 13;
+  optional bool abridged = 14;
+  optional string status = 15;
+  optional string content_rating = 16;
+  optional int64 total_duration_ms = 17;
+  optional string web_url = 18;
+
+  // The detail fields the user has edited, by name: `title`, `subtitle`, `description`, `cover_url`
+  // as `coverUrl`, and so on, spelled as the app's own field names. Names rather than an enum,
+  // because a name a reader does not know is simply skipped, where a new enum number would arrive
+  // as an unexplained default.
+  repeated string user_overrides = 19;
+
+  repeated Contributor contributors = 20;
+
+  bool in_library = 21;
+  optional int64 date_added_at_ms = 22;
+  optional int64 last_refreshed_at_ms = 23;
+  bool details_fetched = 24;
+
+  // §4.3: playback speed is remembered per book. Absent when it was never changed.
+  optional double playback_speed = 25;
+
+  int64 created_at_ms = 26;
+  int64 updated_at_ms = 27;
+
+  repeated MediaFile media_files = 28;
+  repeated Chapter chapters = 29;
+
+  // Absent for a book that was never started.
+  PlaybackState playback_state = 30;
+
+  repeated ListeningSession listening_sessions = 31;
+  repeated Bookmark bookmarks = 32;
+
+  // The names of the categories the book belongs to.
+  repeated string categories = 33;
+}
+
+enum ContributorRole {
+  CONTRIBUTOR_ROLE_UNSPECIFIED = 0;
+  CONTRIBUTOR_ROLE_AUTHOR = 1;
+  CONTRIBUTOR_ROLE_NARRATOR = 2;
+}
+
+// An author or narrator credit. §4.3 normalises people in the database; here a credit carries the
+// name, and a restore finds or creates the person by it.
+message Contributor {
+  string name = 1;
+
+  // A reader that does not know a role skips the credit.
+  ContributorRole role = 2;
+
+  // Credit order within the role.
+  int32 ordinal = 3;
+}
+
+// One physical audio file of a book.
+message MediaFile {
+  // The file's identity within its book.
+  string file_key = 1;
+
+  optional string format = 2;
+  optional int64 duration_ms = 3;
+
+  // True while `duration_ms` is an estimate rather than measured from the file (§4.5).
+  bool duration_is_estimate = 4;
+
+  optional int64 size_bytes = 5;
+
+  // Chapter markers probed from the file. Absent when the file was never probed for them, which is
+  // not the same as probed and found to have none.
+  MarkerList embedded_markers = 6;
+
+  // Where the file is on the device that wrote the backup: absolute for a file the user keeps where
+  // it is, relative to the app's media root for a file in the app's own storage. It is carried
+  // although another device may have nothing there, because for a local book it is the only way
+  // back to the user's own file, and the same device is the common case: a reinstall, or an iOS
+  // re-sign, leaves a user's folders where they were. A path with nothing behind it is reported as
+  // a missing file when played, the same as a file deleted behind the app's back.
+  optional string local_path = 7;
+
+  optional int64 downloaded_at_ms = 8;
+}
+
+message MarkerList {
+  repeated Marker markers = 1;
+}
+
+message Marker {
+  string title = 1;
+
+  // Offset into the file.
+  int64 start_ms = 2;
+}
+
+// A logical chapter of a book.
+message Chapter {
+  // The chapter's identity within its book.
+  string key = 1;
+
+  string title = 2;
+  int32 source_index = 3;
+  optional string group_name = 4;
+  optional int64 duration_ms = 5;
+  optional int64 published_at_ms = 6;
+  bool is_listened = 7;
+  optional int64 listened_at_ms = 8;
+
+  // Chapter-relative, per §4.5.
+  int64 last_position_ms = 9;
+
+  // §4.4's soft delete.
+  bool removed_from_source = 10;
+
+  int64 created_at_ms = 11;
+  int64 updated_at_ms = 12;
+
+  // The chapter's layout across files, in playing order.
+  repeated Segment segments = 13;
+}
+
+// A stretch of one file that forms part of a chapter.
+message Segment {
+  // A `MediaFile.file_key` of the same book.
+  string file_key = 1;
+
+  int64 start_ms = 2;
+
+  // Absent means to the end of the file.
+  optional int64 end_ms = 3;
+}
+
+// Where a book is up to: §4.3's `playback_state`.
+message PlaybackState {
+  // A `Chapter.key` of the same book.
+  string chapter_key = 1;
+
+  // The truth, per §4.5.
+  int64 chapter_position_ms = 2;
+
+  // Derived from the Timeline and cached for sorting.
+  int64 global_position_ms = 3;
+
+  int64 updated_at_ms = 4;
+  string device_id = 5;
+}
+
+// One stretch of listening, for history and statistics.
+message ListeningSession {
+  // A `Chapter.key` of the same book. Absent when the chapter was purged, since history outlives
+  // the chapters it covered.
+  optional string chapter_key = 1;
+
+  int64 started_at_ms = 2;
+  int64 ended_at_ms = 3;
+  int64 start_global_ms = 4;
+  int64 end_global_ms = 5;
+  double speed = 6;
+  string device_id = 7;
+}
+
+message Bookmark {
+  // A `Chapter.key` of the same book.
+  string chapter_key = 1;
+
+  // Chapter-relative.
+  int64 position_ms = 2;
+
+  optional string title = 3;
+  optional string note = 4;
+  int64 created_at_ms = 5;
+}

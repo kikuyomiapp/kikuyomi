@@ -17,8 +17,13 @@ environment:
   sdk: "^3.13.3"
 
 dependencies:
+  # Int64, which the generated code uses for every 64-bit field.
+  fixnum: ^1.1.0
   kikuyomi_domain:
     path: ../domain
+  # Runtime for the code generated from proto/backup.proto (ADR-0008). Pure Dart, so it runs on
+  # Android, iOS and Windows alike.
+  protobuf: ^6.1.0
 
 dev_dependencies:
   test: ^1.25.0
