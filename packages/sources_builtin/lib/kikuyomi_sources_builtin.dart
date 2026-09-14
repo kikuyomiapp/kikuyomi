@@ -8,5 +8,6 @@ library;
 
 export 'src/local/embedded_picture.dart' show EmbeddedPicture;
 export 'src/local/folder_book.dart';
+export 'src/local/local_cover.dart';
 export 'src/local/mp3_info.dart';
 export 'src/local/mp4_chapters.dart';

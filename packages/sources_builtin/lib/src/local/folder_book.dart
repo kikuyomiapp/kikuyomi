@@ -171,6 +171,23 @@ Future<FolderBook?> readFolderBook(Directory folder) async {
   );
 }
 
+/// The image in [folder] to take as its book's cover, or null when there is none: the image
+/// [readFolderBook] names as [FolderBook.coverFileName], found without reading the folder's audio.
+///
+/// For a book already in the library, whose tracks need not be probed again to find its cover. Only
+/// names are looked at, so the image may yet fail to read as one.
+Future<File?> findFolderCoverImage(Directory folder) async {
+  final images = <String, File>{};
+  await for (final entity in folder.list(followLinks: false)) {
+    if (entity is! File) continue;
+    final name = _lastSegment(entity.path);
+    if (!name.startsWith('.') && _imageExtensions.contains(_extension(name))) {
+      images[name] = entity;
+    }
+  }
+  return images[_coverFileName(images.keys.toList())];
+}
+
 /// The cover among a folder's [images], by name, as [readFolderBook] describes it.
 String? _coverFileName(List<String> images) {
   for (final stem in const ['cover', 'folder', 'front']) {
