@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 final class StorageLocations {
   const StorageLocations._({
     required this.appData,
+    required this.covers,
     required this.mediaRoot,
     required this.pickerHandsOverCopies,
     required this.importFolderIsVisible,
@@ -16,9 +17,13 @@ final class StorageLocations {
   static Future<StorageLocations> forThisDevice() async {
     final appData = await getApplicationSupportDirectory();
     await appData.create(recursive: true);
+    // §5.1 keeps library covers in internal storage on every platform. Application Support is that
+    // on iOS too, where Documents would show them in the Files app beside the imported books.
+    final covers = Directory('${appData.path}${Platform.pathSeparator}covers');
     if (Platform.isIOS) {
       return StorageLocations._(
         appData: appData,
+        covers: covers,
         // §5.1 keeps iOS imports in a folder the Files app shows, and Documents is the folder it
         // shows, given UIFileSharingEnabled in Info.plist.
         mediaRoot: await getApplicationDocumentsDirectory(),
@@ -30,6 +35,7 @@ final class StorageLocations {
     final android = Platform.isAndroid;
     return StorageLocations._(
       appData: appData,
+      covers: covers,
       mediaRoot: appData,
       pickerHandsOverCopies: android,
       importFolderIsVisible: false,
@@ -39,6 +45,13 @@ final class StorageLocations {
 
   /// App-internal data: the database and the device id.
   final Directory appData;
+
+  /// The covers of books in the library (§5.1), inside [appData]. It may not exist yet: whatever
+  /// writes the first cover creates it.
+  ///
+  /// Book rows record a cover by its name in this folder, never by an absolute path, since on iOS
+  /// the app's container can move when the app is updated or reinstalled.
+  final Directory covers;
 
   /// What paths to media in the app's own storage are stored relative to.
   final Directory mediaRoot;
