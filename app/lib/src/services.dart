@@ -58,11 +58,11 @@ final class AppServices {
     audioFocus.events.listen(
       (event) => unawaited(coordinator.onSystemAudio(event)),
     );
-    // The lock screen, the notification and headset buttons (§6.5). Its subscriptions keep it alive
-    // for as long as the app runs.
+    // The lock screen, the notification and headset buttons, or on Windows the media keys and the
+    // volume flyout (§6.5). Its subscriptions keep it alive for as long as the app runs.
     MediaSessionSync(
       coordinator: coordinator,
-      bridge: await AudioServiceBridge.start(skipInterval: _skipInterval),
+      bridge: await SystemMediaControls.start(skipInterval: _skipInterval),
       describe: (bookId) => _describeBook(database, bookId),
       clock: clock,
       skipInterval: _skipInterval,
