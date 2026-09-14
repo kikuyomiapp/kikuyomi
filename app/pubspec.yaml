@@ -51,6 +51,8 @@ dependencies:
     path: ../packages/sources_builtin
   kikuyomi_platform_adapters:
     path: ../packages/platform_adapters
+  kikuyomi_design_system:
+    path: ../packages/design_system
 
 dev_dependencies:
   flutter_test:

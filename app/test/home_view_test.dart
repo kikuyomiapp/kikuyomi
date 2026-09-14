@@ -1,12 +1,18 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kikuyomi/src/home_view.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart'
-    show BookRow, ContinueListeningBook;
+    show BookRow, ContinueListeningBook, CoverFiles;
+import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
 
 final added = DateTime.utc(2026, 9, 14);
 
-BookRow inLibrary(int id, String title) => BookRow(
+/// A covers folder that holds nothing: the views only name files in it.
+final covers = CoverFiles(Directory('covers'));
+
+BookRow inLibrary(int id, String title, {String? cover}) => BookRow(
   id: id,
   sourceId: 1,
   key: 'book-$id',
@@ -16,6 +22,7 @@ BookRow inLibrary(int id, String title) => BookRow(
   inLibrary: true,
   detailsFetched: true,
   userOverrides: const {},
+  coverLocalPath: cover,
   createdAt: added,
   updatedAt: added,
 );
@@ -24,6 +31,7 @@ ContinueListeningBook started(
   int id,
   String title, {
   String chapterTitle = 'Chapter Two',
+  String? cover,
 }) => ContinueListeningBook(
   bookId: id,
   title: title,
@@ -32,7 +40,7 @@ ContinueListeningBook started(
   globalPositionMs: 65000,
   chapterTitle: chapterTitle,
   lastPlayedAt: added,
-  coverFileName: null,
+  coverFileName: cover,
 );
 
 /// A home showing [continueListening] and [library], recording what was tapped in [tapped].
@@ -45,6 +53,7 @@ Widget home({
     body: HomeView(
       continueListening: continueListening,
       library: library,
+      covers: covers,
       emptyMessage: 'No books yet.',
       onResume: (bookId) => tapped?.add('resume $bookId'),
       onShowDetails: (bookId) => tapped?.add('details $bookId'),
@@ -88,6 +97,28 @@ void main() {
       expect(tapped, ['resume 2', 'details 1']);
     },
   );
+
+  testWidgets("shows each book's cover, found by the name it has", (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      home(
+        continueListening: [started(1, 'First Book', cover: '1.jpg')],
+        library: [
+          inLibrary(1, 'First Book', cover: '1.jpg'),
+          inLibrary(2, 'Second Book'),
+        ],
+      ),
+    );
+
+    final shown = tester.widgetList<BookCover>(find.byType(BookCover));
+    final first = covers.fileOf('1.jpg')!.path;
+    expect([for (final cover in shown) cover.file?.path], [first, first, null]);
+    expect(
+      [for (final cover in shown) cover.semanticLabel],
+      ['Cover of First Book', 'Cover of First Book', 'Cover of Second Book'],
+    );
+  });
 
   testWidgets('has no Continue listening before a book is started', (
     tester,

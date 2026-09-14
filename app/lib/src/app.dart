@@ -35,7 +35,9 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
       onResume: _lookForNewBooks,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_lookForNewBooks());
+      // Covers for books added before covers were kept wait for the first look in the import
+      // folder, whose new books bring their own, so start-up does the one thing at a time.
+      unawaited(_lookForNewBooks().then((_) => _lookForMissingCovers()));
       final path = widget.openOnLaunch;
       if (path != null) unawaited(_open(path));
     });
@@ -73,6 +75,25 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
       }
     } catch (error) {
       _tell('Could not look for new books: $error');
+    }
+  }
+
+  /// Looks, in the background, for the covers of books whose cover was never looked for. Quietly:
+  /// a book shown without its cover is not worth interrupting the listener over, so a failure is
+  /// only reported the way Flutter reports errors, for whoever is developing the app.
+  Future<void> _lookForMissingCovers() async {
+    void report(Object error, StackTrace stack) => FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'kikuyomi',
+        context: ErrorDescription("while looking for a book's cover"),
+      ),
+    );
+    try {
+      await ref.read(servicesProvider).lookForMissingCovers(onError: report);
+    } catch (error, stack) {
+      report(error, stack);
     }
   }
 

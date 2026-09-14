@@ -37,7 +37,8 @@ class LibraryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final library = ref.watch(libraryProvider);
     final continueListening = ref.watch(continueListeningProvider);
-    final locations = ref.watch(servicesProvider).locations;
+    final services = ref.watch(servicesProvider);
+    final locations = services.locations;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Kikuyomi'),
@@ -60,6 +61,7 @@ class LibraryScreen extends ConsumerWidget {
           // The library does not wait for Continue Listening; the shelf fills in when it arrives.
           continueListening: continueListening.value ?? const [],
           library: books,
+          covers: services.covers,
           emptyMessage: locations.importFolderIsVisible
               ? 'No books yet. Add an audiobook file, or copy books into the '
                     'Import folder under Kikuyomi in the Files app.'

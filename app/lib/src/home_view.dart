@@ -2,7 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart'
-    show BookRow, ContinueListeningBook;
+    show BookRow, ContinueListeningBook, CoverFiles;
+import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
 
 import 'format.dart';
 
@@ -18,6 +19,7 @@ class HomeView extends StatelessWidget {
     super.key,
     required this.continueListening,
     required this.library,
+    required this.covers,
     required this.emptyMessage,
     required this.onResume,
     required this.onShowDetails,
@@ -25,6 +27,9 @@ class HomeView extends StatelessWidget {
 
   final List<ContinueListeningBook> continueListening;
   final List<BookRow> library;
+
+  /// Where the covers the books name are found.
+  final CoverFiles covers;
 
   /// Shown in place of everything else while there are no books at all.
   final String emptyMessage;
@@ -52,7 +57,11 @@ class HomeView extends StatelessWidget {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _Shelf(books: continueListening, onResume: onResume),
+              child: _Shelf(
+                books: continueListening,
+                covers: covers,
+                onResume: onResume,
+              ),
             ),
           ),
         ],
@@ -62,7 +71,11 @@ class HomeView extends StatelessWidget {
           itemBuilder: (context, index) {
             final book = library[index];
             return ListTile(
-              leading: const Icon(Icons.headphones),
+              leading: BookCover(
+                file: covers.fileOf(book.coverLocalPath),
+                size: 56,
+                semanticLabel: 'Cover of ${book.title}',
+              ),
               title: Text(book.title),
               subtitle: Text(formatClock(book.totalDurationMs ?? 0)),
               onTap: () => onShowDetails(book.id),
@@ -81,10 +94,14 @@ class ContinueListeningCard extends StatelessWidget {
   const ContinueListeningCard({
     super.key,
     required this.book,
+    required this.covers,
     required this.onTap,
   });
 
   final ContinueListeningBook book;
+
+  /// Where the book's cover is found.
+  final CoverFiles covers;
   final VoidCallback onTap;
 
   @override
@@ -106,10 +123,10 @@ class ContinueListeningCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              Icon(
-                Icons.play_circle_outline,
-                size: 40,
-                color: theme.colorScheme.primary,
+              BookCover(
+                file: covers.fileOf(book.coverFileName),
+                size: 64,
+                semanticLabel: 'Cover of ${book.title}',
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -155,9 +172,14 @@ class ContinueListeningCard extends StatelessWidget {
 /// The books to continue, one to a row on a phone and several to a row on a wide window, so the
 /// shelf never needs scrolling sideways, which a mouse cannot do by dragging.
 class _Shelf extends StatelessWidget {
-  const _Shelf({required this.books, required this.onResume});
+  const _Shelf({
+    required this.books,
+    required this.covers,
+    required this.onResume,
+  });
 
   final List<ContinueListeningBook> books;
+  final CoverFiles covers;
   final ValueChanged<int> onResume;
 
   static const _minCardWidth = 320.0;
@@ -183,6 +205,7 @@ class _Shelf extends StatelessWidget {
               width: cardWidth,
               child: ContinueListeningCard(
                 book: book,
+                covers: covers,
                 onTap: () => onResume(book.bookId),
               ),
             ),

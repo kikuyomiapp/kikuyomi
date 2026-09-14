@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:kikuyomi_data/kikuyomi_data.dart' show BookOverview;
+import 'package:kikuyomi_data/kikuyomi_data.dart' show BookOverview, CoverFiles;
+import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
 
 import 'format.dart';
 
@@ -22,11 +23,15 @@ class BookDetailsView extends StatelessWidget {
   const BookDetailsView({
     super.key,
     required this.book,
+    required this.covers,
     required this.onPlay,
     required this.onRemove,
   });
 
   final BookOverview book;
+
+  /// Where the book's cover is found.
+  final CoverFiles covers;
   final ValueChanged<PlayFrom> onPlay;
 
   /// Called once the listener has confirmed they want the book out of the library.
@@ -34,6 +39,9 @@ class BookDetailsView extends StatelessWidget {
 
   /// Wider than this, the content stays at a readable measure in the middle of the window.
   static const _maxContentWidth = 720.0;
+
+  /// The cover's size wherever there is room for it; a narrower window shows it as wide as it is.
+  static const _coverSize = 240.0;
 
   @override
   Widget build(BuildContext context) {
@@ -51,6 +59,17 @@ class BookDetailsView extends StatelessWidget {
         return ListView(
           padding: EdgeInsets.fromLTRB(side, 16, side, 24),
           children: [
+            Center(
+              child: BookCover(
+                file: covers.fileOf(book.coverFileName),
+                size: math.min(
+                  _coverSize,
+                  math.max(0.0, constraints.maxWidth - 2 * side),
+                ),
+                semanticLabel: 'Cover of ${book.title}',
+              ),
+            ),
+            const SizedBox(height: 16),
             Text(book.title, style: theme.textTheme.headlineSmall),
             const SizedBox(height: 4),
             if (book.authors.isNotEmpty)

@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart' show NavigationEntry;
 import 'package:kikuyomi_playback/kikuyomi_playback.dart'
     show
@@ -40,6 +42,7 @@ class PlayerView extends StatefulWidget {
   const PlayerView({
     super.key,
     required this.title,
+    required this.cover,
     required this.state,
     required this.onPlayPause,
     required this.onSeek,
@@ -57,6 +60,9 @@ class PlayerView extends StatefulWidget {
   static const skipInterval = Duration(seconds: 30);
 
   final String title;
+
+  /// The book's cover image, or null for a book with no cover.
+  final File? cover;
   final PlayerReady state;
 
   final VoidCallback onPlayPause;
@@ -153,6 +159,10 @@ class _PlayerViewState extends State<PlayerView> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Flexible, so the cover takes only the room the controls leave.
+              Flexible(
+                child: _PlayerCover(file: widget.cover, title: widget.title),
+              ),
               Text(
                 widget.title,
                 style: theme.textTheme.headlineSmall,
@@ -300,6 +310,44 @@ class _PlayerViewState extends State<PlayerView> {
       ),
     );
   }
+}
+
+/// The book's cover above its title, as large as the room left by the controls allows.
+///
+/// Up to [_maxSize] where there is room, as narrow as the screen on a narrow phone, and as short as
+/// the space above the controls in a short window, so the controls never overflow to make room for
+/// it. Where it would be smaller than [_minSize] it is left out, since a cover that small shows
+/// nothing and only pushes the controls about.
+class _PlayerCover extends StatelessWidget {
+  const _PlayerCover({required this.file, required this.title});
+
+  final File? file;
+  final String title;
+
+  static const _maxSize = 320.0;
+  static const _minSize = 96.0;
+
+  /// The space between the cover and the title.
+  static const _gap = 24.0;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final size = math.min(
+        _maxSize,
+        math.min(constraints.maxWidth, constraints.maxHeight - _gap),
+      );
+      if (size < _minSize) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: _gap),
+        child: BookCover(
+          file: file,
+          size: size,
+          semanticLabel: title.isEmpty ? 'Cover' : 'Cover of $title',
+        ),
+      );
+    },
+  );
 }
 
 /// The chapter list under its heading, as the bottom sheet and the side panel both show it.

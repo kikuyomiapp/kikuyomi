@@ -1,8 +1,19 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kikuyomi/src/book_details_view.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart'
-    show BookOverview, BookProgress, ChapterOverview, MarkerOverview;
+    show
+        BookOverview,
+        BookProgress,
+        ChapterOverview,
+        CoverFiles,
+        MarkerOverview;
+import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
+
+/// A covers folder that holds nothing: the view only names a file in it.
+final covers = CoverFiles(Directory('covers'));
 
 const threeChapters = [
   ChapterOverview(
@@ -33,6 +44,7 @@ BookOverview book({
   bool inLibrary = true,
   List<ChapterOverview> chapters = threeChapters,
   List<MarkerOverview> markers = const [],
+  String? cover,
 }) => BookOverview(
   bookId: 1,
   title: 'A Book',
@@ -43,7 +55,7 @@ BookOverview book({
   chapters: chapters,
   markers: markers,
   progress: progress,
-  coverFileName: null,
+  coverFileName: cover,
 );
 
 /// Eleven minutes in: a minute into Middle.
@@ -60,6 +72,7 @@ Widget details(BookOverview overview, [List<String>? pressed]) => MaterialApp(
   home: Scaffold(
     body: BookDetailsView(
       book: overview,
+      covers: covers,
       onPlay: (from) => pressed?.add('play from ${from.name}'),
       onRemove: () => pressed?.add('remove'),
     ),
@@ -73,6 +86,10 @@ Finder iconIn(String title, IconData icon) => find.descendant(
 
 void main() {
   testWidgets('shows the title, credits, length and chapters', (tester) async {
+    // Tall enough for the list to build every chapter below the cover.
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(details(book()));
 
     expect(find.text('A Book'), findsOneWidget);
@@ -92,6 +109,28 @@ void main() {
         findsOneWidget,
       );
     }
+  });
+
+  testWidgets('shows the cover above the title', (tester) async {
+    await tester.pumpWidget(details(book(cover: '1.jpg')));
+
+    final cover = tester.widget<BookCover>(find.byType(BookCover));
+    expect(cover.file!.path, covers.fileOf('1.jpg')!.path);
+    expect(cover.semanticLabel, 'Cover of A Book');
+    expect(tester.getSize(find.byType(BookCover)), const Size(240, 240));
+    expect(
+      tester.getBottomLeft(find.byType(BookCover)).dy,
+      lessThan(tester.getTopLeft(find.text('A Book')).dy),
+    );
+  });
+
+  testWidgets('narrows the cover to fit a narrow window', (tester) async {
+    tester.view.physicalSize = const Size(240, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(details(book()));
+
+    expect(tester.getSize(find.byType(BookCover)), const Size(208, 208));
   });
 
   testWidgets('offers Play for a book never started', (tester) async {

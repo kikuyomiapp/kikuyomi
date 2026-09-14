@@ -26,6 +26,7 @@ class BookDetailsScreen extends ConsumerWidget {
             ? const Center(child: Text('This book is no longer available'))
             : BookDetailsView(
                 book: book,
+                covers: ref.watch(servicesProvider).covers,
                 onPlay: (from) => openBookInPlayer(
                   context,
                   ref,

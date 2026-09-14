@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +7,7 @@ import 'package:kikuyomi/src/chapter_list.dart';
 import 'package:kikuyomi/src/format.dart';
 import 'package:kikuyomi/src/player_shortcuts.dart';
 import 'package:kikuyomi/src/player_view.dart';
+import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart'
     show ChapterPosition, MarkerEntry, NavigationEntry;
 import 'package:kikuyomi_playback/kikuyomi_playback.dart'
@@ -43,9 +46,9 @@ PlayerReady readyAt({
   finished: false,
 );
 
-/// A player view for [state], with its keyboard shortcuts around it as the player screen has them,
-/// that records what was pressed in [pressed].
-Widget player(PlayerReady state, {List<String>? pressed}) {
+/// A player view for [state] and [cover], with its keyboard shortcuts around it as the player
+/// screen has them, that records what was pressed in [pressed].
+Widget player(PlayerReady state, {List<String>? pressed, File? cover}) {
   void press(String what) => pressed?.add(what);
   void playPause() => press('play');
   void skip(Duration by) => press('skip ${by.inSeconds}');
@@ -59,6 +62,7 @@ Widget player(PlayerReady state, {List<String>? pressed}) {
       child: Scaffold(
         body: PlayerView(
           title: 'A Book',
+          cover: cover,
           state: state,
           onPlayPause: playPause,
           onSeek: (ms) => press('seek $ms'),
@@ -124,6 +128,54 @@ void main() {
     await tester.tap(find.byTooltip('Previous chapter'));
     await tester.tap(find.byTooltip('Next chapter'));
     expect(pressed, ['play', 'skip -30', 'skip 30', 'previous', 'next']);
+  });
+
+  group('the cover', () {
+    final coverFile = File('covers/1.jpg');
+    final cover = find.byType(BookCover);
+
+    Future<void> showIn(WidgetTester tester, Size window) async {
+      tester.view.physicalSize = window;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(player(readyAt(), cover: coverFile));
+    }
+
+    testWidgets('sits above the title, at full size where there is room', (
+      tester,
+    ) async {
+      await showIn(tester, const Size(800, 1000));
+
+      final shown = tester.widget<BookCover>(cover);
+      expect(shown.file!.path, coverFile.path);
+      expect(shown.semanticLabel, 'Cover of A Book');
+      expect(tester.getSize(cover), const Size(320, 320));
+      expect(
+        tester.getBottomLeft(cover).dy,
+        lessThan(tester.getTopLeft(find.text('A Book')).dy),
+      );
+    });
+
+    testWidgets('narrows to fit a narrow phone', (tester) async {
+      await showIn(tester, const Size(360, 900));
+      expect(tester.getSize(cover), const Size(312, 312));
+    });
+
+    testWidgets('shrinks to fit a short window', (tester) async {
+      await showIn(tester, const Size(1024, 560));
+
+      final height = tester.getSize(cover).height;
+      expect(height, lessThan(320));
+      expect(height, greaterThanOrEqualTo(96));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('is left out where there is no room for it', (tester) async {
+      await showIn(tester, const Size(1024, 420));
+      expect(cover, findsNothing);
+      expect(find.text('A Book'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('the sleep timer', () {

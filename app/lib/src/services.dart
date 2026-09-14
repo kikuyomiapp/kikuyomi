@@ -19,6 +19,7 @@ typedef _Probe = ({
   String? author,
   String? narrator,
   List<TimelineMarker> markers,
+  CoverImage? cover,
 });
 
 /// The composition root (§2.8): the one place concrete implementations are chosen and wired
@@ -29,7 +30,8 @@ final class AppServices {
     required this.coordinator,
     required this.clock,
     required this.locations,
-  }) : _importFolder = ImportFolder(mediaRoot: locations.mediaRoot);
+  }) : covers = CoverFiles(locations.covers),
+       _importFolder = ImportFolder(mediaRoot: locations.mediaRoot);
 
   static Future<AppServices> open() async {
     final locations = await StorageLocations.forThisDevice();
@@ -77,11 +79,23 @@ final class AppServices {
   final PlaybackCoordinator coordinator;
   final Clock clock;
   final StorageLocations locations;
+
+  /// Where the covers of books in the library are kept, and how the names book rows record for them
+  /// are found.
+  final CoverFiles covers;
+
   final ImportFolder _importFolder;
 
   /// The scan of the import folder under way, so that a second request joins it instead of racing
   /// it to add the same books.
   Future<int>? _scan;
+
+  /// The search for covers never looked for, which runs once in the life of the app.
+  Future<void>? _coverSearch;
+
+  /// The end of the queue of background work on the library: scans of the import folder, and
+  /// looking for one book's cover. They run one at a time, so the two never overlap.
+  Future<void> _libraryWork = Future.value();
 
   /// Adds an audiobook file the user picked in a file dialog, returning the book's id.
   ///
@@ -118,6 +132,7 @@ final class AppServices {
     }
     final bookId = await _addFolder(
       book,
+      folder: folder,
       key: folder.path,
       pathOf: (name) => _join(folder.path, name),
     );
@@ -133,7 +148,7 @@ final class AppServices {
   /// read again. A folder still being copied when this runs is added with the files that had
   /// arrived by then.
   Future<int> scanImportFolder() =>
-      _scan ??= _scanImportFolder().whenComplete(() => _scan = null);
+      _scan ??= _oneAtATime(_scanImportFolder).whenComplete(() => _scan = null);
 
   Future<int> _scanImportFolder() async {
     final name = _importFolder.name;
@@ -148,7 +163,12 @@ final class AppServices {
         if (entry is Directory) {
           final book = await readFolderBook(entry);
           if (book == null) continue;
-          await _addFolder(book, key: key, pathOf: (file) => '$key/$file');
+          await _addFolder(
+            book,
+            folder: entry,
+            key: key,
+            pathOf: (file) => '$key/$file',
+          );
           added++;
         } else if (entry is File &&
             audioExtensions.contains(_extension(entryName))) {
@@ -160,6 +180,39 @@ final class AppServices {
       }
     }
     return added;
+  }
+
+  /// Looks for the covers of books in the library whose cover has never been looked for: books
+  /// added before covers were kept, and any whose cover could not be written when they were added.
+  ///
+  /// It runs once in the life of the app, however often it is called, since a book looked at once
+  /// is not looked at again. Books take their turn one at a time with scans of the import folder,
+  /// so the two never overlap and a scan asked for meanwhile waits for one book rather than for all
+  /// of them. A book whose files are missing is skipped quietly, for another start. Any other
+  /// failure for one book goes to [onError], and the rest carry on.
+  Future<void> lookForMissingCovers({
+    required void Function(Object error, StackTrace stack) onError,
+  }) => _coverSearch ??= _lookForMissingCovers(onError);
+
+  Future<void> _lookForMissingCovers(
+    void Function(Object error, StackTrace stack) onError,
+  ) async {
+    for (final book in await localBooksAwaitingCover(database)) {
+      try {
+        await _oneAtATime(
+          () => lookForLocalCover(
+            database,
+            book,
+            mediaRoot: locations.mediaRoot,
+            read: _readCover,
+            covers: covers,
+            clock: clock,
+          ),
+        );
+      } catch (error, stack) {
+        onError(error, stack);
+      }
+    }
   }
 
   /// Opens a book in the player, resuming where it was left with smart rewind applied.
@@ -179,6 +232,16 @@ final class AppServices {
     );
   }
 
+  /// Runs [work] once the background work queued before it has finished, failed or not.
+  Future<T> _oneAtATime<T>(Future<T> Function() work) {
+    final result = _libraryWork.then((_) => work());
+    _libraryWork = result.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return result;
+  }
+
   Future<bool> _isKnown(String key) async =>
       await (database.select(
             database.books,
@@ -186,12 +249,12 @@ final class AppServices {
           .getSingleOrNull() !=
       null;
 
-  /// Reads an MP3 or an MP4, M4A or M4B file as a book of its own.
+  /// Reads an MP3 or an MP4, M4A or M4B file as a book of its own, cover included.
   Future<_Probe> _probe(File file) async {
     final source = await FileByteSource.open(file);
     try {
       if (_extension(file.path) == 'mp3') {
-        final info = await readMp3Info(source);
+        final info = await readMp3Info(source, withCover: true);
         if (info == null) {
           throw FormatException('${file.path} is not an MP3 file');
         }
@@ -204,9 +267,10 @@ final class AppServices {
           author: info.albumArtist ?? info.artist,
           narrator: info.composer,
           markers: const <TimelineMarker>[],
+          cover: _coverImage(info.cover),
         );
       }
-      final info = await readMp4Info(source);
+      final info = await readMp4Info(source, withCover: true);
       if (info == null) {
         throw FormatException('${file.path} is not an MP4 or M4B file');
       }
@@ -221,6 +285,7 @@ final class AppServices {
           for (final chapter in info.chapters?.chapters ?? const <Mp4Chapter>[])
             TimelineMarker(title: chapter.title, startMs: chapter.startMs),
         ],
+        cover: _coverImage(info.cover),
       );
     } finally {
       await source.close();
@@ -243,39 +308,61 @@ final class AppServices {
       title: probe.bookTitle ?? _stem(storedPath),
       authors: [?probe.author],
       narrators: [?probe.narrator],
+      cover: probe.cover,
     ),
     clock: clock,
+    covers: covers,
   );
 
   /// Adds a folder read as a book under [key], with each file stored at the path [pathOf] gives
-  /// its name.
+  /// its name. [folder] is where the folder is, to read its cover from.
   Future<int> _addFolder(
     FolderBook book, {
+    required Directory folder,
     required String key,
     required String Function(String fileName) pathOf,
-  }) => importLocalFolderBook(
-    database,
-    LocalFolderImport(
-      key: key,
-      title: book.title,
-      authors: book.authors,
-      narrators: book.narrators,
-      tracks: [
-        for (final track in book.tracks)
-          LocalTrackImport(
-            file: LocalBookFile(
-              path: pathOf(track.fileName),
-              durationMs: track.durationMs,
-              durationIsEstimate: track.durationIsEstimate,
-              sizeBytes: track.sizeBytes,
-              format: track.format,
+  }) async {
+    CoverImage? cover;
+    var coverRead = true;
+    try {
+      final image = book.coverFileName;
+      cover = _coverImage(
+        await readLocalCover(
+          File(_join(folder.path, book.tracks.first.fileName)),
+          image: image == null ? null : File(_join(folder.path, image)),
+        ),
+      );
+    } on FileSystemException {
+      // The first track went missing since the folder was read. Adding the book does not wait on
+      // its cover, which is left to be looked for later.
+      coverRead = false;
+    }
+    return importLocalFolderBook(
+      database,
+      LocalFolderImport(
+        key: key,
+        title: book.title,
+        authors: book.authors,
+        narrators: book.narrators,
+        cover: cover,
+        tracks: [
+          for (final track in book.tracks)
+            LocalTrackImport(
+              file: LocalBookFile(
+                path: pathOf(track.fileName),
+                durationMs: track.durationMs,
+                durationIsEstimate: track.durationIsEstimate,
+                sizeBytes: track.sizeBytes,
+                format: track.format,
+              ),
+              title: track.title,
             ),
-            title: track.title,
-          ),
-      ],
-    ),
-    clock: clock,
-  );
+        ],
+      ),
+      clock: clock,
+      covers: coverRead ? covers : null,
+    );
+  }
 }
 
 String _join(String directory, String name) =>
@@ -283,6 +370,18 @@ String _join(String directory, String name) =>
 
 /// How far the system controls' skip buttons move: the same as the player screen's.
 const _skipInterval = Duration(seconds: 30);
+
+/// Reads the cover of a book already in the library: for a book in a folder, the image there named
+/// as its cover, or failing that the picture in its first file; for a book in one file, the picture
+/// in it.
+Future<CoverImage?> _readCover(File audio, Directory? folder) async {
+  final image = folder == null ? null : await findFolderCoverImage(folder);
+  return _coverImage(await readLocalCover(audio, image: image));
+}
+
+CoverImage? _coverImage(EmbeddedPicture? picture) => picture == null
+    ? null
+    : CoverImage(mimeType: picture.mimeType, bytes: picture.bytes);
 
 /// A book's title and first author, as the system's media controls name it.
 Future<BookDescription> _describeBook(KikuyomiDatabase db, int bookId) async {

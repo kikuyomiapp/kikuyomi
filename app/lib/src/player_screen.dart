@@ -66,16 +66,13 @@ class _ReadyPlayer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final coordinator = ref.watch(servicesProvider).coordinator;
-    final title = ref
-        .watch(bookProvider(state.bookId))
-        .when(
-          data: (book) => book?.title ?? '',
-          loading: () => '',
-          error: (_, _) => '',
-        );
+    final services = ref.watch(servicesProvider);
+    final coordinator = services.coordinator;
+    // Nothing is shown while the book loads, or if it cannot be.
+    final book = ref.watch(bookProvider(state.bookId)).value;
     return PlayerView(
-      title: title,
+      title: book?.title ?? '',
+      cover: services.covers.fileOf(book?.coverLocalPath),
       state: state,
       onPlayPause: () => _playOrPause(coordinator, state),
       onSeek: coordinator.seekTo,
