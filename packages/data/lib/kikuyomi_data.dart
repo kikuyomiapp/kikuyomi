@@ -12,6 +12,7 @@ export 'src/database/converters.dart';
 export 'src/database/database.dart';
 export 'src/database/tables.dart';
 export 'src/library/book_overview.dart';
+export 'src/library/bookmarks.dart';
 export 'src/library/continue_listening.dart';
 export 'src/library/remove_from_library.dart';
 export 'src/local/import_folder.dart';
