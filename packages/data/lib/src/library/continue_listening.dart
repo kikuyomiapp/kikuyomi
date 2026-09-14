@@ -14,10 +14,15 @@ final class ContinueListeningBook {
     required this.globalPositionMs,
     required this.chapterTitle,
     required this.lastPlayedAt,
+    required this.coverFileName,
   });
 
   final int bookId;
   final String title;
+
+  /// The name of the book's cover in the covers folder, or null for a book with no cover. `CoverFiles`
+  /// finds the file.
+  final String? coverFileName;
 
   /// The first credited author, or null for a book credited with none.
   final String? author;
@@ -117,6 +122,7 @@ Future<List<ContinueListeningBook>> _loadContinueListening(
             timeline?.navigationEntryAt(state.chapterPositionMs).title ??
             chapter.title,
         lastPlayedAt: state.updatedAt,
+        coverFileName: book.coverLocalPath,
       ),
     );
   }

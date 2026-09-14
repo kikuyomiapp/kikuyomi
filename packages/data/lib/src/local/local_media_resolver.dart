@@ -14,6 +14,12 @@ final class MediaUnavailableException implements Exception {
   String toString() => 'MediaUnavailableException: $message';
 }
 
+/// Where a local path stored in the database is on this device: [stored] itself when it is absolute,
+/// and otherwise [stored] under [mediaRoot], as [LocalMediaResolver] describes. The same for a
+/// folder's path as for a file's.
+String resolveLocalPath(String stored, {required Directory mediaRoot}) =>
+    File(stored).isAbsolute ? stored : '${mediaRoot.path}/$stored';
+
 /// §6.3's resolver for files already on this device: local books, and later, downloads.
 ///
 /// A stored `local_path` is absolute for a file that stays where the user keeps it, and relative to
@@ -45,8 +51,7 @@ final class LocalMediaResolver implements MediaResolver {
         'file "${row.fileKey}" is not on this device',
       );
     }
-    final stored = File(path);
-    final file = stored.isAbsolute ? stored : File('${mediaRoot.path}/$path');
+    final file = File(resolveLocalPath(path, mediaRoot: mediaRoot));
     if (!await file.exists()) {
       throw MediaUnavailableException(
         'file "${row.fileKey}" is missing from ${file.path}',

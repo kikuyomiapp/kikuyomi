@@ -20,10 +20,15 @@ final class BookOverview {
     required this.chapters,
     required this.markers,
     required this.progress,
+    required this.coverFileName,
   });
 
   final int bookId;
   final String title;
+
+  /// The name of the book's cover in the covers folder, or null for a book with no cover. `CoverFiles`
+  /// finds the file.
+  final String? coverFileName;
 
   /// In credit order.
   final List<String> authors;
@@ -230,6 +235,7 @@ Future<BookOverview?> _loadBookOverview(KikuyomiDatabase db, int bookId) async {
     narrators: credited(ContributorRole.narrator),
     totalDurationMs: book.totalDurationMs ?? timeline?.totalDurationMs,
     inLibrary: book.inLibrary,
+    coverFileName: book.coverLocalPath,
     chapters: [
       for (final chapter in chapters)
         ChapterOverview(

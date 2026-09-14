@@ -32,6 +32,7 @@ ContinueListeningBook started(
   globalPositionMs: 65000,
   chapterTitle: chapterTitle,
   lastPlayedAt: added,
+  coverFileName: null,
 );
 
 /// A home showing [continueListening] and [library], recording what was tapped in [tapped].

@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart' hide isNull;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
+import 'local_covers.dart';
 
 /// The built-in Local files source (§3.10).
 ///
@@ -47,12 +50,17 @@ final class LocalBookImport {
     required this.title,
     this.authors = const [],
     this.narrators = const [],
+    this.cover,
   });
 
   final LocalBookFile file;
   final String title;
   final List<String> authors;
   final List<String> narrators;
+
+  /// The picture embedded in the file, or null when it has none. See [importLocalBook] for when it
+  /// is kept.
+  final CoverImage? cover;
 }
 
 /// One file of a local book in several files, and the chapter it holds.
@@ -73,6 +81,7 @@ final class LocalFolderImport {
     required this.tracks,
     this.authors = const [],
     this.narrators = const [],
+    this.cover,
   });
 
   /// The folder, written as file paths are: absolute, or relative to the media root. The book's
@@ -84,6 +93,10 @@ final class LocalFolderImport {
   final List<LocalTrackImport> tracks;
   final List<String> authors;
   final List<String> narrators;
+
+  /// The cover found beside the files or in them, or null when there is none. See
+  /// [importLocalFolderBook] for when it is kept.
+  final CoverImage? cover;
 }
 
 /// Adds a single-file local book, such as an M4B, to the library and returns its id.
@@ -96,15 +109,23 @@ final class LocalFolderImport {
 /// Importing a file that is already known returns the existing book, putting it back in the library
 /// if it had been taken out, so an import can safely be repeated.
 ///
+/// Given [covers], the book's [LocalBookImport.cover] is then kept there, or its lack recorded, as
+/// [keepLocalCover] does. That happens once the book is saved, since a cover is named after the
+/// book's id, and for a book already known only while its cover has never been looked for, which is
+/// how adding again a book from before covers were kept brings its cover. Without [covers] the cover
+/// is left for [lookForLocalCover] to find later. A cover that cannot be written never fails the
+/// import; it is left for later too.
+///
 /// This is a Phase 1 stand-in for the Local source proper, which will implement the extension
 /// contract in `source_api` once that contract is designed.
 Future<int> importLocalBook(
   KikuyomiDatabase db,
   LocalBookImport book, {
   required Clock clock,
-}) {
+  CoverFiles? covers,
+}) async {
   final now = clock.now();
-  return db.transaction(() async {
+  final bookId = await db.transaction(() async {
     final existing = await _findBook(db, book.file.path, now);
     if (existing != null) return existing;
 
@@ -128,6 +149,8 @@ Future<int> importLocalBook(
     );
     return bookId;
   });
+  await _keepCover(db, bookId, book.cover, covers: covers, clock: clock);
+  return bookId;
 }
 
 /// Adds a local book in several files, such as a folder of MP3s, and returns its id.
@@ -138,17 +161,20 @@ Future<int> importLocalBook(
 /// picked up that way; that waits for the Local source proper, which will sync a folder's chapters as
 /// §4.4 syncs any source's.
 ///
+/// The cover is kept as [importLocalBook] keeps it, given [covers].
+///
 /// Fails with an [ArgumentError] for a book with no tracks.
 Future<int> importLocalFolderBook(
   KikuyomiDatabase db,
   LocalFolderImport book, {
   required Clock clock,
+  CoverFiles? covers,
 }) async {
   if (book.tracks.isEmpty) {
     throw ArgumentError.value(book.key, 'book', 'has no tracks');
   }
   final now = clock.now();
-  return db.transaction(() async {
+  final bookId = await db.transaction(() async {
     final existing = await _findBook(db, book.key, now);
     if (existing != null) return existing;
 
@@ -177,6 +203,26 @@ Future<int> importLocalFolderBook(
     }
     return bookId;
   });
+  await _keepCover(db, bookId, book.cover, covers: covers, clock: clock);
+  return bookId;
+}
+
+/// Keeps [image] as the cover of the book just imported, when there is a [covers] folder to keep it
+/// in.
+Future<void> _keepCover(
+  KikuyomiDatabase db,
+  int bookId,
+  CoverImage? image, {
+  required CoverFiles? covers,
+  required Clock clock,
+}) async {
+  if (covers == null) return;
+  try {
+    await keepLocalCover(db, bookId, image, covers: covers, clock: clock);
+  } on FileSystemException {
+    // The book is in the library, and a cover is not worth failing that for. It is still to be looked
+    // for, so a later look can try again.
+  }
 }
 
 /// The Local book with [key], put back in the library if it had been taken out, or null if there

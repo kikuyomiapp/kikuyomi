@@ -51,6 +51,17 @@ void main() {
     expect((await shelf()).single.author, isNull);
   });
 
+  test("names the book's cover, once it has one", () async {
+    final id = await addFolderBook(db, clock);
+    await listen(db, clock, id, 0, 1000);
+    expect((await shelf()).single.coverFileName, isNull);
+
+    await (db.update(db.books)..where((b) => b.id.equals(id))).write(
+      BooksCompanion(coverLocalPath: Value('$id.jpg')),
+    );
+    expect((await shelf()).single.coverFileName, '$id.jpg');
+  });
+
   test(
     'names the embedded chapter being listened to in a single file',
     () async {

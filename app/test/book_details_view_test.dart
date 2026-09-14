@@ -43,6 +43,7 @@ BookOverview book({
   chapters: chapters,
   markers: markers,
   progress: progress,
+  coverFileName: null,
 );
 
 /// Eleven minutes in: a minute into Middle.

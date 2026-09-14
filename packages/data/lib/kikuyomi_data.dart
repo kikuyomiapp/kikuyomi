@@ -14,6 +14,7 @@ export 'src/library/book_overview.dart';
 export 'src/library/continue_listening.dart';
 export 'src/library/remove_from_library.dart';
 export 'src/local/import_folder.dart';
+export 'src/local/local_covers.dart';
 export 'src/local/local_import.dart';
 export 'src/local/local_media_resolver.dart';
 export 'src/merge/book_details.dart';

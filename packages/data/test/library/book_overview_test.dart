@@ -27,6 +27,16 @@ void main() {
     expect(await watchBookOverview(db, 999).first, isNull);
   });
 
+  test("names the book's cover, once it has one", () async {
+    final id = await addFolderBook(db, clock);
+    expect((await overview(id)).coverFileName, isNull);
+
+    await (db.update(db.books)..where((b) => b.id.equals(id))).write(
+      BooksCompanion(coverLocalPath: Value('$id.jpg')),
+    );
+    expect((await overview(id)).coverFileName, '$id.jpg');
+  });
+
   test("has the book's title, its credits in order and its length", () async {
     final id = await addFolderBook(
       db,
