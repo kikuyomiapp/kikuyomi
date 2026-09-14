@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'book_details_screen.dart';
+import 'book_drop_zone.dart';
+import 'dropped_books.dart';
 import 'home_view.dart';
 import 'open_book.dart';
 import 'providers.dart';
@@ -26,7 +28,7 @@ const _audiobooks = XTypeGroup(
 enum _Adding { file, folder }
 
 /// The app's home: the books to continue listening to, above the library, and where books are
-/// added.
+/// added, with the "Add book" button or, on desktop, by dropping them onto the window.
 ///
 /// §2.6's adaptive shell will split this into Home and Library tabs. Until that shell exists, this
 /// one screen is both.
@@ -39,43 +41,50 @@ class LibraryScreen extends ConsumerWidget {
     final continueListening = ref.watch(continueListeningProvider);
     final services = ref.watch(servicesProvider);
     final locations = services.locations;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Kikuyomi'),
-        actions: [
-          if (locations.importFolderIsVisible)
-            IconButton(
-              tooltip: 'Look for new books in the Import folder',
-              icon: const Icon(Icons.refresh),
-              onPressed: () => _lookForNewBooks(context, ref),
-            ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _addBook(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Add book'),
-      ),
-      body: library.when(
-        data: (books) => HomeView(
-          // The library does not wait for Continue Listening; the shelf fills in when it arrives.
-          continueListening: continueListening.value ?? const [],
-          library: books,
-          covers: services.covers,
-          emptyMessage: locations.importFolderIsVisible
-              ? 'No books yet. Add an audiobook file, or copy books into the '
-                    'Import folder under Kikuyomi in the Files app.'
-              : locations.canPickFolders
-              ? 'No books yet. Add an audiobook file, or a folder of audio '
-                    'files, to start listening.'
-              : 'No books yet. Add an audiobook file to start listening.',
-          onResume: (bookId) => openBookInPlayer(context, ref, bookId),
-          onShowDetails: (bookId) =>
-              Navigator.of(context).push(BookDetailsScreen.route(bookId)),
+    return BookDropZone(
+      enabled: locations.acceptsDroppedFiles,
+      onDropped: (paths) => _addDropped(context, ref, paths),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Kikuyomi'),
+          actions: [
+            if (locations.importFolderIsVisible)
+              IconButton(
+                tooltip: 'Look for new books in the Import folder',
+                icon: const Icon(Icons.refresh),
+                onPressed: () => _lookForNewBooks(context, ref),
+              ),
+          ],
         ),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) =>
-            Center(child: Text('Could not load the library: $error')),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => _addBook(context, ref),
+          icon: const Icon(Icons.add),
+          label: const Text('Add book'),
+        ),
+        body: library.when(
+          data: (books) => HomeView(
+            // The library does not wait for Continue Listening; the shelf fills in when it arrives.
+            continueListening: continueListening.value ?? const [],
+            library: books,
+            covers: services.covers,
+            emptyMessage: locations.importFolderIsVisible
+                ? 'No books yet. Add an audiobook file, or copy books into the '
+                      'Import folder under Kikuyomi in the Files app.'
+                : locations.acceptsDroppedFiles
+                ? 'No books yet. Add an audiobook file or a folder of audio '
+                      'files, or drop them here, to start listening.'
+                : locations.canPickFolders
+                ? 'No books yet. Add an audiobook file, or a folder of audio '
+                      'files, to start listening.'
+                : 'No books yet. Add an audiobook file to start listening.',
+            onResume: (bookId) => openBookInPlayer(context, ref, bookId),
+            onShowDetails: (bookId) =>
+                Navigator.of(context).push(BookDetailsScreen.route(bookId)),
+          ),
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) =>
+              Center(child: Text('Could not load the library: $error')),
+        ),
       ),
     );
   }
@@ -109,6 +118,38 @@ class LibraryScreen extends ConsumerWidget {
       }
     } catch (error) {
       if (context.mounted) _tell(context, 'Could not add the book: $error');
+    }
+  }
+
+  /// Adds the audiobook files and folders dropped onto the window, each where it is, as a file or
+  /// folder picked with "Add book" is added on desktop. Then one message says what became of them
+  /// all, so that a pile of books dropped together is not reported one snack bar at a time.
+  Future<void> _addDropped(
+    BuildContext context,
+    WidgetRef ref,
+    List<String> paths,
+  ) async {
+    final services = ref.read(servicesProvider);
+    try {
+      final outcomes = await addDropped(
+        await sortDropped(paths),
+        addFile: (path) async => (
+          title: await services.bookTitle(await services.addBookInPlace(path)),
+          leftOut: const <String>[],
+        ),
+        addFolder: (path) async {
+          final added = await services.addFolderBook(path);
+          return (
+            title: await services.bookTitle(added.bookId),
+            leftOut: added.unreadable,
+          );
+        },
+      );
+      if (context.mounted) _tell(context, summarizeDrop(outcomes));
+    } catch (error) {
+      if (context.mounted) {
+        _tell(context, 'Could not add what was dropped: $error');
+      }
     }
   }
 

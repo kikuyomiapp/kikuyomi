@@ -139,6 +139,15 @@ final class AppServices {
     return (bookId: bookId, unreadable: book.unreadable);
   }
 
+  /// The title of book [bookId], as the library shows it: for telling the listener which book was
+  /// added, when that was read from the book's own tags rather than chosen by name.
+  Future<String> bookTitle(int bookId) async {
+    final book = await (database.select(
+      database.books,
+    )..where((b) => b.id.equals(bookId))).getSingle();
+    return book.title;
+  }
+
   /// Adds the books copied into the import folder since it was last looked in, and returns how many
   /// were added.
   ///
