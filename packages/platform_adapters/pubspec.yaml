@@ -33,6 +33,14 @@ dependencies:
   audio_session: ^0.2.4
   audio_service: ^0.18.19
   desktop_drop: ^0.8.4
+  # Windows only: `audio_service` has no Windows implementation, so the media keys and the volume
+  # flyout come through SMTC instead (§6.5). Builds a Rust crate, so building for Windows needs
+  # rustup.
+  smtc_windows: ^1.1.0
+  # Not used directly. Pinned to the version `smtc_windows` generated its bindings with and pins its
+  # Rust crate to: a newer Dart runtime refuses to load them, and the controls would fail at start.
+  # Move it only together with `smtc_windows`.
+  flutter_rust_bridge: 2.11.1
 
 dev_dependencies:
   flutter_test:

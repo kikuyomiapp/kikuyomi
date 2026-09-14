@@ -9,8 +9,9 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 /// service that keeps playback alive in the background. On iOS: Now Playing and the remote
 /// commands.
 ///
-/// `audio_service` has no Windows implementation and quietly does nothing there, so this bridge is
-/// inert on Windows. §6.5 gives Windows its controls through SMTC, in a bridge of their own.
+/// `audio_service` has no Windows implementation and quietly does nothing there, so
+/// `SystemMediaControls` starts this bridge only on the other platforms. §6.5 gives Windows its
+/// controls through SMTC, in `SmtcBridge`.
 final class AudioServiceBridge implements MediaSessionBridge {
   AudioServiceBridge._(this._handler);
 

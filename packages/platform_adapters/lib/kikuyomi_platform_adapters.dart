@@ -10,5 +10,6 @@ library;
 export 'src/audio/audio_focus.dart';
 export 'src/audio/audio_service_bridge.dart';
 export 'src/audio/just_audio_engine.dart';
+export 'src/audio/system_media_controls.dart';
 export 'src/drop/file_drop_target.dart' show FileDropTarget;
 export 'src/storage/storage_locations.dart';
