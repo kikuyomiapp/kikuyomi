@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../drop/file_drop_target.dart';
+
 /// §5.1's single adapter for storage paths, so that no feature builds a platform path itself.
 final class StorageLocations {
   const StorageLocations._({
@@ -11,6 +13,7 @@ final class StorageLocations {
     required this.pickerHandsOverCopies,
     required this.importFolderIsVisible,
     required this.canPickFolders,
+    required this.acceptsDroppedFiles,
   });
 
   /// The locations on this device. Asynchronous because `path_provider` asks the platform.
@@ -30,6 +33,7 @@ final class StorageLocations {
         pickerHandsOverCopies: true,
         importFolderIsVisible: true,
         canPickFolders: false,
+        acceptsDroppedFiles: platformReportsDroppedPaths,
       );
     }
     final android = Platform.isAndroid;
@@ -40,6 +44,7 @@ final class StorageLocations {
       pickerHandsOverCopies: android,
       importFolderIsVisible: false,
       canPickFolders: !android,
+      acceptsDroppedFiles: platformReportsDroppedPaths,
     );
   }
 
@@ -77,4 +82,11 @@ final class StorageLocations {
   /// file access cannot open, and iOS has no folder picker; both wait for §3.10's folder access
   /// through the Storage Access Framework and security-scoped bookmarks.
   final bool canPickFolders;
+
+  /// Whether files and folders dropped onto the window arrive as paths that can be read where they
+  /// are, so that a `FileDropTarget` can add them as a picked file or folder is added.
+  ///
+  /// Only on desktop. Android reports a drop from another app as content addresses, for the reason
+  /// [canPickFolders] gives, and iOS reports none to the app at all.
+  final bool acceptsDroppedFiles;
 }
