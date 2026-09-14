@@ -543,7 +543,7 @@ String? _text(Uint8List body) {
   if (decoded == null) return null;
   // A value ends at a null character, and 2.4 separates several values with one. Only the first is
   // kept.
-  final nul = decoded.indexOf(' ');
+  final nul = decoded.indexOf('\u0000');
   final value = (nul < 0 ? decoded : decoded.substring(0, nul)).trim();
   return value.isEmpty ? null : value;
 }
