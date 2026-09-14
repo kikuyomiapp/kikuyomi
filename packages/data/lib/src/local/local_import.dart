@@ -16,18 +16,24 @@ final class LocalBookFile {
   const LocalBookFile({
     required this.path,
     required this.durationMs,
+    this.durationIsEstimate = false,
     this.sizeBytes,
     this.format,
     this.markers = const [],
   });
 
   /// Where the file is: an absolute path for a file the user keeps, or a path relative to the media
-  /// root for a file in the app's own storage, as `LocalMediaResolver` describes. Also the book's
-  /// identity within the Local source, so importing the same file twice finds the same book.
+  /// root for a file in the app's own storage, as `LocalMediaResolver` describes. It identifies the
+  /// file within its book, and a single-file book by itself, so importing the same file twice finds
+  /// the same book.
   final String path;
 
-  /// Probed from the file itself, so stored as exact rather than estimated.
+  /// Probed from the file itself.
   final int durationMs;
+
+  /// True when [durationMs] was estimated, as it is for an MP3 whose frames nothing counts. §4.5
+  /// keeps estimated durations apart from known ones.
+  final bool durationIsEstimate;
   final int? sizeBytes;
   final String? format;
 
@@ -46,6 +52,37 @@ final class LocalBookImport {
 
   final LocalBookFile file;
   final String title;
+  final List<String> authors;
+  final List<String> narrators;
+}
+
+/// One file of a local book in several files, and the chapter it holds.
+final class LocalTrackImport {
+  const LocalTrackImport({required this.file, required this.title});
+
+  final LocalBookFile file;
+
+  /// The title of the chapter the file becomes.
+  final String title;
+}
+
+/// A local book in several files, such as a folder of MP3s, to add to the library.
+final class LocalFolderImport {
+  const LocalFolderImport({
+    required this.key,
+    required this.title,
+    required this.tracks,
+    this.authors = const [],
+    this.narrators = const [],
+  });
+
+  /// The folder, written as file paths are: absolute, or relative to the media root. The book's
+  /// identity within the Local source.
+  final String key;
+  final String title;
+
+  /// In playing order.
+  final List<LocalTrackImport> tracks;
   final List<String> authors;
   final List<String> narrators;
 }
@@ -69,127 +106,218 @@ Future<int> importLocalBook(
 }) {
   final now = clock.now();
   return db.transaction(() async {
-    await db
-        .into(db.sources)
-        .insert(
-          const SourcesCompanion(
-            id: Value(localSourceId),
-            key: Value('local'),
-            name: Value('Local files'),
-            lang: Value('und'),
-          ),
-          mode: InsertMode.insertOrIgnore,
-        );
+    final existing = await _findBook(db, book.file.path, now);
+    if (existing != null) return existing;
 
-    final existing =
-        await (db.select(db.books)..where(
-              (b) =>
-                  b.sourceId.equals(localSourceId) &
-                  b.key.equals(book.file.path),
-            ))
-            .getSingleOrNull();
-    if (existing != null) {
-      if (!existing.inLibrary) {
-        await (db.update(
-          db.books,
-        )..where((b) => b.id.equals(existing.id))).write(
-          BooksCompanion(
-            inLibrary: const Value(true),
-            dateAdded: Value(now),
-            updatedAt: Value(now),
-          ),
-        );
-      }
-      return existing.id;
-    }
-
-    final bookId = await db
-        .into(db.books)
-        .insert(
-          BooksCompanion(
-            sourceId: const Value(localSourceId),
-            key: Value(book.file.path),
-            title: Value(book.title),
-            totalDurationMs: Value(book.file.durationMs),
-            inLibrary: const Value(true),
-            dateAdded: Value(now),
-            detailsFetched: const Value(true),
-            createdAt: Value(now),
-            updatedAt: Value(now),
-          ),
-        );
-
-    Future<void> credit(List<String> names, ContributorRole role) async {
-      for (var i = 0; i < names.length; i++) {
-        final name = names[i].trim();
-        if (name.isEmpty) continue;
-        await db
-            .into(db.people)
-            .insert(
-              PeopleCompanion(name: Value(name)),
-              mode: InsertMode.insertOrIgnore,
-            );
-        final person = await (db.select(
-          db.people,
-        )..where((p) => p.name.equals(name))).getSingle();
-        await db
-            .into(db.bookPeople)
-            .insert(
-              BookPeopleCompanion(
-                bookId: Value(bookId),
-                personId: Value(person.id),
-                role: Value(role),
-                ordinal: Value(i),
-              ),
-              mode: InsertMode.insertOrIgnore,
-            );
-      }
-    }
-
-    await credit(book.authors, ContributorRole.author);
-    await credit(book.narrators, ContributorRole.narrator);
-
-    final fileId = await db
-        .into(db.mediaFiles)
-        .insert(
-          MediaFilesCompanion(
-            bookId: Value(bookId),
-            fileKey: Value(book.file.path),
-            format: Value(book.file.format),
-            durationMs: Value(book.file.durationMs),
-            durationIsEstimate: const Value(false),
-            sizeBytes: Value(book.file.sizeBytes),
-            embeddedMarkers: Value(
-              book.file.markers.isEmpty ? null : book.file.markers,
-            ),
-            // A local file is, in §4.3's terms, already downloaded: it is on this device.
-            localPath: Value(book.file.path),
-          ),
-        );
-
-    final chapterId = await db
-        .into(db.chapters)
-        .insert(
-          ChaptersCompanion(
-            bookId: Value(bookId),
-            key: const Value('whole'),
-            title: Value(book.title),
-            sourceIndex: const Value(0),
-            durationMs: Value(book.file.durationMs),
-            createdAt: Value(now),
-            updatedAt: Value(now),
-          ),
-        );
-
-    await db
-        .into(db.chapterSegments)
-        .insert(
-          ChapterSegmentsCompanion(
-            chapterId: Value(chapterId),
-            ordinal: const Value(0),
-            mediaFileId: Value(fileId),
-          ),
-        );
+    final bookId = await _addBook(
+      db,
+      key: book.file.path,
+      title: book.title,
+      totalDurationMs: book.file.durationMs,
+      authors: book.authors,
+      narrators: book.narrators,
+      now: now,
+    );
+    await _addChapter(
+      db,
+      bookId: bookId,
+      key: 'whole',
+      title: book.title,
+      index: 0,
+      file: book.file,
+      now: now,
+    );
     return bookId;
   });
+}
+
+/// Adds a local book in several files, such as a folder of MP3s, and returns its id.
+///
+/// Each file becomes one chapter, the first of §1.5's layouts: one file per chapter. The book is
+/// identified by [LocalFolderImport.key], so importing the same folder again finds the same book, and
+/// puts it back in the library if it had been taken out. Files added to the folder since are not
+/// picked up that way; that waits for the Local source proper, which will sync a folder's chapters as
+/// §4.4 syncs any source's.
+///
+/// Fails with an [ArgumentError] for a book with no tracks.
+Future<int> importLocalFolderBook(
+  KikuyomiDatabase db,
+  LocalFolderImport book, {
+  required Clock clock,
+}) async {
+  if (book.tracks.isEmpty) {
+    throw ArgumentError.value(book.key, 'book', 'has no tracks');
+  }
+  final now = clock.now();
+  return db.transaction(() async {
+    final existing = await _findBook(db, book.key, now);
+    if (existing != null) return existing;
+
+    final bookId = await _addBook(
+      db,
+      key: book.key,
+      title: book.title,
+      totalDurationMs: book.tracks.fold(
+        0,
+        (total, track) => total + track.file.durationMs,
+      ),
+      authors: book.authors,
+      narrators: book.narrators,
+      now: now,
+    );
+    for (final (index, track) in book.tracks.indexed) {
+      await _addChapter(
+        db,
+        bookId: bookId,
+        key: track.file.path,
+        title: track.title,
+        index: index,
+        file: track.file,
+        now: now,
+      );
+    }
+    return bookId;
+  });
+}
+
+/// The Local book with [key], put back in the library if it had been taken out, or null if there
+/// is none yet. Also makes sure the Local source itself exists.
+Future<int?> _findBook(KikuyomiDatabase db, String key, DateTime now) async {
+  await db
+      .into(db.sources)
+      .insert(
+        const SourcesCompanion(
+          id: Value(localSourceId),
+          key: Value('local'),
+          name: Value('Local files'),
+          lang: Value('und'),
+        ),
+        mode: InsertMode.insertOrIgnore,
+      );
+
+  final existing =
+      await (db.select(
+            db.books,
+          )..where((b) => b.sourceId.equals(localSourceId) & b.key.equals(key)))
+          .getSingleOrNull();
+  if (existing == null) return null;
+  if (!existing.inLibrary) {
+    await (db.update(db.books)..where((b) => b.id.equals(existing.id))).write(
+      BooksCompanion(
+        inLibrary: const Value(true),
+        dateAdded: Value(now),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+  return existing.id;
+}
+
+/// Inserts the book row and its credits, and returns the book's id.
+Future<int> _addBook(
+  KikuyomiDatabase db, {
+  required String key,
+  required String title,
+  required int totalDurationMs,
+  required List<String> authors,
+  required List<String> narrators,
+  required DateTime now,
+}) async {
+  final bookId = await db
+      .into(db.books)
+      .insert(
+        BooksCompanion(
+          sourceId: const Value(localSourceId),
+          key: Value(key),
+          title: Value(title),
+          totalDurationMs: Value(totalDurationMs),
+          inLibrary: const Value(true),
+          dateAdded: Value(now),
+          detailsFetched: const Value(true),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+
+  Future<void> credit(List<String> names, ContributorRole role) async {
+    for (var i = 0; i < names.length; i++) {
+      final name = names[i].trim();
+      if (name.isEmpty) continue;
+      await db
+          .into(db.people)
+          .insert(
+            PeopleCompanion(name: Value(name)),
+            mode: InsertMode.insertOrIgnore,
+          );
+      final person = await (db.select(
+        db.people,
+      )..where((p) => p.name.equals(name))).getSingle();
+      await db
+          .into(db.bookPeople)
+          .insert(
+            BookPeopleCompanion(
+              bookId: Value(bookId),
+              personId: Value(person.id),
+              role: Value(role),
+              ordinal: Value(i),
+            ),
+            mode: InsertMode.insertOrIgnore,
+          );
+    }
+  }
+
+  await credit(authors, ContributorRole.author);
+  await credit(narrators, ContributorRole.narrator);
+  return bookId;
+}
+
+/// Inserts [file] and a chapter spanning the whole of it.
+Future<void> _addChapter(
+  KikuyomiDatabase db, {
+  required int bookId,
+  required String key,
+  required String title,
+  required int index,
+  required LocalBookFile file,
+  required DateTime now,
+}) async {
+  final fileId = await db
+      .into(db.mediaFiles)
+      .insert(
+        MediaFilesCompanion(
+          bookId: Value(bookId),
+          fileKey: Value(file.path),
+          format: Value(file.format),
+          durationMs: Value(file.durationMs),
+          durationIsEstimate: Value(file.durationIsEstimate),
+          sizeBytes: Value(file.sizeBytes),
+          embeddedMarkers: Value(file.markers.isEmpty ? null : file.markers),
+          // A local file is, in §4.3's terms, already downloaded: it is on this device.
+          localPath: Value(file.path),
+        ),
+      );
+
+  final chapterId = await db
+      .into(db.chapters)
+      .insert(
+        ChaptersCompanion(
+          bookId: Value(bookId),
+          key: Value(key),
+          title: Value(title),
+          sourceIndex: Value(index),
+          durationMs: Value(file.durationMs),
+          createdAt: Value(now),
+          updatedAt: Value(now),
+        ),
+      );
+
+  await db
+      .into(db.chapterSegments)
+      .insert(
+        ChapterSegmentsCompanion(
+          chapterId: Value(chapterId),
+          ordinal: const Value(0),
+          mediaFileId: Value(fileId),
+        ),
+      );
 }
