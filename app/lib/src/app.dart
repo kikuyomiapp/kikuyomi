@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,8 +11,8 @@ import 'providers.dart';
 class KikuyomiApp extends ConsumerStatefulWidget {
   const KikuyomiApp({super.key, this.openOnLaunch});
 
-  /// A book file passed on the command line, to import and open at start. Also how the app is
-  /// driven by automated checks, since a file dialog cannot be scripted.
+  /// A book file or folder passed on the command line, to import and open at start. Also how the
+  /// app is driven by automated checks, since a file dialog cannot be scripted.
   final String? openOnLaunch;
 
   @override
@@ -30,11 +31,14 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
       // there without warning. Playback carries on.
       onHide: () =>
           unawaited(ref.read(servicesProvider).coordinator.onBackgrounded()),
+      // Books may have been copied into the import folder while the app was away.
+      onResume: _lookForNewBooks,
     );
-    final path = widget.openOnLaunch;
-    if (path != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _open(path));
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_lookForNewBooks());
+      final path = widget.openOnLaunch;
+      if (path != null) unawaited(_open(path));
+    });
   }
 
   @override
@@ -46,16 +50,37 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   Future<void> _open(String path) async {
     final services = ref.read(servicesProvider);
     try {
-      final bookId = await services.addBookInPlace(path);
+      final bookId = await FileSystemEntity.isDirectory(path)
+          ? (await services.addFolderBook(path)).bookId
+          : await services.addBookInPlace(path);
       await services.openBook(bookId);
       await _navigator.currentState?.push(PlayerScreen.route());
     } catch (error) {
-      final context = _navigator.currentContext;
-      if (context != null && context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not open $path: $error')));
+      _tell('Could not open $path: $error');
+    }
+  }
+
+  /// Adds any books copied into the import folder (§5.1), and says so when there were some.
+  Future<void> _lookForNewBooks() async {
+    try {
+      final added = await ref.read(servicesProvider).scanImportFolder();
+      if (added > 0) {
+        _tell(
+          added == 1
+              ? 'Added a book from the Import folder'
+              : 'Added $added books from the Import folder',
+        );
       }
+    } catch (error) {
+      _tell('Could not look for new books: $error');
+    }
+  }
+
+  void _tell(String message) {
+    final context = _navigator.currentContext;
+    if (context != null && context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
