@@ -26,4 +26,6 @@ dependencies:
   protobuf: ^6.1.0
 
 dev_dependencies:
+  kikuyomi_test_support:
+    path: ../test_support
   test: ^1.25.0
