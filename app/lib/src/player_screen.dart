@@ -2,8 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart' show NavigationEntry;
 import 'package:kikuyomi_playback/kikuyomi_playback.dart'
-    show PlayerFailed, PlayerIdle, PlayerLoading, PlayerReady;
+    show
+        PlaybackCoordinator,
+        PlayerFailed,
+        PlayerIdle,
+        PlayerLoading,
+        PlayerReady;
 
+import 'player_shortcuts.dart';
 import 'player_view.dart';
 import 'providers.dart';
 
@@ -16,25 +22,39 @@ class PlayerScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final playerState = ref.watch(playerStateProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Now playing')),
-      body: playerState.when(
-        data: (state) => switch (state) {
-          PlayerIdle() => const Center(child: Text('Nothing is playing')),
-          PlayerLoading() => const Center(child: CircularProgressIndicator()),
-          PlayerFailed(:final error) => Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'Playback failed: $error',
-                textAlign: TextAlign.center,
+    final coordinator = ref.watch(servicesProvider).coordinator;
+    final ready = switch (playerState) {
+      AsyncData(value: final PlayerReady state) => state,
+      _ => null,
+    };
+    // Around the whole screen, app bar included, so the keys work wherever focus is on it.
+    return PlayerShortcuts(
+      state: ready,
+      onPlayPause: () {
+        if (ready != null) _playOrPause(coordinator, ready);
+      },
+      onSkip: coordinator.skip,
+      onSpeed: coordinator.setSpeed,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Now playing')),
+        body: playerState.when(
+          data: (state) => switch (state) {
+            PlayerIdle() => const Center(child: Text('Nothing is playing')),
+            PlayerLoading() => const Center(child: CircularProgressIndicator()),
+            PlayerFailed(:final error) => Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Playback failed: $error',
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
-          ),
-          PlayerReady() => _ReadyPlayer(state: state),
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('$error')),
+            PlayerReady() => _ReadyPlayer(state: state),
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => Center(child: Text('$error')),
+        ),
       ),
     );
   }
@@ -67,8 +87,7 @@ class _ReadyPlayer extends ConsumerWidget {
       title: title,
       state: state,
       navigation: navigation,
-      onPlayPause: () =>
-          state.playing ? coordinator.pause() : coordinator.play(),
+      onPlayPause: () => _playOrPause(coordinator, state),
       onSeek: coordinator.seekTo,
       onSkip: coordinator.skip,
       onPreviousChapter: coordinator.previousChapter,
@@ -79,3 +98,7 @@ class _ReadyPlayer extends ConsumerWidget {
     );
   }
 }
+
+/// Pauses a playing book and plays a paused one, as the play button and the space bar both do.
+void _playOrPause(PlaybackCoordinator coordinator, PlayerReady state) =>
+    state.playing ? coordinator.pause() : coordinator.play();

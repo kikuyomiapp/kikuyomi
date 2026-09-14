@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kikuyomi/src/chapter_list.dart';
 import 'package:kikuyomi/src/format.dart';
+import 'package:kikuyomi/src/player_shortcuts.dart';
 import 'package:kikuyomi/src/player_view.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart'
     show ChapterPosition, MarkerEntry, NavigationEntry;
@@ -25,6 +27,7 @@ PlayerReady readyAt({
   bool playing = false,
   SleepTimerState sleepTimer = const SleepTimerOff(),
   NavigationEntry? entry,
+  double speed = 1.0,
 }) => PlayerReady(
   bookId: 1,
   position: const ChapterPosition(chapterId: 1, offsetMs: 65000),
@@ -33,39 +36,65 @@ PlayerReady readyAt({
   entry: entry ?? chapters[1],
   playing: playing,
   buffering: false,
-  speed: 1.0,
+  speed: speed,
   sleepTimer: sleepTimer,
   finished: false,
 );
 
-/// A player view for [state] that records what was pressed in [pressed].
+/// A player view for [state], with its keyboard shortcuts around it as the player screen has them,
+/// that records what was pressed in [pressed].
 Widget player(
   PlayerReady state, {
   List<String>? pressed,
   List<NavigationEntry> navigation = chapters,
 }) {
   void press(String what) => pressed?.add(what);
+  void playPause() => press('play');
+  void skip(Duration by) => press('skip ${by.inSeconds}');
+  void speed(double to) => press('speed $to');
   return MaterialApp(
-    home: Scaffold(
-      body: PlayerView(
-        title: 'A Book',
-        state: state,
-        navigation: navigation,
-        onPlayPause: () => press('play'),
-        onSeek: (ms) => press('seek $ms'),
-        onSkip: (by) => press('skip ${by.inSeconds}'),
-        onPreviousChapter: () => press('previous'),
-        onNextChapter: () => press('next'),
-        onSpeed: (speed) => press('speed $speed'),
-        onSleepTimer: (target) => press(switch (target) {
-          SleepAfter(:final duration) => 'sleep ${duration.inMinutes}',
-          SleepAtEndOfChapter() => 'sleep at end of chapter',
-        }),
-        onCancelSleepTimer: () => press('sleep off'),
+    home: PlayerShortcuts(
+      state: state,
+      onPlayPause: playPause,
+      onSkip: skip,
+      onSpeed: speed,
+      child: Scaffold(
+        body: PlayerView(
+          title: 'A Book',
+          state: state,
+          navigation: navigation,
+          onPlayPause: playPause,
+          onSeek: (ms) => press('seek $ms'),
+          onSkip: skip,
+          onPreviousChapter: () => press('previous'),
+          onNextChapter: () => press('next'),
+          onSpeed: speed,
+          onSleepTimer: (target) => press(switch (target) {
+            SleepAfter(:final duration) => 'sleep ${duration.inMinutes}',
+            SleepAtEndOfChapter() => 'sleep at end of chapter',
+          }),
+          onCancelSleepTimer: () => press('sleep off'),
+        ),
       ),
     ),
   );
 }
+
+/// Makes the test window as wide as a desktop one, which the chapter side panel needs.
+void useWideWindow(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1280, 800);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
+
+Future<void> toggleChapters(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Chapters'));
+  await tester.pumpAndSettle();
+}
+
+/// [text] in the chapter list, rather than on the player under it.
+Finder inList(String text) =>
+    find.descendant(of: find.byType(ChapterList), matching: find.text(text));
 
 void main() {
   test('clock formatting', () {
@@ -145,17 +174,6 @@ void main() {
   });
 
   group('the chapter list', () {
-    Future<void> toggleChapters(WidgetTester tester) async {
-      await tester.tap(find.byTooltip('Chapters'));
-      await tester.pumpAndSettle();
-    }
-
-    /// [text] in the list, rather than under it on the player.
-    Finder inList(String text) => find.descendant(
-      of: find.byType(ChapterList),
-      matching: find.text(text),
-    );
-
     ListTile row(WidgetTester tester, String title) => tester.widget(
       find.ancestor(of: inList(title), matching: find.byType(ListTile)),
     );
@@ -235,9 +253,7 @@ void main() {
     testWidgets('on a wide screen opens beside the controls and stays open', (
       tester,
     ) async {
-      tester.view.physicalSize = const Size(1280, 800);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.reset);
+      useWideWindow(tester);
       final pressed = <String>[];
       await tester.pumpWidget(player(readyAt(), pressed: pressed));
 
@@ -252,6 +268,118 @@ void main() {
 
       await toggleChapters(tester);
       expect(find.byType(ChapterList), findsNothing);
+    });
+  });
+
+  group('the keyboard shortcuts', () {
+    /// Gives keyboard focus to the control around [finder], as tabbing to it would.
+    Future<void> focus(WidgetTester tester, Finder finder) async {
+      final node = Focus.of(tester.element(finder))..requestFocus();
+      await tester.pump();
+      expect(node.hasPrimaryFocus, isTrue);
+    }
+
+    testWidgets('space plays or pauses, with nothing clicked first', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      expect(pressed, ['play']);
+    });
+
+    testWidgets('the arrow keys skip back and forward 30 seconds', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      expect(pressed, ['skip -30', 'skip 30']);
+    });
+
+    testWidgets('the brackets step the speed down and up through the presets', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(speed: 1.25), pressed: pressed));
+      await tester.sendKeyEvent(LogicalKeyboardKey.bracketLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.bracketRight);
+      expect(pressed, ['speed 1.0', 'speed 1.5']);
+    });
+
+    testWidgets('the speed keys stop at the slowest and the fastest preset', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(speed: 0.75), pressed: pressed));
+      await tester.sendKeyEvent(LogicalKeyboardKey.bracketLeft);
+      expect(pressed, isEmpty);
+
+      await tester.pumpWidget(player(readyAt(speed: 2.0), pressed: pressed));
+      await tester.sendKeyEvent(LogicalKeyboardKey.bracketRight);
+      expect(pressed, isEmpty);
+    });
+
+    testWidgets('space does not also press the button that has focus', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await focus(tester, find.byIcon(Icons.forward_30));
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      expect(pressed, ['play']);
+    });
+
+    testWidgets('space held down plays or pauses once', (tester) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await focus(tester, find.byIcon(Icons.forward_30));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.space);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.space);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+      expect(pressed, ['play']);
+    });
+
+    testWidgets('the keys still work once the focused control has gone', (
+      tester,
+    ) async {
+      useWideWindow(tester);
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await toggleChapters(tester);
+      await focus(tester, inList('Chapter One'));
+      await toggleChapters(tester);
+      expect(find.byType(ChapterList), findsNothing);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      expect(pressed, ['play']);
+    });
+
+    testWidgets('the keys do nothing while no book is ready', (tester) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PlayerShortcuts(
+            state: null,
+            onPlayPause: () => pressed.add('play'),
+            onSkip: (_) => pressed.add('skip'),
+            onSpeed: (_) => pressed.add('speed'),
+            child: const Scaffold(),
+          ),
+        ),
+      );
+      for (final key in [
+        LogicalKeyboardKey.space,
+        LogicalKeyboardKey.arrowLeft,
+        LogicalKeyboardKey.arrowRight,
+        LogicalKeyboardKey.bracketLeft,
+        LogicalKeyboardKey.bracketRight,
+      ]) {
+        await tester.sendKeyEvent(key);
+      }
+      expect(pressed, isEmpty);
     });
   });
 }

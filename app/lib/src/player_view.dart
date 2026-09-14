@@ -54,6 +54,9 @@ class PlayerView extends StatefulWidget {
 
   static const speeds = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
+  /// How far the skip buttons move, and the arrow keys with them.
+  static const skipInterval = Duration(seconds: 30);
+
   final String title;
   final PlayerReady state;
 
@@ -201,8 +204,7 @@ class _PlayerViewState extends State<PlayerView> {
                   IconButton(
                     tooltip: 'Back 30 seconds',
                     icon: const Icon(Icons.replay_30),
-                    onPressed: () =>
-                        widget.onSkip(const Duration(seconds: -30)),
+                    onPressed: () => widget.onSkip(-PlayerView.skipInterval),
                   ),
                   const SizedBox(width: 8),
                   IconButton.filled(
@@ -215,7 +217,7 @@ class _PlayerViewState extends State<PlayerView> {
                   IconButton(
                     tooltip: 'Forward 30 seconds',
                     icon: const Icon(Icons.forward_30),
-                    onPressed: () => widget.onSkip(const Duration(seconds: 30)),
+                    onPressed: () => widget.onSkip(PlayerView.skipInterval),
                   ),
                   IconButton(
                     tooltip: 'Next chapter',
