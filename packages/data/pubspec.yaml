@@ -18,6 +18,9 @@ environment:
 
 dependencies:
   drift: ^2.35.0
+  # For the interfaces backups and restores need of the database, implemented in lib/src/backup.
+  kikuyomi_backup:
+    path: ../backup
   kikuyomi_domain:
     path: ../domain
 
