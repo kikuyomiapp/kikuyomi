@@ -4,8 +4,13 @@ import 'dart:math';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:kikuyomi_backup/kikuyomi_backup.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart';
+// Named apart, because AppServices has methods of the same names that also tell the player.
+import 'package:kikuyomi_data/kikuyomi_data.dart'
+    as data
+    show markBookFinished, markBookNotFinished;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_platform_adapters/kikuyomi_platform_adapters.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
@@ -49,6 +54,7 @@ final class AppServices {
       ),
     );
     const clock = SystemClock();
+    await _backfillListened(database, settings);
     final deviceId = await _deviceId(locations.appData);
     final audioFocus = await AudioFocus.configure();
     final coordinator = PlaybackCoordinator(
@@ -298,7 +304,61 @@ final class AppServices {
             ? Duration.zero
             : clock.now().difference(lastPlayedAt),
         speed: stored.speed ?? 1.0,
+        finished: stored.finished,
       ),
+    );
+  }
+
+  /// Marks chapters [chapterIds] of book [bookId] listened, or not, by hand (§4.5), and returns
+  /// those it changed.
+  ///
+  /// The player is told as well, in case the book is open there, so that what it says about the
+  /// book being finished stays the same as what the book's details and Continue Listening say.
+  Future<Set<int>> markChaptersListened(
+    int bookId,
+    Iterable<int> chapterIds, {
+    required bool listened,
+  }) async {
+    final changed = await setChaptersListened(
+      database,
+      bookId: bookId,
+      chapterIds: chapterIds,
+      listened: listened,
+      clock: clock,
+    );
+    await coordinator.onListenedChanged(
+      bookId: bookId,
+      chapterIds: changed,
+      listened: listened,
+    );
+    return changed;
+  }
+
+  /// Marks book [bookId] finished by hand, every chapter listened, and returns the chapters that
+  /// were not, which are the ones to mark not listened again to undo it. The player is told, as
+  /// for [markChaptersListened].
+  Future<Set<int>> markBookFinished(int bookId) async {
+    final changed = await data.markBookFinished(database, bookId, clock: clock);
+    await coordinator.onListenedChanged(
+      bookId: bookId,
+      chapterIds: changed,
+      listened: true,
+    );
+    return changed;
+  }
+
+  /// Marks book [bookId] not finished by hand, its last chapter not listened. The player is told,
+  /// as for [markChaptersListened].
+  Future<void> markBookNotFinished(int bookId) async {
+    final changed = await data.markBookNotFinished(
+      database,
+      bookId,
+      clock: clock,
+    );
+    await coordinator.onListenedChanged(
+      bookId: bookId,
+      chapterIds: changed,
+      listened: false,
     );
   }
 
@@ -431,6 +491,34 @@ final class AppServices {
       ),
       clock: clock,
       covers: coverRead ? covers : null,
+    );
+  }
+}
+
+/// §4.5: records as listened the chapters listened to before listened state was recorded, from the
+/// positions saved in them, once for this installation.
+///
+/// It runs as the app opens, before any screen reads listened state and before the player can record
+/// any, so nothing is ever shown unlistened that was shown listened before, and no chapter the
+/// listener has since marked by hand is touched. A failure is reported the way Flutter reports
+/// errors and does not stop the app: the backfill is not recorded as done, so it is tried again at
+/// the next start.
+Future<void> _backfillListened(
+  KikuyomiDatabase database,
+  SettingsStore settings,
+) async {
+  try {
+    await backfillListenedChaptersOnce(database, settings);
+  } catch (error, stack) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'kikuyomi',
+        context: ErrorDescription(
+          'while recording chapters listened before listened state was recorded',
+        ),
+      ),
     );
   }
 }
