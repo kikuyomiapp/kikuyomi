@@ -30,6 +30,17 @@ Only what is needed to build and run. Each is its own commit.
    `Pointer.fromFunction cannot be called dynamically`. `channelDispacher` now returns a
    non-nullable pointer, falling back to `nullptr`, and `Pointer.fromFunction` gets its explicit
    `<_JSChannelNative>` type argument. This is `spikes/quickjs_binding/flutter_qjs-dart313.patch`.
+2. **Android build** (`android/build.gradle`, `android/src/main/AndroidManifest.xml`). Upstream's
+   Gradle file was written for AGP 3.5 and Gradle 5 and does not load in a current Flutter app.
+   Removed: the `buildscript` block pinning AGP 3.5.0 and Kotlin 1.3.50, the `jcenter()` and
+   JitPack repositories (`jcenter()` no longer exists in Gradle 9), the explicit
+   `kotlin-android` plugin, the `kotlin-stdlib-jdk7` dependency, `lintOptions`, and the pin to
+   CMake 3.10.2. Added: the `namespace` AGP 8 requires, in place of the manifest's `package`
+   attribute. Changed: `compileSdk` 28 to 36 and `minSdk` 16 to 21, the lowest the NDK builds
+   for, and Java and Kotlin both target 17. Kotlin is compiled the way Flutter's current plugin
+   template expects: by AGP's built-in Kotlin, or by the Kotlin plugin that Flutter applies
+   when an app opts out of it. The native build itself, `src/main/cxx/CMakeLists.txt`, is
+   unchanged.
 
 ## Using it
 
