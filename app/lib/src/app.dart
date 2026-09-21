@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kikuyomi_backup/kikuyomi_backup.dart';
 
+import 'book_files.dart';
 import 'providers.dart';
 import 'routes.dart';
 import 'setup_gate.dart';
@@ -141,14 +142,20 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
       await services.openBook(bookId);
       await _router.push<void>(const PlayerRoute().location);
     } catch (error) {
-      _tell('Could not open $path: $error');
+      _tell('Could not open $path: ${describeAddError(error)}');
     }
   }
 
   /// Adds any books copied into the import folder (§5.1), and says so when there were some.
+  ///
+  /// Books this device cannot play are not mentioned here, since they stay in the folder and would
+  /// be mentioned again every time the app comes back to the foreground. Looking for new books from
+  /// the library's button names them.
   Future<void> _lookForNewBooks() async {
     try {
-      final added = await ref.read(servicesProvider).scanImportFolder();
+      final (:added, unplayable: _) = await ref
+          .read(servicesProvider)
+          .scanImportFolder();
       if (added > 0) {
         _tell(
           added == 1

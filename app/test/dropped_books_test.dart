@@ -1,7 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kikuyomi/src/book_files.dart';
 import 'package:kikuyomi/src/dropped_books.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 /// Each item as its kind and name, to compare in one expectation.
 List<String> kinds(List<DroppedItem> items) => [
@@ -17,9 +19,10 @@ List<String> kinds(List<DroppedItem> items) => [
 List<String> described(List<DropOutcome> outcomes) => [
   for (final outcome in outcomes)
     switch (outcome) {
-      BookAdded(:final title, leftOut: []) => 'added $title',
+      BookAdded(:final title, :final leftOut) when leftOut.isEmpty =>
+        'added $title',
       BookAdded(:final title, :final leftOut) =>
-        'added $title without ${leftOut.join(', ')}',
+        'added $title without ${leftOut.describe()}',
       BookNotAdded(:final item, :final reason) =>
         'not added ${item.name}: $reason',
       ItemIgnored(:final item) => 'ignored ${item.name}',
@@ -70,12 +73,20 @@ void main() {
         file('b.M4a'),
         file('c.m4B'),
         file('d.mp4'),
+        file('e.FLAC'),
+        file('f.ogg'),
+        file('g.Oga'),
+        file('h.opus'),
       ]);
       expect(kinds(items), [
         'file a.MP3',
         'file b.M4a',
         'file c.m4B',
         'file d.mp4',
+        'file e.FLAC',
+        'file f.ogg',
+        'file g.Oga',
+        'file h.opus',
       ]);
     });
 
@@ -115,7 +126,7 @@ void main() {
           log.add('start $kind $path');
           await Future<void>.delayed(Duration.zero);
           log.add('end $kind $path');
-          return (title: 'Book at $path', leftOut: const <String>[]);
+          return (title: 'Book at $path', leftOut: LeftOut.none);
         }
 
         final outcomes = await addDropped(
@@ -156,10 +167,16 @@ void main() {
             OSError(),
           ),
           '/books/Damaged.m4a': const FileSystemException('read failed'),
+          '/books/Unplayable.ogg': UnplayableFormatException([
+            AudioFormat.oggVorbis,
+          ]),
         };
         Future<AddedBook> adding(String path) async {
           if (failures[path] case final failure?) throw failure;
-          return (title: 'Walden', leftOut: const ['03.mp3']);
+          return (
+            title: 'Walden',
+            leftOut: const LeftOut(unreadable: ['03.mp3']),
+          );
         }
 
         final outcomes = await addDropped(
@@ -169,6 +186,7 @@ void main() {
             DroppedFile('/books/Gone.m4b'),
             DroppedFile('/books/Locked.m4b'),
             DroppedFile('/books/Damaged.m4a'),
+            DroppedFile('/books/Unplayable.ogg'),
             DroppedFolder('/books/Walden'),
           ],
           addFile: adding,
@@ -180,19 +198,23 @@ void main() {
           'not added Gone.m4b: it is no longer there',
           'not added Locked.m4b: this app is not allowed to read it',
           'not added Damaged.m4a: it could not be read',
-          'added Walden without 03.mp3',
+          'not added Unplayable.ogg: this device cannot play Ogg Vorbis audio',
+          'added Walden without files it could not read: 03.mp3',
         ]);
       },
     );
   });
 
   group('the summary', () {
-    BookAdded added(String title, {List<String> leftOut = const []}) =>
-        BookAdded(
-          DroppedFolder('/books/$title'),
-          title: title,
-          leftOut: leftOut,
-        );
+    BookAdded added(
+      String title, {
+      List<String> leftOut = const [],
+      List<UnplayableTrack> unplayable = const [],
+    }) => BookAdded(
+      DroppedFolder('/books/$title'),
+      title: title,
+      leftOut: LeftOut(unreadable: leftOut, unplayable: unplayable),
+    );
 
     BookNotAdded notAdded(String name, String reason) =>
         BookNotAdded(DroppedFolder('/books/$name'), reason: reason);
@@ -228,8 +250,37 @@ void main() {
           added('Middlemarch', leftOut: ['01.mp3', '02.mp3']),
         ]),
         'Added 3 books. '
-        'Left out files it could not read from Walden: 03.mp3. '
-        'Left out files it could not read from Middlemarch: 01.mp3, 02.mp3',
+        'From Walden, left out files it could not read: 03.mp3. '
+        'From Middlemarch, left out files it could not read: 01.mp3, 02.mp3',
+      );
+    });
+
+    test('says which files were left out because they will not play', () {
+      expect(
+        summarizeDrop([
+          added(
+            'Walden',
+            leftOut: ['03.mp3'],
+            unplayable: [
+              (fileName: '01.ogg', format: AudioFormat.oggVorbis),
+              (fileName: '02.opus', format: AudioFormat.oggOpus),
+            ],
+          ),
+        ]),
+        'Added Walden, leaving out files it could not read: 03.mp3, and Ogg '
+        'Vorbis and Ogg Opus files this device cannot play: 01.ogg, 02.opus',
+      );
+      expect(
+        summarizeDrop([
+          added('Emma'),
+          added(
+            'Walden',
+            unplayable: [(fileName: '01.ogg', format: AudioFormat.oggVorbis)],
+          ),
+        ]),
+        'Added 2 books. '
+        'From Walden, left out Ogg Vorbis files this device cannot play: '
+        '01.ogg',
       );
     });
 

@@ -17,18 +17,7 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart';
 
 import 'app_version.dart';
-
-/// What reading one audio file found: enough to add it to the library as a book of its own.
-typedef _Probe = ({
-  int durationMs,
-  bool durationIsEstimate,
-  int sizeBytes,
-  String? bookTitle,
-  String? author,
-  String? narrator,
-  List<TimelineMarker> markers,
-  CoverImage? cover,
-});
+import 'book_files.dart';
 
 /// The composition root (§2.8): the one place concrete implementations are chosen and wired
 /// together. Everything below the app works against interfaces.
@@ -41,6 +30,7 @@ final class AppServices {
     required this.settings,
     required this.backups,
     required this.backupScheduler,
+    required this.playable,
   }) : covers = CoverFiles(locations.covers),
        _importFolder = ImportFolder(mediaRoot: locations.mediaRoot);
 
@@ -105,6 +95,7 @@ final class AppServices {
       settings: settings,
       backups: backups,
       backupScheduler: backupScheduler,
+      playable: EngineFormats.forThisDevice(),
     );
   }
 
@@ -122,6 +113,10 @@ final class AppServices {
   /// When automatic backups run.
   final BackupScheduler backupScheduler;
 
+  /// The audio formats the player can play on this device (§7.3). A book in any other is refused
+  /// as it is added, rather than added to fail when it is opened.
+  final PlayableFormats playable;
+
   /// Where the covers of books in the library are kept, and how the names book rows record for them
   /// are found.
   final CoverFiles covers;
@@ -130,7 +125,7 @@ final class AppServices {
 
   /// The scan of the import folder under way, so that a second request joins it instead of racing
   /// it to add the same books.
-  Future<int>? _scan;
+  Future<ImportScan>? _scan;
 
   /// The search for covers never looked for, while one is under way.
   Future<void>? _coverSearch;
@@ -144,10 +139,14 @@ final class AppServices {
   /// Where the picker hands over only a temporary copy, as on iOS and Android, the copy is moved
   /// into the app's import folder and the book refers to it there. Elsewhere the book refers to the
   /// user's own file.
+  ///
+  /// A file this device cannot play is refused with an [UnplayableFormatException] naming its
+  /// format, as [probeBookFile] describes.
   Future<int> addPickedBook(String path) async {
     final picked = File(path).absolute;
-    // Read before it is moved, so a file that is not a book never enters the import folder.
-    final probe = await _probe(picked);
+    // Read before it is moved, so a file that is not a book, or one that will not play here, never
+    // enters the import folder.
+    final probe = await probeBookFile(picked, playable);
     final storedPath = locations.pickerHandsOverCopies
         ? await _importFolder.adoptCopy(picked)
         : picked.path;
@@ -158,17 +157,19 @@ final class AppServices {
   /// the command line, which is always the user's own file.
   Future<int> addBookInPlace(String path) async {
     final file = File(path).absolute;
-    return _add(await _probe(file), file.path);
+    return _add(await probeBookFile(file, playable), file.path);
   }
 
   /// Adds a folder of audio files as one book, referring to the files where they are. Returns the
-  /// book's id, and the names of any audio files in the folder that could not be read and were left
-  /// out. For a folder picked on desktop, or given on the command line.
-  Future<({int bookId, List<String> unreadable})> addFolderBook(
-    String path,
-  ) async {
+  /// book's id, and the audio files in the folder that were left out: those that could not be read,
+  /// and those in a format this device cannot play. For a folder picked on desktop, or given on the
+  /// command line.
+  ///
+  /// A folder with no audio this device can play is refused, with an [UnplayableFormatException]
+  /// naming the formats when it holds audio in others, as [readPlayableFolder] describes.
+  Future<({int bookId, LeftOut leftOut})> addFolderBook(String path) async {
     final folder = Directory(path).absolute;
-    final book = await readFolderBook(folder);
+    final book = await readPlayableFolder(folder, playable);
     if (book == null) {
       throw FormatException('${folder.path} holds no audio this app can read');
     }
@@ -178,7 +179,7 @@ final class AppServices {
       key: folder.path,
       pathOf: (name) => _join(folder.path, name),
     );
-    return (bookId: bookId, unreadable: book.unreadable);
+    return (bookId: bookId, leftOut: LeftOut.of(book));
   }
 
   /// The title of book [bookId], as the library shows it: for telling the listener which book was
@@ -191,20 +192,22 @@ final class AppServices {
   }
 
   /// Adds the books copied into the import folder since it was last looked in, and returns how many
-  /// were added.
+  /// were added, and which files and folders were not because this device cannot play them.
   ///
   /// On iOS the folder is visible in the Files app, so this is how a book copied there, as a folder
   /// of files or as a single file, reaches the library (§5.1). Elsewhere the folder holds only books
   /// already added through the file picker. A book already known is recognised by its path and not
   /// read again. A folder still being copied when this runs is added with the files that had
-  /// arrived by then.
-  Future<int> scanImportFolder() =>
+  /// arrived by then. What cannot be added stays in the folder, untouched, and is looked at again
+  /// the next time.
+  Future<ImportScan> scanImportFolder() =>
       _scan ??= _oneAtATime(_scanImportFolder).whenComplete(() => _scan = null);
 
-  Future<int> _scanImportFolder() async {
+  Future<ImportScan> _scanImportFolder() async {
     final name = _importFolder.name;
     final folder = Directory('${locations.mediaRoot.path}/$name');
-    if (!await folder.exists()) return 0;
+    final unplayable = <({String name, UnplayableFormatException reason})>[];
+    if (!await folder.exists()) return (added: 0, unplayable: unplayable);
     var added = 0;
     await for (final entry in folder.list(followLinks: false)) {
       final entryName = _lastSegment(entry.path);
@@ -212,7 +215,7 @@ final class AppServices {
       if (entryName.startsWith('.') || await _isKnown(key)) continue;
       try {
         if (entry is Directory) {
-          final book = await readFolderBook(entry);
+          final book = await readPlayableFolder(entry, playable);
           if (book == null) continue;
           await _addFolder(
             book,
@@ -223,14 +226,16 @@ final class AppServices {
           added++;
         } else if (entry is File &&
             audioExtensions.contains(_extension(entryName))) {
-          await _add(await _probe(entry), key);
+          await _add(await probeBookFile(entry, playable), key);
           added++;
         }
       } on FormatException {
-        // Not audio this app can read. It stays in the folder, untouched.
+        // Not audio this app can read.
+      } on UnplayableFormatException catch (reason) {
+        unplayable.add((name: entryName, reason: reason));
       }
     }
-    return added;
+    return (added: added, unplayable: unplayable);
   }
 
   /// Looks for the covers of books in the library whose cover has never been looked for: books
@@ -379,52 +384,9 @@ final class AppServices {
           .getSingleOrNull() !=
       null;
 
-  /// Reads an MP3 or an MP4, M4A or M4B file as a book of its own, cover included.
-  Future<_Probe> _probe(File file) async {
-    final source = await FileByteSource.open(file);
-    try {
-      if (_extension(file.path) == 'mp3') {
-        final info = await readMp3Info(source, withCover: true);
-        if (info == null) {
-          throw FormatException('${file.path} is not an MP3 file');
-        }
-        return (
-          durationMs: info.durationMs,
-          durationIsEstimate: info.durationIsEstimate,
-          sizeBytes: source.length,
-          // In an MP3 the album names the book; the title more often names a chapter.
-          bookTitle: info.album ?? info.title,
-          author: info.albumArtist ?? info.artist,
-          narrator: info.composer,
-          markers: const <TimelineMarker>[],
-          cover: _coverImage(info.cover),
-        );
-      }
-      final info = await readMp4Info(source, withCover: true);
-      if (info == null) {
-        throw FormatException('${file.path} is not an MP4 or M4B file');
-      }
-      return (
-        durationMs: info.durationMs,
-        durationIsEstimate: false,
-        sizeBytes: source.length,
-        bookTitle: info.title ?? info.album,
-        author: info.artist ?? info.albumArtist,
-        narrator: info.composer,
-        markers: [
-          for (final chapter in info.chapters?.chapters ?? const <Mp4Chapter>[])
-            TimelineMarker(title: chapter.title, startMs: chapter.startMs),
-        ],
-        cover: _coverImage(info.cover),
-      );
-    } finally {
-      await source.close();
-    }
-  }
-
   /// Adds the probed file as a book, stored at [storedPath]: absolute, or relative to the media
   /// root.
-  Future<int> _add(_Probe probe, String storedPath) => importLocalBook(
+  Future<int> _add(ProbedBook probe, String storedPath) => importLocalBook(
     database,
     LocalBookImport(
       file: LocalBookFile(

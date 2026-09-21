@@ -1,29 +1,40 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart'
+    show audioExtensions;
 
 import 'backup_actions.dart';
 import 'backup_reminder.dart';
 import 'book_drop_zone.dart';
+import 'book_files.dart';
 import 'dropped_books.dart';
 import 'home_view.dart';
 import 'open_book.dart';
 import 'providers.dart';
 import 'routes.dart';
 
-/// The files "Add book" offers.
+/// The files "Add book" offers: every extension a book is read from, whether or not this device
+/// can play it, so that a book it cannot play is refused with its format named rather than hidden
+/// in the dialog without a word.
 ///
 /// Each platform's picker filters by its own kind of type. Windows and Android go by extension.
 /// iOS goes by uniform type identifier, and refuses a group that lists none. Apple types the .m4b
 /// extension as com.apple.protected-mpeg-4-audio, a name it gives audiobooks in general whether or
-/// not a file is protected, so that type is listed beside audio and MPEG-4 files at large.
-const _audiobooks = XTypeGroup(
+/// not a file is protected, so that type is listed beside audio and MPEG-4 files at large. FLAC is
+/// org.xiph.flac, which Apple declares as audio, so public.audio covers it already; it is listed
+/// so that FLAC stays offered should that ever change. Apple declares no type for Ogg files, which
+/// AVFoundation cannot play, so on iOS the dialog offers them only where another app has declared
+/// one as audio. Picking one then, or copying one into the Import folder, is refused with its format
+/// named.
+final _audiobooks = XTypeGroup(
   label: 'Audiobooks',
-  extensions: ['m4b', 'm4a', 'mp4', 'mp3'],
-  uniformTypeIdentifiers: [
+  extensions: [...audioExtensions],
+  uniformTypeIdentifiers: const [
     'public.audio',
     'public.mpeg-4',
     'com.apple.protected-mpeg-4-audio',
+    'org.xiph.flac',
   ],
 );
 
@@ -128,23 +139,21 @@ class LibraryScreen extends ConsumerWidget {
     try {
       switch (adding) {
         case _Adding.file:
-          final file = await openFile(acceptedTypeGroups: const [_audiobooks]);
+          final file = await openFile(acceptedTypeGroups: [_audiobooks]);
           if (file == null) return;
           await services.addPickedBook(file.path);
         case _Adding.folder:
           final path = await getDirectoryPath();
           if (path == null) return;
           final added = await services.addFolderBook(path);
-          if (added.unreadable.isNotEmpty && context.mounted) {
-            _tell(
-              context,
-              'Added, leaving out files it could not read: '
-              '${added.unreadable.join(', ')}',
-            );
+          if (!added.leftOut.isEmpty && context.mounted) {
+            _tell(context, 'Added, leaving out ${added.leftOut.describe()}');
           }
       }
     } catch (error) {
-      if (context.mounted) _tell(context, 'Could not add the book: $error');
+      if (context.mounted) {
+        _tell(context, 'Could not add the book: ${describeAddError(error)}');
+      }
     }
   }
 
@@ -162,13 +171,13 @@ class LibraryScreen extends ConsumerWidget {
         await sortDropped(paths),
         addFile: (path) async => (
           title: await services.bookTitle(await services.addBookInPlace(path)),
-          leftOut: const <String>[],
+          leftOut: LeftOut.none,
         ),
         addFolder: (path) async {
           final added = await services.addFolderBook(path);
           return (
             title: await services.bookTitle(added.bookId),
-            leftOut: added.unreadable,
+            leftOut: added.leftOut,
           );
         },
       );
@@ -190,7 +199,7 @@ class LibraryScreen extends ConsumerWidget {
               ListTile(
                 leading: const Icon(Icons.audio_file_outlined),
                 title: const Text('An audiobook file'),
-                subtitle: const Text('An M4B, M4A or MP3 file'),
+                subtitle: const Text('An M4B, MP3, FLAC or Ogg file'),
                 onTap: () => Navigator.pop(context, _Adding.file),
               ),
               ListTile(
@@ -206,14 +215,8 @@ class LibraryScreen extends ConsumerWidget {
 
   Future<void> _lookForNewBooks(BuildContext context, WidgetRef ref) async {
     try {
-      final added = await ref.read(servicesProvider).scanImportFolder();
-      if (context.mounted) {
-        _tell(context, switch (added) {
-          0 => 'No new books in the Import folder',
-          1 => 'Added a book from the Import folder',
-          _ => 'Added $added books from the Import folder',
-        });
-      }
+      final scan = await ref.read(servicesProvider).scanImportFolder();
+      if (context.mounted) _tell(context, summarizeImportScan(scan));
     } catch (error) {
       if (context.mounted) {
         _tell(context, 'Could not look for new books: $error');

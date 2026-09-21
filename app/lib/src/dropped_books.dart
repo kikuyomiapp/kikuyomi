@@ -7,8 +7,12 @@ library;
 
 import 'dart:io';
 
+import 'package:kikuyomi_domain/kikuyomi_domain.dart'
+    show UnplayableFormatException;
 import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart'
     show audioExtensions;
+
+import 'book_files.dart';
 
 /// A path dropped onto the window, sorted by what it is.
 sealed class DroppedItem {
@@ -56,9 +60,9 @@ Future<List<DroppedItem>> sortDropped(Iterable<String> paths) async => [
       UnsupportedItem(path),
 ];
 
-/// What adding a dropped item made: the book's title as the library shows it, and the names of any
-/// audio files in a folder that could not be read and were left out of its book.
-typedef AddedBook = ({String title, List<String> leftOut});
+/// What adding a dropped item made: the book's title as the library shows it, and any audio files
+/// in a folder that were left out of its book.
+typedef AddedBook = ({String title, LeftOut leftOut});
 
 /// What became of one dropped item.
 sealed class DropOutcome {
@@ -70,13 +74,18 @@ sealed class DropOutcome {
 /// The item was added as a book. A book already in the library counts too: adding it again finds
 /// the same book, and puts it back if it had been taken out.
 final class BookAdded extends DropOutcome {
-  const BookAdded(super.item, {required this.title, this.leftOut = const []});
+  const BookAdded(
+    super.item, {
+    required this.title,
+    this.leftOut = LeftOut.none,
+  });
 
   /// The book's title, as the library shows it.
   final String title;
 
-  /// The audio files in a folder that could not be read and were left out of its book, by name.
-  final List<String> leftOut;
+  /// The audio files in a folder that were left out of its book: those that could not be read, and
+  /// those this device cannot play.
+  final LeftOut leftOut;
 }
 
 /// Adding the item as a book failed.
@@ -125,8 +134,8 @@ Future<List<DropOutcome>> addDropped(
 }
 
 /// The one message that tells the listener what became of everything dropped at once: the books
-/// added, named when there is only one; the files left out of them; what could not be added and
-/// why; and what was ignored.
+/// added, named when there is only one; the files left out of them, and why; what could not be
+/// added and why; and what was ignored.
 String summarizeDrop(List<DropOutcome> outcomes) {
   // Text dragged from a browser, say, drops no files at all.
   if (outcomes.isEmpty) return 'Only audiobook files and folders can be added';
@@ -136,14 +145,12 @@ String summarizeDrop(List<DropOutcome> outcomes) {
     if (added case [final book])
       book.leftOut.isEmpty
           ? 'Added ${book.title}'
-          : 'Added ${book.title}, leaving out files it could not read: '
-                '${book.leftOut.join(', ')}'
+          : 'Added ${book.title}, leaving out ${book.leftOut.describe()}'
     else if (added.isNotEmpty) ...[
       'Added ${added.length} books',
       for (final book in added)
-        if (book.leftOut.isNotEmpty)
-          'Left out files it could not read from ${book.title}: '
-              '${book.leftOut.join(', ')}',
+        if (!book.leftOut.isEmpty)
+          'From ${book.title}, left out ${book.leftOut.describe()}',
     ],
     for (final outcome in outcomes.whereType<BookNotAdded>())
       'Could not add ${outcome.item.name}: ${outcome.reason}',
@@ -157,6 +164,8 @@ String summarizeDrop(List<DropOutcome> outcomes) {
 
 /// Why adding [item] failed, in words for the listener rather than an exception's.
 String _reason(DroppedItem item, Object error) => switch (error) {
+  // A book in a format this device cannot play, which the message names.
+  UnplayableFormatException(:final message) => message,
   // How the readers say a file is not the audio its name promised, and how adding a folder says it
   // found no audio in it.
   FormatException() when item is DroppedFolder =>
