@@ -205,9 +205,47 @@ void main() {
       [for (final m in book.markers) (m.startMs, m.endMs)],
       [(0, 1200000), (1200000, 2400000), (2400000, 3600000)],
     );
-    // A marker has no listened state of its own: the file's one chapter is not listened yet.
-    expect([for (final m in book.markers) m.listened], [false, false, false]);
+    expect([for (final m in book.markers) m.listened], [true, false, false]);
     expect([for (final m in book.markers) m.current], [false, true, false]);
+  });
+
+  group('markers of a single file part-way through', () {
+    // Each marker lasts 20 minutes, so 3 percent is the larger: listened from 19:24 into it.
+    test('are listened behind the listener and not ahead', () async {
+      final id = await addM4b(db, clock);
+      await listen(db, clock, id, 0, 2500000);
+
+      final book = await overview(id);
+      expect(book.finished, isFalse);
+      expect([for (final c in book.chapters) c.listened], [false]);
+      expect([for (final m in book.markers) m.listened], [true, true, false]);
+      expect([for (final m in book.markers) m.current], [false, false, true]);
+    });
+
+    test("follow the rule applied to each marker's own stretch", () async {
+      final id = await addM4b(db, clock);
+      await listen(db, clock, id, 0, 1200000 + 1164000 - 1);
+      expect(
+        [for (final m in (await overview(id)).markers) m.listened],
+        [true, false, false],
+      );
+
+      await listen(db, clock, id, 0, 1200000 + 1164000);
+      expect(
+        [for (final m in (await overview(id)).markers) m.listened],
+        [true, true, false],
+      );
+    });
+
+    test('are all listened once the book is marked finished', () async {
+      final id = await addM4b(db, clock);
+      await listen(db, clock, id, 0, 60000);
+      await markBookFinished(db, id, clock: clock);
+      expect(
+        [for (final m in (await overview(id)).markers) m.listened],
+        [true, true, true],
+      );
+    });
   });
 
   test('has no marker listened before a single file is started', () async {

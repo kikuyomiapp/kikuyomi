@@ -106,13 +106,16 @@ final class MarkerOverview {
   /// Where it ends, exclusive.
   final int endMs;
 
-  /// Whether the file's one chapter is recorded as listened, the same for every marker.
+  /// The file's one chapter is recorded as listened, or the listener's position in it has reached
+  /// this marker's stretch less the larger of 30 seconds or 3 percent: §4.5's rule applied to the
+  /// marker's own stretch.
   ///
-  /// §4.5 anchors progress to that source chapter plus an offset, so listened state is recorded
-  /// for it and a marker has none of its own: every marker reads as listened once the chapter is,
-  /// which for a single file is once the book is finished, and none before. Where the listener is
-  /// shows as [current] instead. Working a marker's state out from positions would be inference that
-  /// a chapter marked not listened by hand could never override.
+  /// §4.5 anchors progress to that source chapter plus an offset and presents markers only for
+  /// navigation and display, so a marker has no row of its own to record a state on. Its state is
+  /// worked out, as it was before listened state was recorded, so that a single file part-way
+  /// through shows the markers behind the listener as listened. The chapter's recorded state
+  /// covers the rest: marked listened, every marker is; marked not listened, the markers the
+  /// listener's position has passed still are, since that position is where they have been.
   final bool listened;
 
   /// True for the marker the saved progress is in.
@@ -209,8 +212,18 @@ Future<BookOverview?> _loadBookOverview(KikuyomiDatabase db, int bookId) async {
       : chapters.where((c) => c.id == timeline.lastChapterId).firstOrNull;
   if (timeline != null && markerChapter != null) {
     // The Timeline presents markers only for a book of one chapter, so its offsets are the book's.
-    final here = state != null && state.chapterId == markerChapter.id
+    final inChapter = state != null && state.chapterId == markerChapter.id;
+    final here = inChapter
         ? timeline.navigationEntryAt(state.chapterPositionMs)
+        : null;
+    // Where the listener has reached in the chapter: the saved progress where it is in the chapter,
+    // or else the chapter's own last position. A chapter never reached also sits at zero, which
+    // would meet the threshold of a marker of 30 seconds or less at the very start, so zero counts
+    // only where the saved progress is.
+    final reached = inChapter
+        ? state.chapterPositionMs
+        : markerChapter.lastPositionMs > 0
+        ? markerChapter.lastPositionMs
         : null;
     markers = [
       for (final entry in timeline.navigation.whereType<MarkerEntry>())
@@ -218,7 +231,11 @@ Future<BookOverview?> _loadBookOverview(KikuyomiDatabase db, int bookId) async {
           title: entry.title,
           startMs: entry.startMs,
           endMs: entry.endMs,
-          listened: markerChapter.isListened,
+          listened:
+              markerChapter.isListened ||
+              (reached != null &&
+                  reached >=
+                      entry.startMs + listenedThresholdMs(entry.durationMs)),
           current: entry == here,
         ),
     ];
