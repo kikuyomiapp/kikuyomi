@@ -6,6 +6,7 @@
  * @LastEditTime: 2020-12-02 11:11:42
  */
 #include "ffi.h"
+#include <chrono>
 #include <functional>
 #include <future>
 #include <string.h>
@@ -76,9 +77,22 @@ extern "C"
     ((RuntimeOpaque *)opaque)->channel(ctx, JSChannelType_PROMISE_TRACK, &reason);
   }
 
+  // Milliseconds on a monotonic wall clock, which the timeout is measured against. Upstream used
+  // clock(), which is wall time in the Windows CRT but CPU time for the whole process on POSIX,
+  // Android included, so there the deadline ignored time a script spent blocked and was drained
+  // by every other thread in the process. Never 0, which RuntimeOpaque::start reserves for "no
+  // call in progress".
+  static int64_t js_now_ms()
+  {
+    int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::steady_clock::now().time_since_epoch())
+                      .count();
+    return now > 0 ? now : 1;
+  }
+
   int js_interrupt_handler(JSRuntime * rt, void * opaque) {
     RuntimeOpaque *op = (RuntimeOpaque *)opaque;
-    if(op->timeout && op->start && (clock() - op->start) > op->timeout * CLOCKS_PER_SEC / 1000) {
+    if(op->timeout && op->start && (js_now_ms() - op->start) > op->timeout) {
       op->start = 0;
       return 1;
     }
@@ -183,7 +197,7 @@ extern "C"
   void js_begin_call(JSRuntime *rt) {
     JS_UpdateStackTop(rt);
     RuntimeOpaque * opaque = (RuntimeOpaque *)JS_GetRuntimeOpaque(rt);
-    if(opaque) opaque->start = clock();
+    if(opaque) opaque->start = js_now_ms();
   }
 
   DLLEXPORT JSValue *jsEval(JSContext *ctx, const char *input, size_t input_len, const char *filename, int32_t eval_flags)

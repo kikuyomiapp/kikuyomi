@@ -46,6 +46,13 @@ Only what is needed to build and run. Each is its own commit.
    is the integer `JSClassID`. Clang 15 made that conversion an error, so the NDK's clang 19
    refused the file. It now returns 0, which QuickJS never assigns as a class id. MSVC only
    warned, which is why the Windows build never noticed.
+4. **Wall-clock deadline** (`cxx/ffi.cpp`). The `timeout` was measured with `clock()`, which is
+   wall time in the Windows CRT but CPU time for the whole process on POSIX. On Android that
+   meant a script blocked in a host call was never interrupted, and a runtime's deadline was
+   drained by every other thread in the process: in the probe, a runtime that had used 26 ms of
+   CPU was interrupted because another isolate was computing. The deadline now reads
+   `std::chrono::steady_clock`, so one timeout means the same elapsed time on every platform.
+   Windows behaves as before.
 
 ## Using it
 
