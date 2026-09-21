@@ -69,8 +69,8 @@ class _ChapterListState extends State<ChapterList> {
   Widget build(BuildContext context) {
     return ListView.builder(
       controller: _scroll,
-      // Sized to its rows when there are few, as in a bottom sheet. No padding, which would throw
-      // out the row height worked out above.
+      // Sized to its rows when there are few, under the switch to the bookmarks. No padding, which
+      // would throw out the row height worked out above.
       shrinkWrap: true,
       padding: EdgeInsets.zero,
       itemCount: widget.entries.length,

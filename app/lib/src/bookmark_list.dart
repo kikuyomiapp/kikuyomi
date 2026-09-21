@@ -45,7 +45,7 @@ class BookmarkList extends StatelessWidget {
       );
     }
     return ListView.builder(
-      // Sized to its rows when there are few, like the chapter list.
+      // Sized to its rows when there are few, under the switch to the chapters.
       shrinkWrap: true,
       padding: EdgeInsets.zero,
       itemCount: bookmarks.length,
