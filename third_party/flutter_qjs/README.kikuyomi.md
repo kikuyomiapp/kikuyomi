@@ -41,6 +41,11 @@ Only what is needed to build and run. Each is its own commit.
    template expects: by AGP's built-in Kotlin, or by the Kotlin plugin that Flutter applies
    when an app opts out of it. The native build itself, `src/main/cxx/CMakeLists.txt`, is
    unchanged.
+3. **Clang 15 and later** (`cxx/quickjs/quickjs.c`). `JS_GetClassID`, which upstream added to
+   its copy of QuickJS for the bridge's finalizer, returned `NULL` from a function whose result
+   is the integer `JSClassID`. Clang 15 made that conversion an error, so the NDK's clang 19
+   refused the file. It now returns 0, which QuickJS never assigns as a class id. MSVC only
+   warned, which is why the Windows build never noticed.
 
 ## Using it
 
