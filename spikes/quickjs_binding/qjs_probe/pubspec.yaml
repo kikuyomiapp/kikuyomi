@@ -34,7 +34,10 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  flutter_qjs: ^0.3.7
+  # Kikuyomi's fork (ADR-0001): published 0.3.7 does not run on Dart 3.13. See
+  # third_party/flutter_qjs/README.kikuyomi.md for what the fork changes.
+  flutter_qjs:
+    path: ../../../third_party/flutter_qjs
 
 dev_dependencies:
   flutter_test:
@@ -88,12 +91,4 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
-
-# The published flutter_qjs 0.3.7 does not run on Dart 3.13; see the spike README. To reproduce
-# the passing run, copy the package source, apply ../flutter_qjs-dart313.patch to it, and point
-# an override at your local copy:
-#
-# dependency_overrides:
-#   flutter_qjs:
-#     path: ../../../<your local patched copy>
 

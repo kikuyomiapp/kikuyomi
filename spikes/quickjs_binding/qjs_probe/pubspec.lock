@@ -81,10 +81,9 @@ packages:
   flutter_qjs:
     dependency: "direct main"
     description:
-      name: flutter_qjs
-      sha256: "123b6a2c95ceb4343a15a2bf4eb8e22f6f30d17c291b7a6c71f759906f817525"
-      url: "https://pub.dev"
-    source: hosted
+      path: "../../../third_party/flutter_qjs"
+      relative: true
+    source: path
     version: "0.3.7"
   flutter_test:
     dependency: "direct dev"
