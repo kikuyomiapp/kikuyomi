@@ -48,6 +48,7 @@ Widget home({
   List<ContinueListeningBook> continueListening = const [],
   List<BookRow> library = const [],
   List<String>? tapped,
+  Widget? header,
 }) => MaterialApp(
   home: Scaffold(
     body: HomeView(
@@ -57,6 +58,7 @@ Widget home({
       emptyMessage: 'No books yet.',
       onResume: (bookId) => tapped?.add('resume $bookId'),
       onShowDetails: (bookId) => tapped?.add('details $bookId'),
+      header: header,
     ),
   ),
 );
@@ -132,6 +134,34 @@ void main() {
     await tester.pumpWidget(home());
     expect(find.text('No books yet.'), findsOneWidget);
     expect(find.text('Library'), findsNothing);
+  });
+
+  group('a header, such as the backup reminder,', () {
+    testWidgets('sits above the books', (tester) async {
+      await tester.pumpWidget(
+        home(
+          continueListening: [started(1, 'First Book')],
+          library: [inLibrary(1, 'First Book')],
+          header: const Text('Reminder'),
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.text('Reminder')).dy,
+        lessThan(tester.getTopLeft(find.text('Continue listening')).dy),
+      );
+    });
+
+    testWidgets('shows above the message while there are no books', (
+      tester,
+    ) async {
+      await tester.pumpWidget(home(header: const Text('Reminder')));
+      expect(find.text('Reminder'), findsOneWidget);
+      expect(find.text('No books yet.'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Reminder')).dy,
+        lessThan(tester.getTopLeft(find.text('No books yet.')).dy),
+      );
+    });
   });
 
   testWidgets('does not repeat a chapter title that is the book title', (

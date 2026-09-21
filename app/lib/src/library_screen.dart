@@ -2,6 +2,8 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'backup_actions.dart';
+import 'backup_reminder.dart';
 import 'book_drop_zone.dart';
 import 'dropped_books.dart';
 import 'home_view.dart';
@@ -41,6 +43,14 @@ class LibraryScreen extends ConsumerWidget {
     final continueListening = ref.watch(continueListeningProvider);
     final services = ref.watch(servicesProvider);
     final locations = services.locations;
+    final backupFolder = ref.watch(backupFolderProvider);
+    // Until a folder is chosen, where one can be; not before the setting has been read, so the
+    // reminder never flashes up for a library that has a folder.
+    final remindToBackUp =
+        services.backups.canChooseFolder &&
+        backupFolder.hasValue &&
+        backupFolder.value == null &&
+        !ref.watch(backupReminderPutOffProvider);
     return BookDropZone(
       enabled: locations.acceptsDroppedFiles,
       onDropped: (paths) => _addDropped(context, ref, paths),
@@ -85,6 +95,18 @@ class LibraryScreen extends ConsumerWidget {
             onResume: (bookId) => openBookInPlayer(context, ref, bookId),
             onShowDetails: (bookId) =>
                 BookRoute(bookId: bookId).push<void>(context),
+            header: remindToBackUp
+                ? BackupReminderCard(
+                    onChooseFolder: () => chooseBackupFolder(
+                      context,
+                      ref,
+                      backUpAfter: books.isNotEmpty,
+                    ),
+                    onNotNow: () => ref
+                        .read(backupReminderPutOffProvider.notifier)
+                        .putOff(),
+                  )
+                : null,
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) =>

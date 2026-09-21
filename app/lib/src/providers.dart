@@ -58,6 +58,18 @@ final setupGateProvider = Provider<SetupGate>((ref) {
   return gate;
 });
 
+/// Whether the reminder to choose a backup folder was put off with "Not now". Kept only in memory,
+/// so the reminder comes back at the next start: it stays on the home until a folder is chosen.
+final backupReminderPutOffProvider =
+    NotifierProvider<BackupReminderPutOff, bool>(BackupReminderPutOff.new);
+
+class BackupReminderPutOff extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void putOff() => state = true;
+}
+
 /// The folder backups go to, or null before one is chosen, from settings.
 final backupFolderProvider = StreamProvider<UserFolder?>(
   (ref) => ref.watch(servicesProvider).backups.watchFolder(),

@@ -23,6 +23,7 @@ class HomeView extends StatelessWidget {
     required this.emptyMessage,
     required this.onResume,
     required this.onShowDetails,
+    this.header,
   });
 
   final List<ContinueListeningBook> continueListening;
@@ -40,18 +41,31 @@ class HomeView extends StatelessWidget {
   /// A book in the library was tapped: show its details.
   final ValueChanged<int> onShowDetails;
 
+  /// Shown above everything else, books or none, such as the reminder to choose a backup folder.
+  final Widget? header;
+
   @override
   Widget build(BuildContext context) {
+    final header = this.header;
     if (continueListening.isEmpty && library.isEmpty) {
-      return Center(
+      final message = Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(emptyMessage, textAlign: TextAlign.center),
         ),
       );
+      return header == null
+          ? message
+          : Column(
+              children: [
+                header,
+                Expanded(child: message),
+              ],
+            );
     }
     return CustomScrollView(
       slivers: [
+        if (header != null) SliverToBoxAdapter(child: header),
         if (continueListening.isNotEmpty) ...[
           const _SectionHeading('Continue listening'),
           SliverToBoxAdapter(
