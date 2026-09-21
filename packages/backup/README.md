@@ -1,7 +1,20 @@
 # kikuyomi_backup
 
-The backup format, reading and writing backup files, and the restore planner. Pure Dart: it depends
-only on `kikuyomi_domain`, plus `protobuf` and `fixnum` for the format itself.
+The backup format, reading and writing backup files, and the restore planner, and the automatic
+backups built on them: naming backup files, which ones to keep, writing one to the folder the user
+chose, listing a folder's backups, and when to back up. Pure Dart: it depends only on
+`kikuyomi_domain`, plus `protobuf` and `fixnum` for the format itself. The folder and the settings
+it works with are domain interfaces, implemented by the platform adapters.
+
+## Automatic backups
+
+- **Names.** `kikuyomi-backup-2026-09-14T15-30-12-345Z.kybackup`: the time taken, in UTC to the
+  millisecond, so names sort by time. Only files named so are ever listed, restored from or deleted.
+- **Retention.** The newest three backups, and the newest from each of the past seven local calendar
+  days, are kept; other backups are deleted after each successful write.
+- **When.** A backup is due once anything it carries changes. It runs when changes have settled for
+  three minutes, but no later than fifteen minutes after the first unsaved change, and when the app
+  goes to the background or closes. With nothing changed, nothing is written. One runs at a time.
 
 The values it works with, library snapshots and restore plans, and the interfaces through which it
 reads and restores the library, live in `kikuyomi_domain` under `lib/src/backup/`. The data package

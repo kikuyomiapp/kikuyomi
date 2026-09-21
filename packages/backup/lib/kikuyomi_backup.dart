@@ -12,6 +12,9 @@ library;
 
 export 'src/backup_and_restore.dart';
 export 'src/backup_files.dart';
+export 'src/backup_listing.dart';
+export 'src/backup_scheduler.dart';
+export 'src/backup_service.dart';
 export 'src/codec.dart';
 export 'src/restore_planner.dart';
 export 'src/retention.dart';

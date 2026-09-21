@@ -50,7 +50,7 @@ final class FakeUserFolder implements UserFolder {
     Map<String, List<int>> files = const {},
   }) : files = {
          for (final MapEntry(:key, :value) in files.entries)
-           key: Uint8List.fromList(value),
+           key: List<int>.of(value),
        };
 
   @override
@@ -60,7 +60,7 @@ final class FakeUserFolder implements UserFolder {
   final String displayName;
 
   /// The files in the folder, by name. Tests may change it to set up a case.
-  final Map<String, Uint8List> files;
+  final Map<String, List<int>> files;
 
   /// When set, the folder can no longer be reached, for this reason.
   String? unreachable;
@@ -107,7 +107,7 @@ final class FakeUserFolder implements UserFolder {
     if (bytes == null) {
       throw FolderOperationException('there is no file named $name');
     }
-    return bytes;
+    return Uint8List.fromList(bytes);
   }
 
   @override
@@ -120,7 +120,7 @@ final class FakeUserFolder implements UserFolder {
       failNextWrite = null;
       throw failure;
     }
-    files[name] = Uint8List.fromList(bytes);
+    files[name] = List<int>.of(bytes);
     written.add(name);
   }
 

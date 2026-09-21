@@ -1,8 +1,8 @@
 /// Making a backup of the library, and restoring one into it.
 ///
-/// These tie the codec, the planner and the library interfaces together. Scheduling automatic
-/// backups, and choosing the folder they go to, belong to the app and its platform adapters (§5.1);
-/// this is the part that is the same everywhere.
+/// These tie the codec, the planner and the library interfaces together. Writing backups to the
+/// folder the user chose is `backup_service.dart`'s, and deciding when is `backup_scheduler.dart`'s;
+/// how a folder is chosen and kept belongs to the platform adapters (§5.1).
 library;
 
 import 'dart:typed_data';

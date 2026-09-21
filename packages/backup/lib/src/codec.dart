@@ -140,14 +140,7 @@ Uint8List encodeBackup(LibrarySnapshot library, {required BackupInfo info}) {
 /// [UnsupportedBackupVersionException] for a backup that needs a newer build. Never throws for an
 /// individual item; those are left out and listed in [DecodedBackup.skipped].
 DecodedBackup decodeBackup(List<int> bytes) {
-  final List<int> payload;
-  try {
-    payload = gunzipFrame(bytes);
-  } on FormatException catch (error) {
-    throw CorruptBackupException(
-      'not a complete backup file: ${error.message}',
-    );
-  }
+  final payload = _payloadOf(bytes);
 
   final pb.Backup message;
   try {
@@ -156,22 +149,13 @@ DecodedBackup decodeBackup(List<int> bytes) {
     throw CorruptBackupException('the backup cannot be read: ${error.message}');
   }
 
-  // Every backup ever written carries both. A file without them is some other gzipped data that
-  // happened to parse, which protobuf's leniency makes more likely than it sounds.
-  if (message.formatVersion == 0 || message.minReaderVersion == 0) {
-    throw const CorruptBackupException(
-      'the file has no format version, so it is not a Kikuyomi backup',
-    );
-  }
+  _checkVersions(message.formatVersion, message.minReaderVersion);
   if (message.minReaderVersion > backupFormatVersion) {
     throw UnsupportedBackupVersionException(
       minReaderVersion: message.minReaderVersion,
     );
   }
-  final createdAt = _timeOrNull(message.createdAtMs);
-  if (createdAt == null) {
-    throw const CorruptBackupException('the backup has no valid creation time');
-  }
+  final createdAt = _creationTime(message.createdAtMs);
 
   final decoder = _Decoder();
   final library = decoder.library(message);
@@ -186,6 +170,148 @@ DecodedBackup decodeBackup(List<int> bytes) {
     skipped: List.unmodifiable(decoder.skipped),
   );
 }
+
+/// What a backup file holds at a glance: who wrote it, when, and how many books. Enough to list
+/// backups for choosing one to restore.
+final class BackupSummary {
+  const BackupSummary({
+    required this.formatVersion,
+    required this.minReaderVersion,
+    required this.info,
+    required this.bookCount,
+  });
+
+  /// The format version the writer implemented.
+  final int formatVersion;
+
+  /// The oldest format version that can restore the backup.
+  final int minReaderVersion;
+
+  final BackupInfo info;
+
+  /// The books the backup holds in the library. Books outside it that only carry progress are not
+  /// counted, since a person counts the books in their library.
+  final int bookCount;
+
+  /// Whether this build can restore the backup.
+  bool get isRestorable => minReaderVersion <= backupFormatVersion;
+}
+
+/// Reads what the backup file [bytes] holds at a glance, without decoding the library in it.
+///
+/// Listing a folder's backups reads every one, and decoding every book, chapter and session of each
+/// only to count the books would keep the list waiting. This walks the top level of the message
+/// instead, skipping every field but the few it needs, and looks into each book only for whether it
+/// is in the library.
+///
+/// Throws [CorruptBackupException] for a file that is not a complete backup, as [decodeBackup] does.
+/// A backup in a newer format that this build cannot restore is summarised rather than refused, so
+/// that a list can say it needs a newer app; see [BackupSummary.isRestorable]. Whether each item in a
+/// backup restores faithfully is only known from [decodeBackup].
+BackupSummary readBackupSummary(List<int> bytes) {
+  final payload = _payloadOf(bytes);
+  var formatVersion = 0;
+  var minReaderVersion = 0;
+  var createdAtMs = Int64.ZERO;
+  var appVersion = '';
+  var deviceId = '';
+  var bookCount = 0;
+  try {
+    final reader = CodedBufferReader(payload);
+    // A field seen twice takes its last value, as protobuf's own parsing does.
+    while (!reader.isAtEnd()) {
+      final tag = reader.readTag();
+      switch ((tag >> 3, tag & 7)) {
+        case (_formatVersionField, _varint):
+          formatVersion = reader.readUint32();
+        case (_minReaderVersionField, _varint):
+          minReaderVersion = reader.readUint32();
+        case (_createdAtField, _varint):
+          createdAtMs = reader.readInt64();
+        case (_appVersionField, _lengthDelimited):
+          appVersion = reader.readString();
+        case (_deviceIdField, _lengthDelimited):
+          deviceId = reader.readString();
+        case (_booksField, _lengthDelimited):
+          if (_isInLibrary(reader.readBytesAsView())) bookCount++;
+        default:
+          reader.skipField(tag);
+      }
+    }
+  } on InvalidProtocolBufferException catch (error) {
+    throw CorruptBackupException('the backup cannot be read: ${error.message}');
+  } on FormatException catch (error) {
+    throw CorruptBackupException('the backup cannot be read: ${error.message}');
+  }
+
+  _checkVersions(formatVersion, minReaderVersion);
+  return BackupSummary(
+    formatVersion: formatVersion,
+    minReaderVersion: minReaderVersion,
+    info: BackupInfo(
+      createdAt: _creationTime(createdAtMs),
+      appVersion: appVersion,
+      deviceId: deviceId,
+    ),
+    bookCount: bookCount,
+  );
+}
+
+// Field numbers from proto/backup.proto, for [readBackupSummary]. ADR-0008 makes field numbers
+// permanent, so these cannot drift from the schema.
+const _formatVersionField = 1;
+const _minReaderVersionField = 2;
+const _createdAtField = 3;
+const _appVersionField = 4;
+const _deviceIdField = 5;
+const _booksField = 8;
+const _bookInLibraryField = 21;
+
+// Protobuf wire types.
+const _varint = 0;
+const _lengthDelimited = 2;
+
+/// Whether the encoded `Book` message [book] is in the library.
+bool _isInLibrary(List<int> book) {
+  final reader = CodedBufferReader(book);
+  var inLibrary = false;
+  while (!reader.isAtEnd()) {
+    final tag = reader.readTag();
+    if (tag == (_bookInLibraryField << 3 | _varint)) {
+      inLibrary = reader.readBool();
+    } else {
+      reader.skipField(tag);
+    }
+  }
+  return inLibrary;
+}
+
+/// The protobuf message inside the backup file [bytes].
+List<int> _payloadOf(List<int> bytes) {
+  try {
+    return gunzipFrame(bytes);
+  } on FormatException catch (error) {
+    throw CorruptBackupException(
+      'not a complete backup file: ${error.message}',
+    );
+  }
+}
+
+/// Every backup ever written carries both. A file without them is some other gzipped data that
+/// happened to parse, which protobuf's leniency makes more likely than it sounds.
+void _checkVersions(int formatVersion, int minReaderVersion) {
+  if (formatVersion == 0 || minReaderVersion == 0) {
+    throw const CorruptBackupException(
+      'the file has no format version, so it is not a Kikuyomi backup',
+    );
+  }
+}
+
+DateTime _creationTime(Int64 ms) =>
+    _timeOrNull(ms) ??
+    (throw const CorruptBackupException(
+      'the backup has no valid creation time',
+    ));
 
 // Writing.
 
