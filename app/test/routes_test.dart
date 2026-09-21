@@ -17,6 +17,19 @@ void main() {
     expect(const HomeRoute().location, '/');
     expect(const BookRoute(bookId: 7).location, '/book/7');
     expect(const PlayerRoute().location, '/player');
+    expect(const SettingsRoute().location, '/settings');
+    expect(const RestoreRoute().location, '/settings/restore');
+  });
+
+  testWidgets('settings open above the library, and restoring above them', (
+    tester,
+  ) async {
+    expect(pathsTo(const SettingsRoute().location), ['/', 'settings']);
+    expect(pathsTo(const RestoreRoute().location), [
+      '/',
+      'settings',
+      'restore',
+    ]);
   });
 
   testWidgets("a book's location leads to its details, above the library", (

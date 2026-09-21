@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'book_details_screen.dart';
 import 'library_screen.dart';
 import 'player_screen.dart';
+import 'restore_screen.dart';
+import 'settings_screen.dart';
 
 part 'routes.g.dart';
 
@@ -37,6 +39,10 @@ GoRouter createRouter({
   routes: [
     TypedGoRoute<BookRoute>(path: r'book/:bookId(\d+)'),
     TypedGoRoute<PlayerRoute>(path: 'player'),
+    TypedGoRoute<SettingsRoute>(
+      path: 'settings',
+      routes: [TypedGoRoute<RestoreRoute>(path: 'restore')],
+    ),
   ],
 )
 class HomeRoute extends GoRouteData with $HomeRoute {
@@ -66,6 +72,24 @@ class PlayerRoute extends GoRouteData with $PlayerRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) =>
       const PlayerScreen();
+}
+
+/// Settings, from the home's app bar. There is no tabbed shell yet, so it sits above the home.
+class SettingsRoute extends GoRouteData with $SettingsRoute {
+  const SettingsRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const SettingsScreen();
+}
+
+/// Restoring from a backup, from Settings.
+class RestoreRoute extends GoRouteData with $RestoreRoute {
+  const RestoreRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const RestoreScreen();
 }
 
 /// What a location no route matches shows, such as a link written by a newer version of the app.

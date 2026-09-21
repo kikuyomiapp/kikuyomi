@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kikuyomi_backup/kikuyomi_backup.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
 import 'services.dart';
@@ -47,6 +49,35 @@ final playerStateProvider = StreamProvider<PlayerState>((ref) {
 final continueListeningProvider = StreamProvider<List<ContinueListeningBook>>(
   (ref) => watchContinueListening(ref.watch(servicesProvider).database),
 );
+
+/// The folder backups go to, or null before one is chosen, from settings.
+final backupFolderProvider = StreamProvider<UserFolder?>(
+  (ref) => ref.watch(servicesProvider).backups.watchFolder(),
+);
+
+/// Whether the backup folder can still be reached, or null while none is chosen. Checked afresh
+/// whenever a screen that shows it opens.
+final backupFolderStatusProvider = FutureProvider.autoDispose<FolderStatus?>((
+  ref,
+) async {
+  final folder = await ref.watch(backupFolderProvider.future);
+  return folder?.checkAccess();
+});
+
+/// When the last backup was written, or null for never.
+final lastBackupProvider = StreamProvider<DateTime?>(
+  (ref) => ref.watch(servicesProvider).backups.watchLastBackup(),
+);
+
+/// How the last backup went, since the app started, and each one after.
+final lastBackupOutcomeProvider = StreamProvider<BackupOutcome?>((ref) {
+  final scheduler = ref.watch(servicesProvider).backupScheduler;
+  return Stream<BackupOutcome?>.multi((controller) {
+    controller.add(scheduler.lastOutcome);
+    final subscription = scheduler.outcomes.listen(controller.add);
+    controller.onCancel = subscription.cancel;
+  });
+});
 
 /// A book's details, straight from the database. Disposed once no screen shows the book, so a
 /// details screen visited once does not keep its queries running for the life of the app.

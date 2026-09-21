@@ -23,6 +23,18 @@ RouteBase get $homeRoute => GoRouteData.$route(
       hasOverriddenOnExit: false,
       factory: $PlayerRoute._fromState,
     ),
+    GoRouteData.$route(
+      path: 'settings',
+      hasOverriddenOnExit: false,
+      factory: $SettingsRoute._fromState,
+      routes: [
+        GoRouteData.$route(
+          path: 'restore',
+          hasOverriddenOnExit: false,
+          factory: $RestoreRoute._fromState,
+        ),
+      ],
+    ),
   ],
 );
 
@@ -76,6 +88,46 @@ mixin $PlayerRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/player');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $SettingsRoute on GoRouteData {
+  static SettingsRoute _fromState(GoRouterState state) => const SettingsRoute();
+
+  @override
+  String get location => GoRouteData.$location('/settings');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $RestoreRoute on GoRouteData {
+  static RestoreRoute _fromState(GoRouterState state) => const RestoreRoute();
+
+  @override
+  String get location => GoRouteData.$location('/settings/restore');
 
   @override
   void go(BuildContext context) => context.go(location);
