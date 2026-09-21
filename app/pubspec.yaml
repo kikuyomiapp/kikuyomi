@@ -53,11 +53,15 @@ dependencies:
     path: ../packages/platform_adapters
   kikuyomi_design_system:
     path: ../packages/design_system
+  kikuyomi_backup:
+    path: ../packages/backup
   go_router: 18.0.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  kikuyomi_test_support:
+    path: ../packages/test_support
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

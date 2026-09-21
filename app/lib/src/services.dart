@@ -4,11 +4,14 @@ import 'dart:math';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:kikuyomi_backup/kikuyomi_backup.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_platform_adapters/kikuyomi_platform_adapters.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart';
+
+import 'app_version.dart';
 
 /// What reading one audio file found: enough to add it to the library as a book of its own.
 typedef _Probe = ({
@@ -30,11 +33,15 @@ final class AppServices {
     required this.coordinator,
     required this.clock,
     required this.locations,
+    required this.settings,
+    required this.backups,
+    required this.backupScheduler,
   }) : covers = CoverFiles(locations.covers),
        _importFolder = ImportFolder(mediaRoot: locations.mediaRoot);
 
   static Future<AppServices> open() async {
     final locations = await StorageLocations.forThisDevice();
+    final settings = await SharedPreferencesSettingsStore.open();
     final database = KikuyomiDatabase(
       // §2.7: the database runs in a background isolate, so queries never block a frame.
       NativeDatabase.createInBackground(
@@ -42,17 +49,34 @@ final class AppServices {
       ),
     );
     const clock = SystemClock();
+    final deviceId = await _deviceId(locations.appData);
     final audioFocus = await AudioFocus.configure();
     final coordinator = PlaybackCoordinator(
       engine: JustAudioEngine(),
       resolver: LocalMediaResolver(database, mediaRoot: locations.mediaRoot),
-      store: DriftPlaybackStore(
-        database,
-        deviceId: await _deviceId(locations.appData),
-        clock: clock,
-      ),
+      store: DriftPlaybackStore(database, deviceId: deviceId, clock: clock),
       clock: clock,
     );
+    // §5.1: automatic backups to the folder the user chose, which outlives an Android uninstall and
+    // an iOS re-sign.
+    final backupStore = DriftBackupStore(database);
+    final backups = BackupService(
+      library: backupStore,
+      restorer: backupStore,
+      folders: DeviceFolders.forThisDevice(),
+      settings: settings,
+      clock: clock,
+      appVersion: appVersion,
+      deviceId: deviceId,
+    );
+    // Starting it only subscribes to the database's change notifications. Nothing is read or written
+    // until changes have settled, so it costs the first frame nothing.
+    final backupScheduler = BackupScheduler(
+      backUp: backups.backUp,
+      changes: backedUpChanges(database),
+      settings: settings,
+      clock: clock,
+    )..start();
     // Calls, navigation prompts and unplugged headphones go to the coordinator, which decides what
     // each means for the book (§6.5). The subscription lasts as long as the app.
     audioFocus.events.listen(
@@ -72,6 +96,9 @@ final class AppServices {
       coordinator: coordinator,
       clock: clock,
       locations: locations,
+      settings: settings,
+      backups: backups,
+      backupScheduler: backupScheduler,
     );
   }
 
@@ -79,6 +106,15 @@ final class AppServices {
   final PlaybackCoordinator coordinator;
   final Clock clock;
   final StorageLocations locations;
+
+  /// App preferences (§4.3).
+  final SettingsStore settings;
+
+  /// The backup folder, writing backups to it, and restoring from them.
+  final BackupService backups;
+
+  /// When automatic backups run.
+  final BackupScheduler backupScheduler;
 
   /// Where the covers of books in the library are kept, and how the names book rows record for them
   /// are found.
@@ -90,7 +126,7 @@ final class AppServices {
   /// it to add the same books.
   Future<int>? _scan;
 
-  /// The search for covers never looked for, which runs once in the life of the app.
+  /// The search for covers never looked for, while one is under way.
   Future<void>? _coverSearch;
 
   /// The end of the queue of background work on the library: scans of the import folder, and
@@ -194,14 +230,39 @@ final class AppServices {
   /// Looks for the covers of books in the library whose cover has never been looked for: books
   /// added before covers were kept, and any whose cover could not be written when they were added.
   ///
-  /// It runs once in the life of the app, however often it is called, since a book looked at once
-  /// is not looked at again. Books take their turn one at a time with scans of the import folder,
-  /// so the two never overlap and a scan asked for meanwhile waits for one book rather than for all
-  /// of them. A book whose files are missing is skipped quietly, for another start. Any other
-  /// failure for one book goes to [onError], and the rest carry on.
+  /// A book looked at once is not looked at again, so after the search at start another finds only
+  /// books that arrived since without a cover, as a restore brings them. A call while a search is
+  /// under way joins it. Books take their turn one at a time with scans of the import folder, so the
+  /// two never overlap and a scan asked for meanwhile waits for one book rather than for all of
+  /// them. A book whose files are missing is skipped quietly, for another start. Any other failure
+  /// for one book goes to [onError], and the rest carry on.
   Future<void> lookForMissingCovers({
     required void Function(Object error, StackTrace stack) onError,
-  }) => _coverSearch ??= _lookForMissingCovers(onError);
+  }) =>
+      _coverSearch ??= _lookForMissingCovers(onError)
+          .whenComplete(() => _coverSearch = null);
+
+  /// Whether the library holds no books at all: what a fresh install looks like.
+  Future<bool> libraryIsEmpty() async =>
+      await (database.select(database.books)
+            ..where((b) => b.inLibrary.equals(true))
+            ..limit(1))
+          .getSingleOrNull() ==
+      null;
+
+  /// Does for a library just restored what start does for the library there was: adds the books
+  /// copied into the import folder, and looks for the covers of books without one, since a backup
+  /// carries no cover images. Failures go to [onError].
+  Future<void> settleRestoredLibrary({
+    required void Function(Object error, StackTrace stack) onError,
+  }) async {
+    try {
+      await scanImportFolder();
+    } catch (error, stack) {
+      onError(error, stack);
+    }
+    await lookForMissingCovers(onError: onError);
+  }
 
   Future<void> _lookForMissingCovers(
     void Function(Object error, StackTrace stack) onError,

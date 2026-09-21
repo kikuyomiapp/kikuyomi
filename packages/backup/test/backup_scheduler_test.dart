@@ -242,6 +242,7 @@ void main() {
       await change();
       await advance(min(3));
       expect(outcomes.single, isA<BackupNotConfigured>());
+      expect(scheduler.lastOutcome, same(outcomes.single));
     });
 
     test('is reported as failed when the backup throws', () async {

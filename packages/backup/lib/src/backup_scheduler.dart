@@ -69,6 +69,11 @@ final class BackupScheduler {
   /// Every backup's outcome, as it finishes.
   Stream<BackupOutcome> get outcomes => _outcomes.stream;
 
+  /// The outcome of the last backup that finished, or null before one has. For a screen opened after
+  /// it, which [outcomes] would not tell.
+  BackupOutcome? get lastOutcome => _lastOutcome;
+  BackupOutcome? _lastOutcome;
+
   /// Whether anything has changed since the last backup was written.
   bool get isDue => _dueSince != null;
 
@@ -175,6 +180,7 @@ final class BackupScheduler {
       _dueSince ??= _clock.now();
     }
     _running = null;
+    _lastOutcome = outcome;
     _outcomes.add(outcome);
     if (_runAgain) {
       _runAgain = false;

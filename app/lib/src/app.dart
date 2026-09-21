@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kikuyomi_backup/kikuyomi_backup.dart';
 
 import 'providers.dart';
 import 'routes.dart';
@@ -26,18 +28,23 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   /// listener has open.
   late final GoRouter _router = createRouter(navigatorKey: _navigator);
   late final AppLifecycleListener _lifecycle;
+  late final StreamSubscription<BackupOutcome> _backupOutcomes;
 
   @override
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(
-      // §6.4: progress is saved the moment the app leaves the screen, because the system may end it
-      // there without warning. Playback carries on.
-      onHide: () =>
-          unawaited(ref.read(servicesProvider).coordinator.onBackgrounded()),
+      onHide: _leaving,
       // Books may have been copied into the import folder while the app was away.
       onResume: _lookForNewBooks,
+      // Closing a desktop window ends the app without hiding it first.
+      onExitRequested: _closing,
     );
+    _backupOutcomes = ref
+        .read(servicesProvider)
+        .backupScheduler
+        .outcomes
+        .listen(_reportFailedBackup);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Covers for books added before covers were kept wait for the first look in the import
       // folder, whose new books bring their own, so start-up does the one thing at a time.
@@ -49,10 +56,55 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
 
   @override
   void dispose() {
+    unawaited(_backupOutcomes.cancel());
     _lifecycle.dispose();
     _router.dispose();
     super.dispose();
   }
+
+  /// The app left the screen, where the system may end it without warning. §6.4 saves progress
+  /// there, and a backup due is written there for the same reason. Playback carries on.
+  void _leaving() {
+    final services = ref.read(servicesProvider);
+    unawaited(
+      services.coordinator.onBackgrounded().whenComplete(
+        services.backupScheduler.appLeaving,
+      ),
+    );
+  }
+
+  /// Before a desktop window closes: saves progress and writes any backup due, waiting no more than
+  /// a few seconds, so that a backup folder on a slow network drive never holds the window open.
+  Future<AppExitResponse> _closing() async {
+    final services = ref.read(servicesProvider);
+    try {
+      await services.coordinator.onBackgrounded().timeout(_closingWait);
+      await services.backupScheduler.appLeaving().timeout(_closingWait);
+    } catch (error, stack) {
+      _report(error, stack, 'while saving before the app closed');
+    }
+    return AppExitResponse.exit;
+  }
+
+  static const _closingWait = Duration(seconds: 10);
+
+  /// A backup that failed is shown in Settings; this reports it the way Flutter reports errors too,
+  /// for whoever is developing the app.
+  void _reportFailedBackup(BackupOutcome outcome) {
+    if (outcome case BackupFailed(:final error, :final stackTrace)) {
+      _report(error, stackTrace, 'while backing up automatically');
+    }
+  }
+
+  void _report(Object error, StackTrace stack, String context) =>
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'kikuyomi',
+          context: ErrorDescription(context),
+        ),
+      );
 
   Future<void> _open(String path) async {
     final services = ref.read(servicesProvider);
