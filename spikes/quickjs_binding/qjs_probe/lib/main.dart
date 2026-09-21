@@ -4,8 +4,10 @@
 //
 //  1. Does it build and run, and do the interrupt handler and memory limit that ffi.cpp exposes
 //     actually work from Dart? Probes 1 to 6, unchanged in meaning since the Windows run.
-//  2. What does the interrupt deadline measure? ffi.cpp times it with clock(), which is wall time
-//     in the Windows CRT and process CPU time on POSIX, Android included. Probes 7 to 10.
+//  2. What does the interrupt deadline measure? Upstream's ffi.cpp timed it with clock(), which is
+//     wall time in the Windows CRT and process CPU time on POSIX, Android included. Probes 7 to
+//     10. Probe 11 then checks what the host is told when the memory limit leaves no room for an
+//     error object, which probe 5 met by chance on API 26.
 //
 // This is a console probe wearing a Flutter app as a costume, because the plugin's native library
 // is only present in a built Flutter application. It runs every probe at start, unattended, and
@@ -542,8 +544,8 @@ Future<void> _runAll() async {
   //     and converting a JS string for Dart is one of those entries. So a script that calls a
   //     host function with a string argument may restart its own deadline on every call. Two
   //     otherwise identical loops, one passing a number and one a string, show whether it does.
-  //     The string loop is judged by clock(), the deadline's own clock: it restarts the deadline
-  //     only if clock() passes 1000 ms without an interrupt.
+  //     The string loop is judged by the deadline's own clock, which probe 8 identified: it
+  //     restarts the deadline only if that clock passes 1000 ms without an interrupt.
   await _probe('deadline-host-call-restart', () async {
     _Run loop(String call) {
       final engine = FlutterQjs(timeout: _deadlineMs);
@@ -558,7 +560,9 @@ Future<void> _runAll() async {
 
     final number = loop('hostNumber(1)');
     final string = loop("hostString('x')");
-    final stringClock = string.span.clockMs ?? string.span.wallMs;
+    final stringClock = _blockedVerdict == 'wall-clock'
+        ? string.span.wallMs
+        : string.span.clockMs ?? string.span.wallMs;
     final String verdict;
     if (number.interrupted &&
         string.completed &&
@@ -571,6 +575,27 @@ Future<void> _runAll() async {
     }
     return 'verdict=$verdict number: $number; string: $string';
   });
+
+  // 11. What the host is told when the limit leaves no room for the error. When an allocation
+  //     would pass the limit, QuickJS builds an InternalError("out of memory"), which allocates
+  //     too. If the refused request was small, there may be no room left for the error either,
+  //     and QuickJS then throws null instead (JS_ThrowError2 does this on purpose, to avoid
+  //     recursing). Probe 5 allocates 80 KB arrays, so whether it meets this depends on the
+  //     allocator's size classes: on the first CI run API 26 did, and API 35 and Windows did not.
+  //     Empty objects make the refused request tiny, which reproduces it on every platform. The
+  //     limit is enforced either way; this is about whether the host can tell why.
+  await _probeExpectingThrow(
+    'watchdog-memory-limit-small-objects',
+    'out of memory',
+    () async {
+      final engine = FlutterQjs(memoryLimit: 1024 * 1024);
+      try {
+        await engine.evaluate('const a = []; while (true) { a.push({}); }');
+      } finally {
+        engine.close();
+      }
+    },
+  );
 }
 
 Future<void> main() async {
