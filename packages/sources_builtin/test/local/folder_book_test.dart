@@ -6,6 +6,7 @@ import 'package:test/test.dart';
 
 import 'support/image_bytes.dart';
 import 'support/mp3_bytes.dart';
+import 'support/vorbis_bytes.dart';
 
 /// An MP3 carrying whichever tags are given.
 List<int> mp3({
@@ -27,6 +28,27 @@ List<int> mp3({
   ]),
   ...audio(frames),
 ];
+
+/// A FLAC file of [seconds] at 44.1 kHz carrying [comments].
+List<int> flacFile(List<String> comments, {int seconds = 10}) => flac(
+  info: streamInfo(totalSamples: 44100 * seconds),
+  blocks: [(4, vorbisComments(comments))],
+);
+
+/// An Ogg Opus file of [seconds] carrying [comments].
+List<int> opusFile(List<String> comments, {int seconds = 10}) => oggFile(
+  identification: opusHead(),
+  comments: opusTags(comments),
+  endGranule: 312 + 48000 * seconds,
+);
+
+/// An Ogg Vorbis file of [seconds] carrying [comments].
+List<int> vorbisFile(List<String> comments, {int seconds = 10}) => oggFile(
+  identification: vorbisId(),
+  comments: vorbisCommentHeader(comments),
+  setup: vorbisSetup(),
+  endGranule: 44100 * seconds,
+);
 
 void main() {
   late Directory root;
@@ -182,6 +204,114 @@ void main() {
       await put('01.mp3', mp3());
       await put('._cover.jpg', jpegBytes());
       expect((await read()).coverFileName, isNull);
+    });
+  });
+
+  group('FLAC and Ogg tracks', () {
+    test('are read with their durations and tags', () async {
+      await put(
+        '01.flac',
+        flacFile([
+          'TITLE=Opening',
+          'ALBUM=A Book',
+          'ALBUMARTIST=An Author',
+          'COMPOSER=A Narrator',
+          'TRACKNUMBER=1',
+        ], seconds: 30),
+      );
+      await put(
+        '02.opus',
+        opusFile([
+          'TITLE=Middle',
+          'ALBUM=A Book',
+          'TRACKNUMBER=2',
+        ], seconds: 40),
+      );
+      await put(
+        '03.ogg',
+        vorbisFile(['TITLE=End', 'ALBUM=A Book', 'TRACKNUMBER=3'], seconds: 50),
+      );
+
+      final book = await read();
+      expect(book.title, 'A Book');
+      expect(book.authors, ['An Author']);
+      expect(book.narrators, ['A Narrator']);
+      expect(titles(book), ['Opening', 'Middle', 'End']);
+      expect(
+        [for (final track in book.tracks) track.durationMs],
+        [30000, 40000, 50000],
+      );
+      expect(
+        [for (final track in book.tracks) track.format],
+        ['flac', 'opus', 'ogg'],
+      );
+      expect(book.tracks.every((track) => !track.durationIsEstimate), isTrue);
+    });
+
+    test('that are damaged are reported as unreadable', () async {
+      await put('01.flac', flacFile(const []));
+      await put('02.ogg', opusFile(const []).sublist(0, 60));
+      final book = await read();
+      expect(names(book), ['01.flac']);
+      expect(book.unreadable, ['02.ogg']);
+    });
+  });
+
+  group('formats the device cannot play', () {
+    bool noOgg(LocalAudioFormat format) =>
+        format != LocalAudioFormat.oggVorbis &&
+        format != LocalAudioFormat.oggOpus;
+
+    test(
+      'are left out, named with their formats, and the book made of the rest',
+      () async {
+        // An archive's folder may hold each chapter twice, in two formats. Counted together, the
+        // repeated numbers and titles would be distrusted; counted without the files left out, they
+        // order and name the book.
+        await put('b.mp3', mp3(title: 'One', album: 'A Book', track: '1'));
+        await put('a.mp3', mp3(title: 'Two', album: 'A Book', track: '2'));
+        await put(
+          'b.ogg',
+          vorbisFile(['TITLE=One', 'ALBUM=Other', 'TRACKNUMBER=1']),
+        );
+        await put(
+          'a.opus',
+          opusFile(['TITLE=Two', 'ALBUM=Other', 'TRACKNUMBER=2']),
+        );
+        await put(
+          'c.flac',
+          flacFile(['TITLE=Three', 'ALBUM=A Book', 'TRACKNUMBER=3']),
+        );
+
+        final book = (await readFolderBook(folder, canPlay: noOgg))!;
+        expect(names(book), ['b.mp3', 'a.mp3', 'c.flac']);
+        expect(titles(book), ['One', 'Two', 'Three']);
+        expect(book.title, 'A Book');
+        expect(book.unplayable, const [
+          UnplayableFile(fileName: 'a.opus', format: LocalAudioFormat.oggOpus),
+          UnplayableFile(fileName: 'b.ogg', format: LocalAudioFormat.oggVorbis),
+        ]);
+        expect(book.unreadable, isEmpty);
+      },
+    );
+
+    test('alone give a book with no tracks, naming them all', () async {
+      await put('01.ogg', vorbisFile(const []));
+      await put('02.ogg', opusFile(const []));
+      await put('03.ogg', List.filled(4096, 0));
+
+      final book = (await readFolderBook(folder, canPlay: noOgg))!;
+      expect(book.tracks, isEmpty);
+      expect(book.unplayable, const [
+        UnplayableFile(fileName: '01.ogg', format: LocalAudioFormat.oggVorbis),
+        UnplayableFile(fileName: '02.ogg', format: LocalAudioFormat.oggOpus),
+      ]);
+      expect(book.unreadable, ['03.ogg']);
+    });
+
+    test('are all taken when nothing is said about playing them', () async {
+      await put('01.ogg', vorbisFile(const []));
+      expect(names(await read()), ['01.ogg']);
     });
   });
 

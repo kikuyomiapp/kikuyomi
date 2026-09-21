@@ -8,7 +8,7 @@ library;
 import 'dart:io';
 
 import 'embedded_picture.dart';
-import 'mp3_info.dart';
+import 'local_audio.dart';
 import 'mp4_chapters.dart';
 
 /// Reads a local book's cover.
@@ -17,8 +17,8 @@ import 'mp4_chapters.dart';
 /// finds in a folder. It is taken when its bytes open as a JPEG, PNG, GIF or WebP image. Its name
 /// alone is not trusted, because a folder picks its cover by name and a damaged or misnamed file
 /// would otherwise hide a good embedded picture. Otherwise, or with no [image], the cover is the
-/// picture embedded in [audio], the book's file or its first file: read as an MP3 when its name says
-/// so, and as an MP4 otherwise, as `readFolderBook` reads tracks.
+/// picture embedded in [audio], the book's file or its first file, read as the format its extension
+/// names, as [readLocalAudioInfo] and `readFolderBook` read files.
 ///
 /// Returns null when neither gives a picture, which includes an [audio] file this package cannot
 /// read as audio. Throws a [FileSystemException] when [audio] cannot be opened, as when it is
@@ -30,9 +30,12 @@ Future<EmbeddedPicture?> readLocalCover(File audio, {File? image}) async {
   }
   final source = await FileByteSource.open(audio);
   try {
-    return _isMp3(audio.path)
-        ? (await readMp3Info(source, withCover: true))?.cover
-        : (await readMp4Info(source, withCover: true))?.cover;
+    final info = await readLocalAudioInfo(
+      source,
+      extension: _extension(audio.path),
+      withCover: true,
+    );
+    return info?.cover;
   } on FormatException {
     // A damaged file, whose picture cannot be found. It has no cover this can read.
     return null;
@@ -57,4 +60,9 @@ Future<EmbeddedPicture?> _readImage(File image) async {
   }
 }
 
-bool _isMp3(String path) => path.toLowerCase().endsWith('.mp3');
+/// The extension of the file at [path], or nothing when its name has none.
+String _extension(String path) {
+  final name = path.split(RegExp(r'[\/]')).last;
+  final dot = name.lastIndexOf('.');
+  return dot < 0 ? '' : name.substring(dot + 1);
+}

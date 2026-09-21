@@ -8,12 +8,8 @@ library;
 import 'dart:io';
 import 'dart:math' as math;
 
-import 'mp3_info.dart';
+import 'local_audio.dart';
 import 'mp4_chapters.dart';
-
-/// The extensions read as a book's audio. Anything else in a folder, such as a playlist or a text
-/// file, is ignored, apart from a cover image: see [readFolderBook].
-const audioExtensions = {'mp3', 'm4a', 'm4b', 'mp4'};
 
 /// The extensions of an image beside a book's audio that may be its cover: the formats rippers and
 /// taggers save cover art in, which every platform can decode.
@@ -47,6 +43,28 @@ final class FolderTrack {
   final int? discNumber;
 }
 
+/// An audio file of a folder that was read, and left out of its book because the device cannot play
+/// its format.
+final class UnplayableFile {
+  const UnplayableFile({required this.fileName, required this.format});
+
+  /// The file's name within its folder.
+  final String fileName;
+  final LocalAudioFormat format;
+
+  @override
+  bool operator ==(Object other) =>
+      other is UnplayableFile &&
+      other.fileName == fileName &&
+      other.format == format;
+
+  @override
+  int get hashCode => Object.hash(fileName, format);
+
+  @override
+  String toString() => 'UnplayableFile($fileName, ${format.name})';
+}
+
 /// A folder read as a book.
 final class FolderBook {
   const FolderBook({
@@ -55,6 +73,7 @@ final class FolderBook {
     required this.narrators,
     required this.tracks,
     required this.unreadable,
+    this.unplayable = const [],
     this.coverFileName,
   });
 
@@ -62,12 +81,16 @@ final class FolderBook {
   final List<String> authors;
   final List<String> narrators;
 
-  /// In playing order.
+  /// In playing order. Empty only when every file that could be read is in [unplayable].
   final List<FolderTrack> tracks;
 
   /// Audio files, by name, that could not be read. They are left out of the book rather than failing
   /// it, so one damaged file does not cost the rest.
   final List<String> unreadable;
+
+  /// Audio files that were read but are in a format the device cannot play, in natural order of
+  /// their names. They are left out of the book, as [unreadable] files are.
+  final List<UnplayableFile> unplayable;
 
   /// The name of the image in the folder to show as the book's cover, or null when there is none
   /// or no telling which one it is. Only the name is known: the image is not read, so it may yet
@@ -76,6 +99,12 @@ final class FolderBook {
 }
 
 /// Reads [folder] as a book, or returns null when it holds no audio that can be read.
+///
+/// Files in a format [canPlay] turns down are left out of the book and listed in
+/// [FolderBook.unplayable], and the book is made of the rest: its order, its chapter titles and its
+/// credits come from the files that will play. Without [canPlay] every format is taken. A folder
+/// whose every readable file is turned down still gives a book, with no tracks, so that the caller
+/// can say which formats the device cannot play rather than that the folder holds no audio.
 ///
 /// Only the folder's own files are read, not its subfolders. Hidden files are skipped, which also
 /// skips the `._` companions macOS leaves beside files copied to other file systems.
@@ -89,10 +118,14 @@ final class FolderBook {
 /// which are the names music players have long looked for; failing those, the folder's only image.
 /// Among several images with other names none is chosen, since nothing tells a front cover from a
 /// back cover or a disc scan. Only names are looked at here: a cover embedded in the audio comes
-/// from [readMp3Info] or [readMp4Info] when asked for.
-Future<FolderBook?> readFolderBook(Directory folder) async {
+/// from [readLocalAudioInfo] when asked for.
+Future<FolderBook?> readFolderBook(
+  Directory folder, {
+  bool Function(LocalAudioFormat format)? canPlay,
+}) async {
   final probed = <_Probed>[];
   final unreadable = <String>[];
+  final unplayable = <UnplayableFile>[];
   final images = <String>[];
   final files = await folder
       .list(followLinks: false)
@@ -111,12 +144,15 @@ Future<FolderBook?> readFolderBook(Directory folder) async {
     final info = await _probe(file, name, format);
     if (info == null) {
       unreadable.add(name);
+    } else if (canPlay != null && !canPlay(info.audioFormat)) {
+      unplayable.add(UnplayableFile(fileName: name, format: info.audioFormat));
     } else {
       probed.add(info);
     }
   }
-  if (probed.isEmpty) return null;
+  if (probed.isEmpty && unplayable.isEmpty) return null;
   unreadable.sort(_compareNatural);
+  unplayable.sort((a, b) => _compareNatural(a.fileName, b.fileName));
 
   final numbered =
       probed.every((track) => track.trackNumber != null) &&
@@ -167,6 +203,7 @@ Future<FolderBook?> readFolderBook(Directory folder) async {
         ),
     ],
     unreadable: unreadable,
+    unplayable: unplayable,
     coverFileName: _coverFileName(images),
   );
 }
@@ -207,69 +244,44 @@ final class _Probed {
     required this.fileName,
     required this.format,
     required this.sizeBytes,
-    required this.durationMs,
-    required this.durationIsEstimate,
-    this.title,
-    this.artist,
-    this.albumArtist,
-    this.album,
-    this.composer,
-    this.trackNumber,
-    this.discNumber,
+    required this.info,
   });
 
   final String fileName;
+
+  /// The file's extension, in lower case.
   final String format;
   final int sizeBytes;
-  final int durationMs;
-  final bool durationIsEstimate;
-  final String? title;
-  final String? artist;
-  final String? albumArtist;
-  final String? album;
-  final String? composer;
-  final int? trackNumber;
-  final int? discNumber;
+  final LocalAudioInfo info;
+
+  LocalAudioFormat get audioFormat => info.format;
+  int get durationMs => info.durationMs;
+  bool get durationIsEstimate => info.durationIsEstimate;
+  String? get title => info.title;
+  String? get artist => info.artist;
+  String? get albumArtist => info.albumArtist;
+  String? get album => info.album;
+  String? get composer => info.composer;
+  int? get trackNumber => info.trackNumber;
+  int? get discNumber => info.discNumber;
 }
 
 /// Reads one file, or returns null when it is not audio this package can read.
+///
+/// A file's own embedded chapters are not read into the book: each file is one chapter of it, as
+/// §3.10 has it.
 Future<_Probed?> _probe(File file, String name, String format) async {
   final source = await FileByteSource.open(file);
   try {
-    if (format == 'mp3') {
-      final info = await readMp3Info(source);
-      if (info == null) return null;
-      return _Probed(
-        fileName: name,
-        format: format,
-        sizeBytes: source.length,
-        durationMs: info.durationMs,
-        durationIsEstimate: info.durationIsEstimate,
-        title: info.title,
-        artist: info.artist,
-        albumArtist: info.albumArtist,
-        album: info.album,
-        composer: info.composer,
-        trackNumber: info.trackNumber,
-        discNumber: info.discNumber,
-      );
-    }
-    final info = await readMp4Info(source);
-    if (info == null) return null;
-    return _Probed(
-      fileName: name,
-      format: format,
-      sizeBytes: source.length,
-      durationMs: info.durationMs,
-      durationIsEstimate: false,
-      title: info.title,
-      artist: info.artist,
-      albumArtist: info.albumArtist,
-      album: info.album,
-      composer: info.composer,
-      trackNumber: info.trackNumber,
-      discNumber: info.discNumber,
-    );
+    final info = await readLocalAudioInfo(source, extension: format);
+    return info == null
+        ? null
+        : _Probed(
+            fileName: name,
+            format: format,
+            sizeBytes: source.length,
+            info: info,
+          );
   } on FormatException {
     return null;
   } finally {

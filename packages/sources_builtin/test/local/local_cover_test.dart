@@ -6,6 +6,7 @@ import 'package:test/test.dart';
 
 import 'support/image_bytes.dart';
 import 'support/mp3_bytes.dart';
+import 'support/vorbis_bytes.dart';
 
 /// An MP3 with [image] embedded as its front cover, or with no picture when [image] is null.
 List<int> mp3({List<int>? image}) => [
@@ -66,6 +67,55 @@ void main() {
         image: File('${folder.path}/cover.jpg'),
       );
       expect(cover!.mimeType, 'image/jpeg');
+    });
+
+    test('is the picture in a FLAC file', () async {
+      final image = pngBytes(fill: 0x36);
+      final cover = await readLocalCover(
+        await put(
+          'book.flac',
+          flac(
+            info: streamInfo(totalSamples: 44100),
+            blocks: [
+              (6, pictureStructure(image: image, mimeType: 'image/png')),
+            ],
+          ),
+        ),
+      );
+      expect(cover!.mimeType, 'image/png');
+      expect(cover.bytes, image);
+    });
+
+    test('is the picture in an Ogg file', () async {
+      final image = jpegBytes(fill: 0x37);
+      final cover = await readLocalCover(
+        await put(
+          'book.opus',
+          oggFile(
+            identification: opusHead(),
+            comments: opusTags([pictureComment(image: image)]),
+            endGranule: 48000 * 10,
+          ),
+        ),
+      );
+      expect(cover!.bytes, image);
+    });
+
+    test('is null for an Ogg file that cannot be timed', () async {
+      final file = await put('book.ogg', [
+        ...oggFile(
+          identification: opusHead(),
+          comments: opusTags([pictureComment(image: jpegBytes())]),
+          endGranule: 48000 * 10,
+        ),
+        ...oggFile(
+          identification: opusHead(),
+          comments: opusTags(const []),
+          endGranule: 48000 * 10,
+          serial: 7,
+        ),
+      ]);
+      expect(await readLocalCover(file), isNull);
     });
 
     test('is null for audio with no picture', () async {
