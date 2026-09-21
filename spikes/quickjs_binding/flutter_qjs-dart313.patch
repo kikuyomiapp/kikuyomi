@@ -1,5 +1,5 @@
-a/lib/src/ffi.dart	2021-10-04 21:58:27.000000000 +0300
-b/lib/src/ffi.dart	2026-09-13 04:50:27.481651700 +0300
+--- a/lib/src/ffi.dart	2021-10-04 21:58:27.000000000 +0300
++++ b/lib/src/ffi.dart	2026-09-13 04:50:27.481651700 +0300
 @@ -186,7 +186,7 @@
  
  final Map<Pointer<JSRuntime>, _RuntimeOpaque> runtimeOpaques = Map();
