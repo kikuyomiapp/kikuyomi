@@ -37,6 +37,7 @@ independently of the proposal it came from.
 | [0015](0015-name-and-application-id.md) | Name and application ID | 15 | Accepted |
 | [0016](0016-source-api-1-0.md) | SourceAPI 1.0, the extension contract | — | Accepted |
 
-Every decision in §9 of `docs/architecture.md` now has an ADR. ADR-0001 awaits an Android run,
-which Phase 2 makes on an emulator in CI. ADR-0016 is the first decision made after Phase 0,
+Every decision in §9 of `docs/architecture.md` now has an ADR. ADR-0001's Android run has been
+made, on emulators in CI; it stays Proposed until a small fork patch for the one failing probe
+lands and the run passes. ADR-0016 is the first decision made after Phase 0,
 not one of §9's.

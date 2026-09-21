@@ -17,7 +17,7 @@ From the roadmap in `docs/architecture.md` §8. Status as of the last commit.
 
 | Spike | Status | Outcome |
 |---|---|---|
-| `quickjs_binding/` | **Windows done, Android blocked** | `flutter_qjs` does not run on Dart 3.13 as published, but three lines fix it and all six probes then pass, including an interrupt and an enforced memory cap. ADR-0001, still Proposed. |
+| `quickjs_binding/` | **Windows done, Android run in CI** | The fork in `third_party/flutter_qjs` runs on API 26 and API 35 emulators: it interrupts a runaway script, enforces its memory cap and survives an interrupt. On Android the deadline counted CPU time for the whole process, so the fork now uses a wall-clock deadline, verified on both. When the memory cap leaves no room for an error the host is told `null`, failing the memory-limit probe on API 26; a three-line fork patch, proposed in the spike README, fixes it. ADR-0001, still Proposed until that lands. |
 | `html_selectors/` | **Done** | `package:html` covers what extensions need, but `:has()` is unsupported and `:empty`, `:nth-child(odd)` and `:nth-child(n)` on indented HTML **silently match nothing**. |
 | `playback/` | **Windows done, Android not run** | The stack works. Two undocumented behaviours would each silently corrupt resume; both are now requirements on the `PlaybackEngine` adapter. ADR-0006. |
 | `m4b_chapters/` | **Done** | Both chapter formats read in pure Dart, seek-based, ~1% of the file. No platform plugin and no ffmpeg at runtime. |
@@ -27,8 +27,10 @@ From the roadmap in `docs/architecture.md` §8. Status as of the last commit.
 ## What is blocking
 
 **The Android emulator will not start on the development machine.** No hypervisor driver is
-installed, although VT-x is enabled in firmware. This blocks the Android half of spikes (a) and
-(b) and most of spike (c). `flutter doctor` reports the Android toolchain as green, because it
+installed, although VT-x is enabled in firmware. This blocks the Android half of spike (b) and
+most of spike (c). Spike (a) no longer depends on it: its probe runs on emulators in GitHub
+Actions (`.github/workflows/android-emulator.yml`), whose Linux runners have KVM, and the same
+route is open to the others where an emulator can show what they need. `flutter doctor` reports the Android toolchain as green, because it
 checks the SDK and licences and not whether an emulator can run — so a green doctor is not
 evidence that Android works.
 

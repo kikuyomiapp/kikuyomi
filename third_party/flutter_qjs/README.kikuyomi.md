@@ -54,6 +54,21 @@ Only what is needed to build and run. Each is its own commit.
    `std::chrono::steady_clock`, so one timeout means the same elapsed time on every platform.
    Windows behaves as before.
 
+## Known defects
+
+Found by the probe, not yet fixed. `spikes/quickjs_binding/README.md` has the evidence.
+
+- **A null exception reaches Dart as `throw null`.** When the memory limit leaves no room to
+  build the "out of memory" error, QuickJS throws `null` instead, and `evaluate` rethrows it, so
+  the host gets `TypeError: type 'Null' is not a subtype of type 'Object'`. The limit is still
+  enforced. Proposed fix, verified on Windows: `_parseJSException` in `lib/src/wrapper.dart`
+  returns `err ?? JSError('InternalError: null thrown (QuickJS throws null when out of memory)')`.
+- **Host calls restart the deadline.** `js_begin_call` runs on every entry from Dart into
+  QuickJS, including converting a string for Dart, so a loop that calls a host function with a
+  string argument is never interrupted. To be fixed with the planned host-callback deadline.
+- **The deadline is a fixed timeout.** The host cannot cancel a running script, for instance
+  because the user navigated away. The host-callback change addresses this too.
+
 ## Using it
 
 It is not published and must never be published under upstream's name. Depend on it by path:
