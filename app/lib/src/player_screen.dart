@@ -28,7 +28,8 @@ class PlayerScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final playerState = ref.watch(playerStateProvider);
-    final coordinator = ref.watch(servicesProvider).coordinator;
+    final services = ref.watch(servicesProvider);
+    final coordinator = services.coordinator;
     final ready = switch (playerState) {
       AsyncData(value: final PlayerReady state) => state,
       _ => null,
@@ -41,6 +42,8 @@ class PlayerScreen extends ConsumerWidget {
       },
       onSkip: coordinator.skip,
       onSpeed: coordinator.setSpeed,
+      onAddBookmark: () =>
+          addBookmarkHere(context, _bookmarkCommands(services)),
       child: Scaffold(
         appBar: AppBar(title: const Text('Now playing')),
         body: playerState.when(

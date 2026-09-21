@@ -6,7 +6,8 @@ import 'player_view.dart';
 
 /// The player screen's keyboard shortcuts, the ones §2.6 promises desktop: space plays or pauses,
 /// the left and right arrows skip back and forward as the skip buttons do, and the square brackets
-/// step down and up through [PlayerView.speeds], stopping at either end.
+/// step down and up through [PlayerView.speeds], stopping at either end. B adds a bookmark, as the
+/// bookmark button does, except while a text field has focus, where a B is typed.
 ///
 /// Nothing here asks which platform it runs on. The keys come from whatever keyboard there is, and
 /// a phone without one never sends them.
@@ -27,6 +28,7 @@ class PlayerShortcuts extends StatelessWidget {
     required this.onPlayPause,
     required this.onSkip,
     required this.onSpeed,
+    required this.onAddBookmark,
     required this.child,
   });
 
@@ -35,6 +37,7 @@ class PlayerShortcuts extends StatelessWidget {
   final VoidCallback onPlayPause;
   final ValueChanged<Duration> onSkip;
   final ValueChanged<double> onSpeed;
+  final VoidCallback onAddBookmark;
   final Widget child;
 
   /// The first activator here that accepts a key decides what the key does.
@@ -55,6 +58,11 @@ class PlayerShortcuts extends StatelessWidget {
     CharacterActivator(']', includeRepeats: false): _StepSpeedIntent(
       faster: true,
     ),
+    // By the key rather than the character, unlike the brackets: a letter is where every layout
+    // puts it, and a keyboard typing another alphabet, or with Caps Lock on, still reports the key
+    // as B. Held down, it adds one bookmark rather than one for every repeat.
+    SingleActivator(LogicalKeyboardKey.keyB, includeRepeats: false):
+        _AddBookmarkIntent(),
   };
 
   @override
@@ -89,6 +97,12 @@ class PlayerShortcuts extends StatelessWidget {
               return null;
             },
           ),
+          _AddBookmarkIntent: _UnlessTyping<_AddBookmarkIntent>(
+            onInvoke: (_) {
+              onAddBookmark();
+              return null;
+            },
+          ),
         },
         child: FocusScope(autofocus: true, child: child),
       ),
@@ -120,4 +134,22 @@ class _StepSpeedIntent extends Intent {
   const _StepSpeedIntent({required this.faster});
 
   final bool faster;
+}
+
+class _AddBookmarkIntent extends Intent {
+  const _AddBookmarkIntent();
+}
+
+/// A [CallbackAction] that stands aside while a text field has focus, for a key that is also typed.
+///
+/// A key reaches these shortcuts before the platform turns it into text, and one they handle is
+/// never typed. An action that is not enabled leaves its key unhandled, so it goes on to the text
+/// field as typing.
+class _UnlessTyping<T extends Intent> extends CallbackAction<T> {
+  _UnlessTyping({required super.onInvoke});
+
+  @override
+  bool isEnabled(T intent) =>
+      primaryFocus?.context?.findAncestorWidgetOfExactType<EditableText>() ==
+      null;
 }

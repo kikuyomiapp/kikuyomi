@@ -96,29 +96,32 @@ Widget player(
     restore: (bookmark) async => press('restore ${bookmark.bookmarkId}'),
   );
   return MaterialApp(
-    home: PlayerShortcuts(
-      state: state,
-      onPlayPause: playPause,
-      onSkip: skip,
-      onSpeed: speed,
-      child: Scaffold(
-        body: PlayerView(
-          title: 'A Book',
-          cover: cover,
-          state: state,
-          bookmarks: bookmarks,
-          bookmarkCommands: commands,
-          onPlayPause: playPause,
-          onSeek: (ms) => press('seek $ms'),
-          onSkip: skip,
-          onPreviousChapter: () => press('previous'),
-          onNextChapter: () => press('next'),
-          onSpeed: speed,
-          onSleepTimer: (target) => press(switch (target) {
-            SleepAfter(:final duration) => 'sleep ${duration.inMinutes}',
-            SleepAtEndOfChapter() => 'sleep at end of chapter',
-          }),
-          onCancelSleepTimer: () => press('sleep off'),
+    home: Builder(
+      builder: (context) => PlayerShortcuts(
+        state: state,
+        onPlayPause: playPause,
+        onSkip: skip,
+        onSpeed: speed,
+        onAddBookmark: () => addBookmarkHere(context, commands),
+        child: Scaffold(
+          body: PlayerView(
+            title: 'A Book',
+            cover: cover,
+            state: state,
+            bookmarks: bookmarks,
+            bookmarkCommands: commands,
+            onPlayPause: playPause,
+            onSeek: (ms) => press('seek $ms'),
+            onSkip: skip,
+            onPreviousChapter: () => press('previous'),
+            onNextChapter: () => press('next'),
+            onSpeed: speed,
+            onSleepTimer: (target) => press(switch (target) {
+              SleepAfter(:final duration) => 'sleep ${duration.inMinutes}',
+              SleepAtEndOfChapter() => 'sleep at end of chapter',
+            }),
+            onCancelSleepTimer: () => press('sleep off'),
+          ),
         ),
       ),
     ),
@@ -777,6 +780,76 @@ void main() {
       expect(pressed, isEmpty);
     });
 
+    testWidgets('B adds a bookmark, and says so', (tester) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await tester.pumpAndSettle();
+
+      expect(pressed, ['bookmark']);
+      expect(find.text('Bookmark added'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, 'Add note'), findsOneWidget);
+    });
+
+    testWidgets('B held down adds one bookmark', (tester) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyB);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.keyB);
+      await tester.sendKeyRepeatEvent(LogicalKeyboardKey.keyB);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyB);
+      await tester.pumpAndSettle();
+      expect(pressed, ['bookmark']);
+    });
+
+    testWidgets('B is typed into a text field that has focus', (tester) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PlayerShortcuts(
+            state: readyAt(),
+            onPlayPause: () => pressed.add('play'),
+            onSkip: (_) => pressed.add('skip'),
+            onSpeed: (_) => pressed.add('speed'),
+            onAddBookmark: () => pressed.add('bookmark'),
+            child: const Scaffold(body: TextField(autofocus: true)),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Left unhandled, so that the platform types it into the field.
+      expect(await tester.sendKeyEvent(LogicalKeyboardKey.keyB), isFalse);
+      expect(pressed, isEmpty);
+
+      // And once the field lets go of focus, B adds a bookmark again.
+      primaryFocus!.unfocus();
+      await tester.pump();
+      expect(await tester.sendKeyEvent(LogicalKeyboardKey.keyB), isTrue);
+      expect(pressed, ['bookmark']);
+    });
+
+    testWidgets("B typed into a bookmark's name adds no bookmark", (
+      tester,
+    ) async {
+      useWideWindow(tester);
+      final pressed = <String>[];
+      await tester.pumpWidget(
+        player(
+          readyAt(),
+          pressed: pressed,
+          bookmarks: [bookmarkAt(1, 65000, title: 'The twist')],
+        ),
+      );
+      await showBookmarks(tester);
+      await fromMenu(tester, 'The twist', 'Rename');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(pressed, isEmpty);
+    });
+
     testWidgets('space does not also press the button that has focus', (
       tester,
     ) async {
@@ -836,6 +909,7 @@ void main() {
             onPlayPause: () => pressed.add('play'),
             onSkip: (_) => pressed.add('skip'),
             onSpeed: (_) => pressed.add('speed'),
+            onAddBookmark: () => pressed.add('bookmark'),
             child: const Scaffold(),
           ),
         ),
@@ -846,6 +920,7 @@ void main() {
         LogicalKeyboardKey.arrowRight,
         LogicalKeyboardKey.bracketLeft,
         LogicalKeyboardKey.bracketRight,
+        LogicalKeyboardKey.keyB,
       ]) {
         await tester.sendKeyEvent(key);
       }
