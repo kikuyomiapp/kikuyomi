@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:kikuyomi_data/kikuyomi_data.dart' show BookmarkOverview;
 import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart' show NavigationEntry;
 import 'package:kikuyomi_playback/kikuyomi_playback.dart'
@@ -12,6 +13,8 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart'
         SleepTimerRunning,
         SleepTimerTarget;
 
+import 'bookmark_commands.dart';
+import 'bookmark_list.dart';
 import 'chapter_list.dart';
 import 'format.dart';
 
@@ -32,18 +35,25 @@ enum _SleepChoice {
   final SleepTimerTarget? target;
 }
 
-/// From Material's expanded window width up, the chapter list opens beside the controls, where it
-/// can stay open while the book plays, rather than in a sheet over them (§2.6's adaptive layout).
+/// From Material's expanded window width up, the chapters and bookmarks open beside the controls,
+/// where they can stay open while the book plays, rather than in a sheet over them (§2.6's adaptive
+/// layout).
 const _sidePanelMinWidth = 840.0;
 
-/// The player's controls for an open book. Pure: it renders a [PlayerReady] and reports gestures,
-/// and knows nothing of the coordinator, which keeps it testable as a widget on its own.
+/// What the panel beside the controls, or the sheet over them, shows.
+enum _PanelTab { chapters, bookmarks }
+
+/// The player's controls for an open book. Pure: it renders a [PlayerReady] and the book's bookmarks,
+/// reports gestures, and asks for bookmark changes through [bookmarkCommands]. It knows nothing of
+/// the coordinator or the database, which keeps it testable as a widget on its own.
 class PlayerView extends StatefulWidget {
   const PlayerView({
     super.key,
     required this.title,
     required this.cover,
     required this.state,
+    required this.bookmarks,
+    required this.bookmarkCommands,
     required this.onPlayPause,
     required this.onSeek,
     required this.onSkip,
@@ -65,10 +75,16 @@ class PlayerView extends StatefulWidget {
   final File? cover;
   final PlayerReady state;
 
+  /// The book's bookmarks, in playing order.
+  final List<BookmarkOverview> bookmarks;
+
+  /// Where adding, renaming, noting and deleting a bookmark go.
+  final BookmarkCommands bookmarkCommands;
+
   final VoidCallback onPlayPause;
 
-  /// A seek to a position in book-global time: from the scrubber, or to the start of a chapter
-  /// picked from the list.
+  /// A seek to a position in book-global time: from the scrubber, to the start of a chapter picked
+  /// from the list, or to a bookmark.
   final ValueChanged<int> onSeek;
   final ValueChanged<Duration> onSkip;
   final VoidCallback onPreviousChapter;
@@ -86,22 +102,81 @@ class _PlayerViewState extends State<PlayerView> {
   double? _dragging;
 
   /// Whether the side panel is open. Only a wide layout shows it; a narrow one opens a sheet instead.
-  bool _chaptersOpen = false;
+  bool _panelOpen = false;
 
-  Future<void> _showChapterSheet() => showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (sheetContext) => SafeArea(
-      top: false,
-      child: _ChapterPanel(
-        entries: widget.state.navigation,
-        current: widget.state.entry,
-        onSelected: (entry) {
-          Navigator.pop(sheetContext);
-          widget.onSeek(entry.startMs);
-        },
-      ),
-    ),
+  /// Chapters or bookmarks, in the panel and the sheet alike, remembered while the player is open.
+  _PanelTab _tab = _PanelTab.chapters;
+
+  /// Whether the sheet is open, and a count that moves on whenever it has something new to show. See
+  /// [_showSheet].
+  bool _sheetOpen = false;
+  final _sheetChanges = ValueNotifier<int>(0);
+
+  @override
+  void didUpdateWidget(PlayerView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_sheetOpen) {
+      // Not straight away: the sheet is outside this view, and nothing outside it may be rebuilt
+      // while it builds. The sheet catches up as soon as the frame is done.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _sheetChanges.value++;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _sheetChanges.dispose();
+    super.dispose();
+  }
+
+  /// Opens the chapters and bookmarks in a sheet over the controls, as a narrow layout does.
+  ///
+  /// The sheet is a route of its own, so this view building again does not rebuild it. It listens to
+  /// [_sheetChanges] instead, to keep up with the book as it plays and with its bookmarks as they
+  /// change. It has a scaffold of its own too, so that a snack bar raised from it, such as the one
+  /// that undoes a deletion, shows in the sheet rather than behind it, out of reach.
+  Future<void> _showSheet() async {
+    _sheetOpen = true;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => ScaffoldMessenger(
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: SafeArea(
+              top: false,
+              child: ValueListenableBuilder<int>(
+                valueListenable: _sheetChanges,
+                builder: (context, _, _) =>
+                    _panel(beforeSeek: () => Navigator.pop(sheetContext)),
+              ),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      _sheetOpen = false;
+    }
+  }
+
+  /// The chapters and bookmarks, as the side panel and the sheet both show them. [beforeSeek] is
+  /// called before seeking to a chapter or bookmark picked there.
+  Widget _panel({VoidCallback? beforeSeek}) => _NavigationPanel(
+    tab: _tab,
+    onTabChanged: (tab) {
+      setState(() => _tab = tab);
+      _sheetChanges.value++;
+    },
+    entries: widget.state.navigation,
+    current: widget.state.entry,
+    bookmarks: widget.bookmarks,
+    commands: widget.bookmarkCommands,
+    onSeek: (globalMs) {
+      beforeSeek?.call();
+      widget.onSeek(globalMs);
+    },
   );
 
   @override
@@ -109,7 +184,7 @@ class _PlayerViewState extends State<PlayerView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= _sidePanelMinWidth;
-        final panelShown = wide && _chaptersOpen;
+        final panelShown = wide && _panelOpen;
         // One row whether or not the panel shows, so opening it does not rebuild the controls.
         return Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -124,12 +199,8 @@ class _PlayerViewState extends State<PlayerView> {
                 child: SafeArea(
                   left: false,
                   top: false,
-                  child: _ChapterPanel(
-                    entries: widget.state.navigation,
-                    current: widget.state.entry,
-                    // The panel stays open, to go on browsing from.
-                    onSelected: (entry) => widget.onSeek(entry.startMs),
-                  ),
+                  // The panel stays open after a seek, to go on browsing from.
+                  child: _panel(),
                 ),
               ),
             ],
@@ -235,12 +306,19 @@ class _PlayerViewState extends State<PlayerView> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   IconButton(
-                    tooltip: 'Chapters',
+                    tooltip: 'Add bookmark',
+                    icon: const Icon(Icons.bookmark_add_outlined),
+                    onPressed: () =>
+                        addBookmarkHere(context, widget.bookmarkCommands),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Chapters and bookmarks',
                     isSelected: panelShown,
                     icon: const Icon(Icons.format_list_bulleted),
                     onPressed: wide
-                        ? () => setState(() => _chaptersOpen = !_chaptersOpen)
-                        : _showChapterSheet,
+                        ? () => setState(() => _panelOpen = !_panelOpen)
+                        : _showSheet,
                   ),
                   const SizedBox(width: 16),
                   PopupMenuButton<double>(
@@ -350,17 +428,31 @@ class _PlayerCover extends StatelessWidget {
   );
 }
 
-/// The chapter list under its heading, as the bottom sheet and the side panel both show it.
-class _ChapterPanel extends StatelessWidget {
-  const _ChapterPanel({
+/// The chapter list or the bookmarks, under a switch between the two, as the bottom sheet and the
+/// side panel both show them.
+///
+/// Bookmarks are changed from here, with prompts raised from the panel's own place, which in the
+/// sheet puts their snack bars in the sheet.
+class _NavigationPanel extends StatelessWidget {
+  const _NavigationPanel({
+    required this.tab,
+    required this.onTabChanged,
     required this.entries,
     required this.current,
-    required this.onSelected,
+    required this.bookmarks,
+    required this.commands,
+    required this.onSeek,
   });
 
+  final _PanelTab tab;
+  final ValueChanged<_PanelTab> onTabChanged;
   final List<NavigationEntry> entries;
   final NavigationEntry current;
-  final ValueChanged<NavigationEntry> onSelected;
+  final List<BookmarkOverview> bookmarks;
+  final BookmarkCommands commands;
+
+  /// A seek to a chapter's start or to a bookmark, in book-global time.
+  final ValueChanged<int> onSeek;
 
   @override
   Widget build(BuildContext context) {
@@ -370,17 +462,48 @@ class _ChapterPanel extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-          child: Text(
-            'Chapters',
-            style: Theme.of(context).textTheme.titleMedium,
+          child: SegmentedButton<_PanelTab>(
+            segments: const [
+              ButtonSegment(
+                value: _PanelTab.chapters,
+                icon: Icon(Icons.format_list_bulleted),
+                label: Text('Chapters'),
+              ),
+              ButtonSegment(
+                value: _PanelTab.bookmarks,
+                icon: Icon(Icons.bookmarks_outlined),
+                label: Text('Bookmarks'),
+              ),
+            ],
+            selected: {tab},
+            // The selected segment is filled in, and a screen reader is told it is selected. A check
+            // mark in place of its icon would only make the labels shift.
+            showSelectedIcon: false,
+            onSelectionChanged: (selected) => onTabChanged(selected.single),
           ),
         ),
         Flexible(
-          child: ChapterList(
-            entries: entries,
-            current: current,
-            onSelected: onSelected,
-          ),
+          child: switch (tab) {
+            _PanelTab.chapters => ChapterList(
+              entries: entries,
+              current: current,
+              onSelected: (entry) => onSeek(entry.startMs),
+            ),
+            _PanelTab.bookmarks => BookmarkList(
+              bookmarks: bookmarks,
+              onSeek: onSeek,
+              onRename: (bookmark) =>
+                  promptBookmarkName(context, commands, bookmark),
+              onEditNote: (bookmark) => promptBookmarkNote(
+                context,
+                commands,
+                bookmarkId: bookmark.bookmarkId,
+                note: bookmark.note,
+              ),
+              onDelete: (bookmark) =>
+                  deleteBookmarkWithUndo(context, commands, bookmark),
+            ),
+          },
         ),
       ],
     );

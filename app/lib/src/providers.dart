@@ -106,3 +106,11 @@ final bookOverviewProvider = StreamProvider.autoDispose
       (ref, bookId) =>
           watchBookOverview(ref.watch(servicesProvider).database, bookId),
     );
+
+/// A book's bookmarks in playing order, straight from the database, so one added, changed or
+/// deleted shows at once. Disposed once no screen shows them.
+final bookmarksProvider = StreamProvider.autoDispose
+    .family<List<BookmarkOverview>, int>(
+      (ref, bookId) =>
+          watchBookmarks(ref.watch(servicesProvider).database, bookId),
+    );

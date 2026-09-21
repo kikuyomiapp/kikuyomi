@@ -3,10 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kikuyomi/src/bookmark_commands.dart';
+import 'package:kikuyomi/src/bookmark_list.dart';
 import 'package:kikuyomi/src/chapter_list.dart';
 import 'package:kikuyomi/src/format.dart';
 import 'package:kikuyomi/src/player_shortcuts.dart';
 import 'package:kikuyomi/src/player_view.dart';
+import 'package:kikuyomi_data/kikuyomi_data.dart' show BookmarkOverview;
 import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart'
     show ChapterPosition, MarkerEntry, NavigationEntry;
@@ -46,13 +49,52 @@ PlayerReady readyAt({
   finished: false,
 );
 
-/// A player view for [state] and [cover], with its keyboard shortcuts around it as the player
-/// screen has them, that records what was pressed in [pressed].
-Widget player(PlayerReady state, {List<String>? pressed, File? cover}) {
+/// A bookmark in the book the player shows, [globalMs] into it. Only an unnamed one [removed] from
+/// the book or not [placed] in it has no global position.
+BookmarkOverview bookmarkAt(
+  int id,
+  int globalMs, {
+  String? title,
+  String? note,
+  String chapterTitle = 'Chapter Two',
+  bool removed = false,
+  bool placed = true,
+}) => BookmarkOverview(
+  bookmarkId: id,
+  bookId: 1,
+  chapterId: 1,
+  chapterPositionMs: globalMs,
+  title: title,
+  note: note,
+  createdAt: DateTime.utc(2026, 9, 14),
+  chapterTitle: chapterTitle,
+  globalPositionMs: removed || !placed ? null : globalMs,
+  removedFromSource: removed,
+);
+
+/// A player view for [state], [cover] and [bookmarks], with its keyboard shortcuts around it as the
+/// player screen has them, that records in [pressed] what was pressed and what was asked of the
+/// bookmarks. A bookmark added gets the id 7.
+Widget player(
+  PlayerReady state, {
+  List<String>? pressed,
+  File? cover,
+  List<BookmarkOverview> bookmarks = const [],
+}) {
   void press(String what) => pressed?.add(what);
   void playPause() => press('play');
   void skip(Duration by) => press('skip ${by.inSeconds}');
   void speed(double to) => press('speed $to');
+  final commands = BookmarkCommands(
+    add: () async {
+      press('bookmark');
+      return 7;
+    },
+    rename: (id, title) async => press('rename $id $title'),
+    setNote: (id, note) async => press('note $id $note'),
+    delete: (bookmark) async => press('delete ${bookmark.bookmarkId}'),
+    restore: (bookmark) async => press('restore ${bookmark.bookmarkId}'),
+  );
   return MaterialApp(
     home: PlayerShortcuts(
       state: state,
@@ -64,6 +106,8 @@ Widget player(PlayerReady state, {List<String>? pressed, File? cover}) {
           title: 'A Book',
           cover: cover,
           state: state,
+          bookmarks: bookmarks,
+          bookmarkCommands: commands,
           onPlayPause: playPause,
           onSeek: (ms) => press('seek $ms'),
           onSkip: skip,
@@ -88,14 +132,39 @@ void useWideWindow(WidgetTester tester) {
   addTearDown(tester.view.reset);
 }
 
+/// Opens or closes the chapters and bookmarks: the side panel on a wide screen, the sheet on a
+/// narrow one, at whichever of the two was last shown.
 Future<void> toggleChapters(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Chapters'));
+  await tester.tap(find.byTooltip('Chapters and bookmarks'));
+  await tester.pumpAndSettle();
+}
+
+/// Opens the bookmarks, in the side panel or the sheet.
+Future<void> showBookmarks(WidgetTester tester) async {
+  await toggleChapters(tester);
+  await tester.tap(find.text('Bookmarks'));
   await tester.pumpAndSettle();
 }
 
 /// [text] in the chapter list, rather than on the player under it.
 Finder inList(String text) =>
     find.descendant(of: find.byType(ChapterList), matching: find.text(text));
+
+/// [text] in the list of bookmarks.
+Finder inBookmarks(String text) =>
+    find.descendant(of: find.byType(BookmarkList), matching: find.text(text));
+
+/// The row of the bookmark that shows [text].
+Finder bookmarkRow(String text) =>
+    find.ancestor(of: inBookmarks(text), matching: find.byType(ListTile));
+
+/// Picks [item] from the menu of the bookmark named [name].
+Future<void> fromMenu(WidgetTester tester, String name, String item) async {
+  await tester.tap(find.byTooltip('Options for $name'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(item));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   test('clock formatting', () {
@@ -304,6 +373,357 @@ void main() {
 
       await toggleChapters(tester);
       expect(find.byType(ChapterList), findsNothing);
+    });
+  });
+
+  group('adding a bookmark', () {
+    testWidgets('the bookmark button adds one, and says so', (tester) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await tester.tap(find.byTooltip('Add bookmark'));
+      await tester.pumpAndSettle();
+
+      expect(pressed, ['bookmark']);
+      expect(find.text('Bookmark added'), findsOneWidget);
+      expect(find.widgetWithText(SnackBarAction, 'Add note'), findsOneWidget);
+    });
+
+    testWidgets('the message adds a note to the bookmark just added', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(player(readyAt(), pressed: pressed));
+      await tester.tap(find.byTooltip('Add bookmark'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Add note'));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(AlertDialog, 'Add note'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'Listen again');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(pressed, ['bookmark', 'note 7 Listen again']);
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+
+    testWidgets('the message goes by itself after a few seconds', (
+      tester,
+    ) async {
+      await tester.pumpWidget(player(readyAt()));
+      await tester.tap(find.byTooltip('Add bookmark'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text('Bookmark added'), findsNothing);
+    });
+
+    testWidgets('the message stays for someone using a screen reader', (
+      tester,
+    ) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await tester.pumpWidget(player(readyAt()));
+      await tester.tap(find.byTooltip('Add bookmark'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 30));
+      await tester.pumpAndSettle();
+      expect(find.text('Bookmark added'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bookmark added'), findsNothing);
+    });
+  });
+
+  group('the bookmarks', () {
+    final named = bookmarkAt(
+      1,
+      65000,
+      title: 'The twist',
+      note: 'Listen again',
+    );
+    final unnamed = bookmarkAt(2, 125000, chapterTitle: 'Chapter Three');
+
+    testWidgets('show each name, place and note, next to the chapters', (
+      tester,
+    ) async {
+      await tester.pumpWidget(player(readyAt(), bookmarks: [named, unnamed]));
+      await showBookmarks(tester);
+
+      expect(find.byType(ChapterList), findsNothing);
+      expect(inBookmarks('The twist'), findsOneWidget);
+      expect(inBookmarks('1:05 · Chapter Two'), findsOneWidget);
+      expect(inBookmarks('Listen again'), findsOneWidget);
+      // One with no name of its own goes by its chapter's.
+      expect(inBookmarks('Chapter Three'), findsOneWidget);
+      expect(inBookmarks('2:05'), findsOneWidget);
+
+      await tester.tap(find.text('Chapters'));
+      await tester.pumpAndSettle();
+      expect(find.byType(BookmarkList), findsNothing);
+      expect(inList('Chapter Three'), findsOneWidget);
+    });
+
+    testWidgets('say how to add one while there are none', (tester) async {
+      await tester.pumpWidget(player(readyAt()));
+      await showBookmarks(tester);
+      expect(find.textContaining('No bookmarks yet'), findsOneWidget);
+    });
+
+    testWidgets('picking one seeks to it and closes the sheet', (tester) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(
+        player(readyAt(), pressed: pressed, bookmarks: [named, unnamed]),
+      );
+      await showBookmarks(tester);
+      await tester.tap(inBookmarks('Chapter Three'));
+      await tester.pumpAndSettle();
+
+      expect(pressed, ['seek 125000']);
+      expect(find.byType(BookmarkList), findsNothing);
+    });
+
+    testWidgets('on a wide screen open beside the controls and stay open', (
+      tester,
+    ) async {
+      useWideWindow(tester);
+      final pressed = <String>[];
+      await tester.pumpWidget(
+        player(readyAt(), pressed: pressed, bookmarks: [named]),
+      );
+      await showBookmarks(tester);
+      expect(find.byType(BottomSheet), findsNothing);
+
+      await tester.tap(inBookmarks('The twist'));
+      await tester.pumpAndSettle();
+      expect(pressed, ['seek 65000']);
+      expect(find.byType(BookmarkList), findsOneWidget);
+
+      // Closed and opened again, the panel is still at the bookmarks.
+      await toggleChapters(tester);
+      await toggleChapters(tester);
+      expect(find.byType(BookmarkList), findsOneWidget);
+    });
+
+    testWidgets('mark one whose chapter was removed, and do not seek to it', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(
+        player(
+          readyAt(),
+          pressed: pressed,
+          bookmarks: [
+            bookmarkAt(3, 60000, chapterTitle: 'Old chapter', removed: true),
+          ],
+        ),
+      );
+      await showBookmarks(tester);
+
+      expect(
+        inBookmarks('1:00 into the chapter · Chapter removed from the book'),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Its chapter is no longer in the book'), findsOne);
+      expect(find.byIcon(Icons.error_outline), findsOneWidget);
+      await tester.tap(inBookmarks('Old chapter'));
+      await tester.pumpAndSettle();
+      expect(pressed, isEmpty);
+      expect(find.byType(BookmarkList), findsOneWidget);
+    });
+
+    testWidgets('mark one whose chapter cannot be played yet', (tester) async {
+      await tester.pumpWidget(
+        player(readyAt(), bookmarks: [bookmarkAt(4, 5000, placed: false)]),
+      );
+      await showBookmarks(tester);
+      expect(
+        inBookmarks('0:05 into the chapter · Cannot be played yet'),
+        findsOneWidget,
+      );
+      expect(tester.widget<ListTile>(bookmarkRow('Chapter Two')).onTap, isNull);
+    });
+
+    testWidgets('are read out, and picked, with a screen reader', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        player(
+          readyAt(),
+          bookmarks: [
+            named,
+            bookmarkAt(3, 60000, chapterTitle: 'Old chapter', removed: true),
+          ],
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byTooltip('Add bookmark')),
+        isSemantics(
+          tooltip: 'Add bookmark',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      await showBookmarks(tester);
+
+      expect(
+        tester.getSemantics(bookmarkRow('The twist')),
+        isSemantics(
+          label: 'The twist\n1:05 · Chapter Two\nListen again',
+          tooltip: 'Go to 1:05',
+          isButton: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(bookmarkRow('Old chapter')),
+        isSemantics(
+          label: 'Old chapter\n1:00 into the chapter · Chapter removed from the book',
+          tooltip: 'Its chapter is no longer in the book',
+          isButton: false,
+          hasTapAction: false,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byTooltip('Options for Old chapter')),
+        isSemantics(isButton: true, hasTapAction: true),
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('keep up with changes while the sheet is open', (tester) async {
+      await tester.pumpWidget(player(readyAt(), bookmarks: [named, unnamed]));
+      await showBookmarks(tester);
+      expect(inBookmarks('Chapter Three'), findsOneWidget);
+
+      await tester.pumpWidget(
+        player(
+          readyAt(),
+          bookmarks: [
+            bookmarkAt(1, 65000, title: 'Renamed', note: 'Listen again'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(inBookmarks('Renamed'), findsOneWidget);
+      expect(inBookmarks('Chapter Three'), findsNothing);
+    });
+
+    group('from the menu', () {
+      testWidgets('are renamed, and Enter saves the name', (tester) async {
+        final pressed = <String>[];
+        await tester.pumpWidget(
+          player(readyAt(), pressed: pressed, bookmarks: [named]),
+        );
+        await showBookmarks(tester);
+        await fromMenu(tester, 'The twist', 'Rename');
+
+        expect(find.widgetWithText(AlertDialog, 'Rename bookmark'), findsOne);
+        final field = tester.widget<TextField>(find.byType(TextField));
+        // The name is there to change, and all of it selected, so typing replaces it.
+        expect(field.controller!.text, 'The twist');
+        expect(
+          field.controller!.selection.textInside('The twist'),
+          'The twist',
+        );
+        await tester.enterText(find.byType(TextField), 'Plot twist');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(pressed, ['rename 1 Plot twist']);
+      });
+
+      testWidgets('are noted, and Ctrl+Enter saves the note', (tester) async {
+        final pressed = <String>[];
+        await tester.pumpWidget(
+          player(readyAt(), pressed: pressed, bookmarks: [unnamed]),
+        );
+        await showBookmarks(tester);
+        await fromMenu(tester, 'Chapter Three', 'Add note');
+
+        await tester.enterText(find.byType(TextField), 'First line\nSecond');
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(pressed, ['note 2 First line\nSecond']);
+      });
+
+      testWidgets('offer to edit a note there already is', (tester) async {
+        final pressed = <String>[];
+        await tester.pumpWidget(
+          player(readyAt(), pressed: pressed, bookmarks: [named]),
+        );
+        await showBookmarks(tester);
+        await fromMenu(tester, 'The twist', 'Edit note');
+
+        expect(find.widgetWithText(AlertDialog, 'Edit note'), findsOneWidget);
+        await tester.enterText(find.byType(TextField), '');
+        await tester.tap(find.text('Save'));
+        await tester.pumpAndSettle();
+        expect(pressed, ['note 1 ']);
+      });
+
+      testWidgets('are left as they were when Escape cancels', (tester) async {
+        final pressed = <String>[];
+        await tester.pumpWidget(
+          player(readyAt(), pressed: pressed, bookmarks: [named]),
+        );
+        await showBookmarks(tester);
+        await fromMenu(tester, 'The twist', 'Rename');
+        await tester.enterText(find.byType(TextField), 'Not this');
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(pressed, isEmpty);
+      });
+
+      testWidgets('are deleted, with a way to undo it in the sheet', (
+        tester,
+      ) async {
+        final pressed = <String>[];
+        await tester.pumpWidget(
+          player(readyAt(), pressed: pressed, bookmarks: [named, unnamed]),
+        );
+        await showBookmarks(tester);
+        await fromMenu(tester, 'The twist', 'Delete');
+
+        expect(pressed, ['delete 1']);
+        // In the sheet, where it can be reached, rather than behind it.
+        expect(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text('Bookmark deleted'),
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+        await tester.pumpAndSettle();
+        expect(pressed, ['delete 1', 'restore 1']);
+      });
+
+      testWidgets('are deleted from the side panel, with a way to undo it', (
+        tester,
+      ) async {
+        useWideWindow(tester);
+        final pressed = <String>[];
+        await tester.pumpWidget(
+          player(readyAt(), pressed: pressed, bookmarks: [named]),
+        );
+        await showBookmarks(tester);
+        await fromMenu(tester, 'The twist', 'Delete');
+        await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+        await tester.pumpAndSettle();
+        expect(pressed, ['delete 1', 'restore 1']);
+      });
     });
   });
 

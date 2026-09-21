@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kikuyomi_data/kikuyomi_data.dart'
+    show
+        addBookmark,
+        deleteBookmark,
+        renameBookmark,
+        restoreBookmark,
+        setBookmarkNote;
 import 'package:kikuyomi_playback/kikuyomi_playback.dart'
     show
         PlaybackCoordinator,
@@ -8,9 +15,11 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart'
         PlayerLoading,
         PlayerReady;
 
+import 'bookmark_commands.dart';
 import 'player_shortcuts.dart';
 import 'player_view.dart';
 import 'providers.dart';
+import 'services.dart';
 
 /// The player for the book the coordinator has open. Reached through `PlayerRoute`.
 class PlayerScreen extends ConsumerWidget {
@@ -68,10 +77,14 @@ class _ReadyPlayer extends ConsumerWidget {
     final coordinator = services.coordinator;
     // Nothing is shown while the book loads, or if it cannot be.
     final book = ref.watch(bookProvider(state.bookId)).value;
+    // The list stays empty while it loads, which takes a moment only when the player opens.
+    final bookmarks = ref.watch(bookmarksProvider(state.bookId)).value;
     return PlayerView(
       title: book?.title ?? '',
       cover: services.covers.fileOf(book?.coverLocalPath),
       state: state,
+      bookmarks: bookmarks ?? const [],
+      bookmarkCommands: _bookmarkCommands(services),
       onPlayPause: () => _playOrPause(coordinator, state),
       onSeek: coordinator.seekTo,
       onSkip: coordinator.skip,
@@ -87,3 +100,27 @@ class _ReadyPlayer extends ConsumerWidget {
 /// Pauses a playing book and plays a paused one, as the play button and the space bar both do.
 void _playOrPause(PlaybackCoordinator coordinator, PlayerReady state) =>
     state.playing ? coordinator.pause() : coordinator.play();
+
+/// The player's bookmark changes, made in the database.
+///
+/// A bookmark is added where the coordinator is at the moment it is asked, rather than where the
+/// screen last showed it, and in the chapter-relative form progress is stored in (§4.5): its chapter
+/// and the offset into it, never a global position.
+BookmarkCommands _bookmarkCommands(AppServices services) {
+  final db = services.database;
+  return BookmarkCommands(
+    add: () async => switch (services.coordinator.state) {
+      PlayerReady(:final bookId, :final position) => await addBookmark(
+        db,
+        bookId: bookId,
+        position: position,
+        clock: services.clock,
+      ),
+      _ => null,
+    },
+    rename: (bookmarkId, title) => renameBookmark(db, bookmarkId, title),
+    setNote: (bookmarkId, note) => setBookmarkNote(db, bookmarkId, note),
+    delete: (bookmark) => deleteBookmark(db, bookmark.bookmarkId),
+    restore: (bookmark) => restoreBookmark(db, bookmark),
+  );
+}
