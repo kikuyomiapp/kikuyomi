@@ -27,14 +27,25 @@ prop() { adb shell getprop "$1" | tr -d '\r'; }
   echo "release=$(prop ro.build.version.release)"
   echo "abi=$(prop ro.product.cpu.abi)"
   echo "model=$(prop ro.product.model)"
-  echo "cpus=$(adb shell nproc 2>/dev/null | tr -d '\r' || echo unknown)"
+  echo "cpus=$(adb shell grep -c ^processor /proc/cpuinfo | tr -d '\r')"
 } | tee "$out/device.txt"
 
 adb install -r "$apk"
-# A freshly booted emulator logs heavily; a larger ring buffer keeps the first probe lines from
-# being overwritten before they are read.
+
+# A freshly booted emulator is busy for a while: on the first CI run, API 35 gave the probe about
+# a third of a core, and a 1000 ms CPU-time deadline took 3.6 s of wall time to fire. Letting it
+# settle keeps the timings about the binding rather than about the boot. The load average before
+# and after goes into device.txt either way. PROBE_SETTLE_SECONDS=0 skips the wait.
+settle="${PROBE_SETTLE_SECONDS:-60}"
+echo "settling for ${settle}s; loadavg $(adb shell cat /proc/loadavg | tr -d '\r')"
+sleep "$settle"
+echo "loadavg-at-launch=$(adb shell cat /proc/loadavg | tr -d '\r')" | tee -a "$out/device.txt"
+
+# A larger ring buffer keeps the first probe lines from being overwritten before they are read.
+# Either command can fail on a freshly booted image (API 26 refused to clear the main log on the
+# first CI run); neither is needed for a correct result, so neither may end the run.
 adb logcat -G 16M || true
-adb logcat -c
+adb logcat -c || true
 adb shell am start -W -n "$package/.MainActivity"
 
 started=$SECONDS
@@ -46,6 +57,7 @@ while (( SECONDS - started < timeout )); do
   sleep 3
 done
 elapsed=$(( SECONDS - started ))
+echo "loadavg-at-end=$(adb shell cat /proc/loadavg | tr -d '\r')" | tee -a "$out/device.txt"
 
 adb logcat -d > "$out/logcat.txt" || true
 grep -o 'QJS_PROBE .*' "$out/flutter.log" | tr -d '\r' > "$out/probe.txt" || true

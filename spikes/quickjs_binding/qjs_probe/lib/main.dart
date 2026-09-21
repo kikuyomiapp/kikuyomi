@@ -28,6 +28,7 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
 
@@ -135,16 +136,89 @@ class _CClock {
 
 final _CClock? _cClock = _CClock.open();
 
-/// Wall time and clock() time for one span, reported side by side.
+/// CPU time used by the calling thread alone. Neither the deadline nor clock() measures it, which
+/// is the point: set beside clock(), it separates a runtime's own work from the rest of the
+/// process's.
+class _ThreadCpu {
+  _ThreadCpu._(this._micros);
+
+  final int Function() _micros;
+
+  static _ThreadCpu? open() {
+    try {
+      if (Platform.isAndroid || Platform.isLinux) {
+        final libc = Platform.isAndroid
+            ? DynamicLibrary.open('libc.so')
+            : DynamicLibrary.process();
+        final gettime = libc
+            .lookupFunction<
+              Int32 Function(Int32, Pointer<Long>),
+              int Function(int, Pointer<Long>)
+            >('clock_gettime');
+        // struct timespec is two longs on Linux and Android; CLOCK_THREAD_CPUTIME_ID is 3.
+        final ts = malloc.allocate<Long>(sizeOf<Long>() * 2);
+        return _ThreadCpu._(() {
+          if (gettime(3, ts) != 0) throw StateError('clock_gettime failed');
+          return ts[0] * 1000000 + ts[1] ~/ 1000;
+        });
+      }
+      if (Platform.isWindows) {
+        final kernel32 = DynamicLibrary.open('kernel32.dll');
+        final current = kernel32
+            .lookupFunction<Pointer<Void> Function(), Pointer<Void> Function()>(
+              'GetCurrentThread',
+            );
+        final times = kernel32
+            .lookupFunction<
+              Int32 Function(
+                Pointer<Void>,
+                Pointer<Uint64>,
+                Pointer<Uint64>,
+                Pointer<Uint64>,
+                Pointer<Uint64>,
+              ),
+              int Function(
+                Pointer<Void>,
+                Pointer<Uint64>,
+                Pointer<Uint64>,
+                Pointer<Uint64>,
+                Pointer<Uint64>,
+              )
+            >('GetThreadTimes');
+        // Creation, exit, kernel and user time, as FILETIMEs in 100 ns units.
+        final ft = malloc.allocate<Uint64>(sizeOf<Uint64>() * 4);
+        return _ThreadCpu._(() {
+          if (times(current(), ft, ft + 1, ft + 2, ft + 3) == 0) {
+            throw StateError('GetThreadTimes failed');
+          }
+          return (ft[2] + ft[3]) ~/ 10;
+        });
+      }
+    } catch (_) {
+      // Fall through: the probes report n/a.
+    }
+    return null;
+  }
+
+  int micros() => _micros();
+}
+
+final _ThreadCpu? _threadCpu = _ThreadCpu.open();
+
+/// Wall time, clock() time and the calling thread's CPU time for one span, side by side.
 class _Span {
-  _Span() : _startTicks = _cClock?.ticks() {
+  _Span()
+    : _startTicks = _cClock?.ticks(),
+      _startThreadMicros = _threadCpu?.micros() {
     _watch.start();
   }
 
   final Stopwatch _watch = Stopwatch();
   final int? _startTicks;
+  final int? _startThreadMicros;
   int? _wallMs;
   int? _clockMs;
+  int? _threadCpuMs;
 
   void stop() {
     _watch.stop();
@@ -154,13 +228,22 @@ class _Span {
     if (start != null && clock != null) {
       _clockMs = clock.ms(start, clock.ticks());
     }
+    final threadStart = _startThreadMicros;
+    final thread = _threadCpu;
+    if (threadStart != null && thread != null) {
+      _threadCpuMs = (thread.micros() - threadStart) ~/ 1000;
+    }
   }
 
   int get wallMs => _wallMs!;
-  String get clockText => _clockMs == null ? 'n/a' : '${_clockMs}ms';
+  int? get clockMs => _clockMs;
+  int? get threadCpuMs => _threadCpuMs;
+
+  static String _ms(int? ms) => ms == null ? 'n/a' : '${ms}ms';
 
   @override
-  String toString() => 'wall=${wallMs}ms clock=$clockText';
+  String toString() =>
+      'wall=${wallMs}ms clock=${_ms(_clockMs)} thread-cpu=${_ms(_threadCpuMs)}';
 }
 
 /// Makes a Dart function callable from JavaScript as a global.
@@ -182,11 +265,16 @@ class _Run {
   final Object? result;
   final Object? error;
 
+  bool get completed => !interrupted && error == null;
+
   String get outcome => interrupted
       ? 'interrupted'
       : error != null
       ? 'threw(${_oneLine(error, 80)})'
       : 'completed($result)';
+
+  @override
+  String toString() => '$outcome $span';
 }
 
 _Run _runAgainstDeadline(FlutterQjs engine, String script) {
@@ -210,6 +298,11 @@ const _deadlineMs = 1000;
 /// deadline, so "interrupted near the deadline" and "ran to the end" cannot be confused.
 const _boundMs = 4000;
 
+/// Probe 9's sleeper runs longer, so the spinner beside it can use a full deadline's worth of CPU
+/// even on a loaded machine that gives it a third of a core.
+const _sleeperBoundMs = 6000;
+const _spinnerMs = 5000;
+
 /// A script that spends almost all of its time blocked in a host call rather than computing.
 ///
 /// `hostSleep` is a Dart function that calls dart:io's sleep(), which blocks the thread without
@@ -217,17 +310,31 @@ const _boundMs = 4000;
 /// does once every 10000 jumps or calls; it costs about a millisecond per 20 ms nap.
 ///
 /// The argument is a number on purpose: a string argument would restart the deadline (probe 10).
-const _blockedScript =
+String _blockedScript(int boundMs) =>
     '''
 (() => {
   const start = Date.now();
   let naps = 0;
-  while (Date.now() - start < $_boundMs) {
+  while (Date.now() - start < $boundMs) {
     hostSleep(20);
     naps++;
     for (let i = 0; i < 20000; i++) {}
   }
   return naps;
+})()
+''';
+
+void _hostSleep(dynamic ms) =>
+    sleep(Duration(milliseconds: (ms as num).toInt()));
+
+/// Pure computation for a fixed stretch of wall time.
+String _spinScript(int ms) =>
+    '''
+(() => {
+  const start = Date.now();
+  let spins = 0;
+  while (Date.now() - start < $ms) { spins++; }
+  return spins;
 })()
 ''';
 
@@ -244,17 +351,26 @@ String _hostCallScript(String call) =>
 })()
 ''';
 
-/// Runs an infinite loop under the deadline in a fresh isolate, as the extension runtime's worker
-/// isolates will. Returns wall milliseconds until the interrupt, or -1 if something else happened.
-Future<(int, String)> _busyLoopInIsolate() => Isolate.run(() {
+/// Probe 8's verdict, which probe 9 needs to read its own result.
+String? _blockedVerdict;
+
+/// Probe 9's sleeper: the blocked script under the deadline, in a worker isolate of its own, as the
+/// extension runtime's will be.
+Future<_Run> _sleeperInIsolate() => Isolate.run(() {
   final engine = FlutterQjs(timeout: _deadlineMs);
-  final watch = Stopwatch()..start();
   try {
-    engine.evaluate('while (true) {}');
-    return (-1, 'completed');
-  } catch (e) {
-    final ms = watch.elapsedMilliseconds;
-    return _isInterrupt(e) ? (ms, 'interrupted') : (-1, _oneLine(e, 80));
+    _setGlobal(engine, 'hostSleep', _hostSleep);
+    return _runAgainstDeadline(engine, _blockedScript(_sleeperBoundMs));
+  } finally {
+    engine.close();
+  }
+});
+
+/// Probe 9's spinner: pure computation with no deadline, in another isolate.
+Future<_Run> _spinnerInIsolate() => Isolate.run(() {
+  final engine = FlutterQjs();
+  try {
+    return _runAgainstDeadline(engine, _spinScript(_spinnerMs));
   } finally {
     engine.close();
   }
@@ -370,60 +486,64 @@ Future<void> _runAll() async {
   await _probe('deadline-blocked-in-host', () async {
     final engine = FlutterQjs(timeout: _deadlineMs);
     try {
-      _setGlobal(engine, 'hostSleep', (dynamic ms) {
-        sleep(Duration(milliseconds: (ms as num).toInt()));
-      });
-      final run = _runAgainstDeadline(engine, _blockedScript);
+      _setGlobal(engine, 'hostSleep', _hostSleep);
+      final run = _runAgainstDeadline(engine, _blockedScript(_boundMs));
       final wall = run.span.wallMs;
       final String verdict;
       if (run.interrupted && wall < _boundMs ~/ 2) {
         verdict = 'wall-clock';
-      } else if (!run.interrupted &&
-          run.error == null &&
-          wall >= _boundMs - 100) {
+      } else if (run.completed && wall >= _boundMs - 100) {
         verdict = 'cpu-time';
       } else {
-        throw StateError('ambiguous: ${run.outcome} ${run.span}');
+        throw StateError('ambiguous: $run');
       }
-      return 'verdict=$verdict ${run.outcome} ${run.span} deadline=${_deadlineMs}ms '
-          'bound=${_boundMs}ms';
+      _blockedVerdict = verdict;
+      return 'verdict=$verdict $run deadline=${_deadlineMs}ms bound=${_boundMs}ms';
     } finally {
       engine.close();
     }
   });
 
-  // 9. Whose CPU time? POSIX clock() is CPU time for the whole process, every thread included. Two
-  //    runtimes spin at once, each in its own isolate with its own 1000 ms deadline. If each
-  //    deadline counts only wall time, or only its own thread, both fire near 1000 ms. If each
-  //    counts the whole process, the other runtime's work drains it too, and on two or more cores
-  //    both fire near 500 ms.
-  await _probe('deadline-parallel-runtimes', () async {
-    final results = await Future.wait([
-      _busyLoopInIsolate(),
-      _busyLoopInIsolate(),
-    ]);
-    for (final (ms, outcome) in results) {
-      if (ms < 0) throw StateError('a runtime was not interrupted: $outcome');
-    }
-    final a = results[0].$1;
-    final b = results[1].$1;
-    final mean = (a + b) / 2;
+  // 9. Whose CPU time? POSIX clock() counts every thread in the process, not only the one running
+  //    the script. A sleeper, as in 8 but with a 6000 ms bound, runs under the 1000 ms deadline
+  //    in one worker isolate and uses almost no CPU of its own. A spinner computes for 5000 ms in
+  //    another isolate, with no deadline. If the sleeper's deadline counts only its own thread, it
+  //    runs to its bound. If it counts the whole process, the spinner's work drains it and the
+  //    sleeper is interrupted although its own thread has used a few tens of milliseconds. A
+  //    wall-clock deadline interrupts it too, near 1000 ms; probe 8 tells the two apart.
+  //
+  //    An earlier design spun two runtimes at once and expected a process-wide clock to fire both
+  //    at half the deadline. On a loaded emulator the two threads never had a core each, and the
+  //    numbers could not tell a shared budget from two separate ones. This one needs no
+  //    parallelism, only the spinner using CPU at all.
+  await _probe('deadline-other-threads', () async {
+    final (sleeper, spinner) = await (
+      _sleeperInIsolate(),
+      _spinnerInIsolate(),
+    ).wait;
+    final ownCpu = sleeper.span.threadCpuMs;
     final String verdict;
-    if (mean < _deadlineMs * 0.75) {
-      verdict = 'shared-process-budget';
-    } else if (mean >= _deadlineMs * 0.85 && mean <= _deadlineMs * 1.3) {
-      verdict = 'independent-budgets';
+    if (sleeper.completed && sleeper.span.wallMs >= _sleeperBoundMs - 100) {
+      verdict = 'own-thread-cpu';
+    } else if (sleeper.interrupted &&
+        (ownCpu == null || ownCpu < _deadlineMs ~/ 2)) {
+      verdict = switch (_blockedVerdict) {
+        'cpu-time' => 'process-cpu',
+        'wall-clock' => 'wall-clock',
+        _ => 'not-own-thread-cpu',
+      };
     } else {
-      verdict = 'unclear';
+      throw StateError('ambiguous: sleeper $sleeper; spinner $spinner');
     }
-    return 'verdict=$verdict interrupted-after=${a}ms,${b}ms '
-        'cpus=${Platform.numberOfProcessors}';
+    return 'verdict=$verdict sleeper: $sleeper; spinner: $spinner';
   });
 
   // 10. When does the deadline start? ffi.cpp restarts it on every entry from Dart into QuickJS,
   //     and converting a JS string for Dart is one of those entries. So a script that calls a
   //     host function with a string argument may restart its own deadline on every call. Two
   //     otherwise identical loops, one passing a number and one a string, show whether it does.
+  //     The string loop is judged by clock(), the deadline's own clock: it restarts the deadline
+  //     only if clock() passes 1000 ms without an interrupt.
   await _probe('deadline-host-call-restart', () async {
     _Run loop(String call) {
       final engine = FlutterQjs(timeout: _deadlineMs);
@@ -438,21 +558,18 @@ Future<void> _runAll() async {
 
     final number = loop('hostNumber(1)');
     final string = loop("hostString('x')");
-    final nearDeadline =
-        number.interrupted && number.span.wallMs < _boundMs ~/ 2;
+    final stringClock = string.span.clockMs ?? string.span.wallMs;
     final String verdict;
-    if (nearDeadline && !string.interrupted && string.error == null) {
+    if (number.interrupted &&
+        string.completed &&
+        stringClock > _deadlineMs * 1.2) {
       verdict = 'string-argument-restarts-deadline';
-    } else if (nearDeadline && string.interrupted) {
+    } else if (number.interrupted && string.interrupted) {
       verdict = 'deadline-not-restarted';
     } else {
-      throw StateError(
-        'ambiguous: number ${number.outcome} ${number.span}; '
-        'string ${string.outcome} ${string.span}',
-      );
+      throw StateError('ambiguous: number $number; string $string');
     }
-    return 'verdict=$verdict number: ${number.outcome} ${number.span}; '
-        'string: ${string.outcome} ${string.span}';
+    return 'verdict=$verdict number: $number; string: $string';
   });
 }
 
