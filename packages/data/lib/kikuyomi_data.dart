@@ -6,6 +6,7 @@
 /// Pure Dart. This package must never import Flutter or a platform plugin.
 library;
 
+export 'src/backup/backed_up_changes.dart';
 export 'src/backup/drift_backup_store.dart';
 export 'src/database/converters.dart';
 export 'src/database/database.dart';
