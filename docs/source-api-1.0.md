@@ -1,7 +1,8 @@
 # SourceAPI 1.0: the extension contract
 
-**Status: proposed, awaiting approval.** The decisions behind it, and the questions still open,
-are in [ADR-0016](adr/0016-source-api-1-0.md). Nothing here is implemented yet.
+**Status: accepted** ([ADR-0016](adr/0016-source-api-1-0.md)), not yet implemented. The
+TypeScript SDK that extension authors install lives in a repository of its own; it mirrors this
+document and is released under the same API version.
 
 This is the contract between the app and a source extension. It is written in TypeScript because
 that is what extension authors write; the Dart package `kikuyomi_source_api` mirrors it one to
