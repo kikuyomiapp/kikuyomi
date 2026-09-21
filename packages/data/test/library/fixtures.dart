@@ -83,8 +83,9 @@ Future<List<int>> chapterIdsOf(KikuyomiDatabase db, int bookId) async => [
     chapter.id,
 ];
 
-/// Saves progress as the player does, [offsetMs] into the playable chapter at [chapterIndex], then
-/// moves the clock on a minute so the next save is later.
+/// Saves progress as the player does, [offsetMs] into the playable chapter at [chapterIndex],
+/// recording the chapter listened once that reaches its threshold (§4.5), then moves the clock on a
+/// minute so the next save is later.
 Future<void> listen(
   KikuyomiDatabase db,
   FakeClock clock,
@@ -105,6 +106,30 @@ Future<void> listen(
     bookId: bookId,
     position: position,
     globalMs: timeline.globalOf(position),
+    listened: timeline.isChapterListened(position),
   );
   clock.advance(const Duration(minutes: 1));
 }
+
+/// Marks chapters listened or not by hand, as a book's details do, then moves the clock on a minute.
+Future<Set<int>> mark(
+  KikuyomiDatabase db,
+  FakeClock clock,
+  int bookId,
+  List<int> chapterIds, {
+  required bool listened,
+}) async {
+  final changed = await setChaptersListened(
+    db,
+    bookId: bookId,
+    chapterIds: chapterIds,
+    listened: listened,
+    clock: clock,
+  );
+  clock.advance(const Duration(minutes: 1));
+  return changed;
+}
+
+/// Chapter [chapterId] as it is stored.
+Future<ChapterRow> chapterRow(KikuyomiDatabase db, int chapterId) =>
+    (db.select(db.chapters)..where((c) => c.id.equals(chapterId))).getSingle();

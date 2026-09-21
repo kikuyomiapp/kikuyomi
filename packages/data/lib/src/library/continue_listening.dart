@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
+import 'book_queries.dart';
 import 'watch_tables.dart';
 
 /// A started book, as Continue Listening shows it.
@@ -46,9 +47,11 @@ final class ContinueListeningBook {
 /// library that have been started and not finished, most recently played first.
 ///
 /// `playback_states` is its source of truth (§4.3): a book has been started when it has a row
-/// there. It is finished, by §4.5, when that saved position is in its last playable chapter and has
-/// reached the chapter's listened threshold, which is the test `Timeline.isBookFinished` makes. So a
-/// finished book played again from an earlier chapter comes back.
+/// there. It is finished, by §4.5, when its last chapter, the last one the player plays, is
+/// recorded as listened, which is the same test a book's details and the player make. Recorded,
+/// not worked out from the saved position: a book marked finished by hand leaves the shelf wherever
+/// its listener was, and one whose listener only moves back through it stays off. A finished book
+/// started again comes back, because starting it again records its last chapter as not listened.
 ///
 /// The stream emits again whenever anything it shows changes, including every progress save.
 Stream<List<ContinueListeningBook>> watchContinueListening(
@@ -66,9 +69,9 @@ Stream<List<ContinueListeningBook>> watchContinueListening(
 Future<List<ContinueListeningBook>> _loadContinueListening(
   KikuyomiDatabase db,
 ) async {
-  final isLast = _noOtherPlayableChapter(db, after: true);
-  final isFirst = _noOtherPlayableChapter(db, after: false);
-  final rows =
+  final isLast = noOtherPlayableChapter(db, after: true);
+  final isFirst = noOtherPlayableChapter(db, after: false);
+  final started =
       await (db.select(db.playbackStates).join([
               innerJoin(
                 db.books,
@@ -82,6 +85,15 @@ Future<List<ContinueListeningBook>> _loadContinueListening(
             ..addColumns([isLast, isFirst])
             ..where(db.books.inLibrary.equals(true)))
           .get();
+  if (started.isEmpty) return const [];
+
+  final lastChapters = await lastPlayableChapters(db, {
+    for (final row in started) row.readTable(db.books).id,
+  });
+  final rows = [
+    for (final row in started)
+      if (!(lastChapters[row.readTable(db.books).id]?.isListened ?? false)) row,
+  ];
   if (rows.isEmpty) return const [];
 
   final layouts = await _layouts(db, {
@@ -96,21 +108,12 @@ Future<List<ContinueListeningBook>> _loadContinueListening(
     final state = row.readTable(db.playbackStates);
     final book = row.readTable(db.books);
     final chapter = row.readTable(db.chapters);
-    final last = row.read(isLast) ?? false;
+    // A chapter that cannot be played has no Timeline, and is named by its own title.
     final timeline = _chapterTimeline(
       chapter,
       layouts[chapter.id] ?? const [],
-      withMarkers: last && (row.read(isFirst) ?? false),
+      withMarkers: (row.read(isLast) ?? false) && (row.read(isFirst) ?? false),
     );
-    final position = ChapterPosition(
-      chapterId: chapter.id,
-      offsetMs: state.chapterPositionMs,
-    );
-    // A chapter that cannot be played has no Timeline, and its book stays: opening it is how the
-    // listener finds out why it will not play.
-    if (last && timeline != null && timeline.isChapterListened(position)) {
-      continue;
-    }
     books.add(
       ContinueListeningBook(
         bookId: book.id,
@@ -133,44 +136,6 @@ Future<List<ContinueListeningBook>> _loadContinueListening(
     return byTime != 0 ? byTime : b.bookId.compareTo(a.bookId);
   });
   return books;
-}
-
-/// True when no other playable chapter of the same book comes after the chapter in the outer query
-/// or, when [after] is false, before it, in source order.
-///
-/// Playable means what `loadStoredPlayback` puts on the Timeline: not removed from the source, and
-/// laid out on at least one segment. Asked in SQL, so finding a book's last chapter never loads
-/// the chapters of every started book.
-Expression<bool> _noOtherPlayableChapter(
-  KikuyomiDatabase db, {
-  required bool after,
-}) {
-  final name = after ? 'later' : 'earlier';
-  final other = db.alias(db.chapters, '${name}_chapter');
-  final segment = db.alias(db.chapterSegments, '${name}_segment');
-  final current = db.chapters;
-  final beyond = after
-      ? other.sourceIndex.isBiggerThan(current.sourceIndex) |
-            (other.sourceIndex.equalsExp(current.sourceIndex) &
-                other.id.isBiggerThan(current.id))
-      : other.sourceIndex.isSmallerThan(current.sourceIndex) |
-            (other.sourceIndex.equalsExp(current.sourceIndex) &
-                other.id.isSmallerThan(current.id));
-  return notExistsQuery(
-    db.selectOnly(other).join([
-        innerJoin(
-          segment,
-          segment.chapterId.equalsExp(other.id),
-          useColumns: false,
-        ),
-      ])
-      ..addColumns([other.id])
-      ..where(
-        other.bookId.equalsExp(current.bookId) &
-            other.removedFromSource.equals(false) &
-            beyond,
-      ),
-  );
 }
 
 typedef _Part = ({ChapterSegmentRow segment, MediaFileRow file});

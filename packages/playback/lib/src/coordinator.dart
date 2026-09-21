@@ -20,6 +20,7 @@ final class PlaybackRequest {
     this.resumeFrom,
     this.pausedFor = Duration.zero,
     this.speed = 1.0,
+    this.finished = false,
   });
 
   final int bookId;
@@ -33,6 +34,9 @@ final class PlaybackRequest {
 
   /// The book's remembered speed (§4.3).
   final double speed;
+
+  /// Whether the book is finished as it is stored: its last chapter is recorded as listened (§4.5).
+  final bool finished;
 }
 
 /// §6.1's coordinator: the brain of playback, in pure Dart.
@@ -48,6 +52,14 @@ final class PlaybackRequest {
 /// Recovery from a stream error, per §6.3: one transparent re-resolve and reload at the same
 /// position. It is re-armed by the next user action rather than by time passing, so a source that
 /// fails every few seconds surfaces as an error instead of retrying forever.
+///
+/// §4.5's listened state is recorded as progress is saved: a save at a position that has reached
+/// its chapter's listened threshold records the chapter as listened, in the same write. That is the
+/// literal rule, so a seek past a chapter records nothing for it, since no position in it was
+/// saved. The book is finished once its last chapter is recorded, and [PlayerReady.finished] follows
+/// what is stored rather than the engine: it is true from the moment that chapter is recorded,
+/// stays true as the listener moves about the book, and is cleared only when the book is started
+/// again ([startAgain]) or the chapter is marked not listened by hand ([onListenedChanged]).
 ///
 /// The coordinator does not own the engine and does not dispose it.
 final class PlaybackCoordinator {
@@ -147,6 +159,7 @@ final class PlaybackCoordinator {
         ),
         speed: request.speed,
         position: startAt,
+        finished: request.finished,
       );
       session.tracker.onLoaded(startAt);
       _session = session;
@@ -177,7 +190,7 @@ final class PlaybackCoordinator {
     final session = _session;
     if (session == null) return;
     session.retried = false;
-    session.finished = false;
+    session.completed = false;
     await _seekInternal(session, globalMs);
     _pinSleepChapter(session);
     _publish();
@@ -188,7 +201,7 @@ final class PlaybackCoordinator {
     final session = _session;
     if (session == null) return;
     session.retried = false;
-    session.finished = false;
+    session.completed = false;
     await _seekInternal(session, session.globalMs + by.inMilliseconds);
     _pinSleepChapter(session);
     _publish();
@@ -224,9 +237,41 @@ final class PlaybackCoordinator {
         ? current.startMs
         : timeline.navigation[index - 1].startMs;
     session.retried = false;
-    session.finished = false;
+    session.completed = false;
     await _seekInternal(session, target);
     _pinSleepChapter(session);
+    _publish();
+  });
+
+  /// Starts the book again from its beginning, as playing it after it has played to its end does.
+  ///
+  /// A finished book started again is no longer finished (§4.5): its last chapter is recorded as not
+  /// listened, so the book returns to Continue Listening while it is listened to again. Its other
+  /// chapters keep their listened state, as they would if the listener only moved back through them.
+  Future<void> startAgain() => _serial(() async {
+    final session = _session;
+    if (session == null) return;
+    session.retried = false;
+    await _startAgain(session);
+    _pinSleepChapter(session);
+    _publish();
+  });
+
+  /// Chapters [chapterIds] of book [bookId] were marked [listened], or not, by hand somewhere other
+  /// than the player, such as the book's details.
+  ///
+  /// Nothing is written: the change is already stored. When the open book's last chapter is among
+  /// them, [PlayerReady.finished] follows, so that the player and the store agree. Marks made in
+  /// another book are ignored.
+  Future<void> onListenedChanged({
+    required int bookId,
+    required Set<int> chapterIds,
+    required bool listened,
+  }) => _serial(() async {
+    final session = _session;
+    if (session == null || session.bookId != bookId) return;
+    if (!chapterIds.contains(session.timeline.lastChapterId)) return;
+    session.finished = listened;
     _publish();
   });
 
@@ -321,7 +366,7 @@ final class PlaybackCoordinator {
     switch (event) {
       case EnginePositionChanged(:final position):
         // Spike (b): after completion the engine reports position zero. It is not a position.
-        if (session.finished) return;
+        if (session.completed) return;
         session.position = _settle(session, position);
         await _saveProgress(
           session,
@@ -340,7 +385,7 @@ final class PlaybackCoordinator {
         _publish();
       case EngineCompleted():
         session.playing = false;
-        session.finished = true;
+        session.completed = true;
         session.pausedAt = _clock.now();
         session.position = session.timeline.queuePositionAt(
           session.timeline.totalDurationMs,
@@ -370,9 +415,8 @@ final class PlaybackCoordinator {
       if (!await _reload(session, refresh: true)) return;
     }
 
-    if (session.finished) {
-      session.finished = false;
-      await _seekInternal(session, 0);
+    if (session.completed) {
+      await _startAgain(session);
     } else {
       final pausedAt = session.pausedAt;
       final pause = pausedAt == null
@@ -410,6 +454,23 @@ final class PlaybackCoordinator {
     await _saveProgress(session, session.tracker.onPause());
     await _saveSession(session.recorder.onStop(session.globalMs));
     _publish();
+  }
+
+  /// Moves to the start of the book and, for a finished book, records its last chapter as not
+  /// listened. See [startAgain].
+  ///
+  /// The seek comes first, so that nothing watching the store sees the book unfinished while its
+  /// progress is still at its end.
+  Future<void> _startAgain(_Session session) async {
+    session.completed = false;
+    await _seekInternal(session, 0);
+    if (!session.finished) return;
+    await _store.saveChapterListened(
+      bookId: session.bookId,
+      chapterId: session.timeline.lastChapterId,
+      listened: false,
+    );
+    session.finished = false;
   }
 
   Future<void> _seekInternal(_Session session, int globalMs) async {
@@ -499,8 +560,8 @@ final class PlaybackCoordinator {
         pinned,
       );
     }
-    if (session.finished) {
-      // A finished book stays at its end, wherever the end now is.
+    if (session.completed) {
+      // A book played to its end stays at its end, wherever the end now is.
       session.position = after.queuePositionAt(after.totalDurationMs);
     }
     await _store.saveLearnedDuration(
@@ -627,16 +688,25 @@ final class PlaybackCoordinator {
     ];
   }
 
+  /// Saves [position], recording its chapter as listened when the position has reached the chapter's
+  /// threshold (§4.5). The threshold is judged against the Timeline being played, so a duration
+  /// refined mid-book moves it with the chapter.
   Future<void> _saveProgress(
     _Session session,
     ChapterPosition? position,
   ) async {
     if (position == null) return;
+    final timeline = session.timeline;
+    final listened = timeline.isChapterListened(position);
     await _store.saveProgress(
       bookId: session.bookId,
       position: position,
-      globalMs: session.timeline.globalOf(position),
+      globalMs: timeline.globalOf(position),
+      listened: listened,
     );
+    if (listened && position.chapterId == timeline.lastChapterId) {
+      session.finished = true;
+    }
   }
 
   Future<void> _saveSession(ListeningSession? listening) async {
@@ -702,6 +772,7 @@ final class _Session {
     required this.recorder,
     required this.speed,
     required this.position,
+    required this.finished,
   }) : landing = position;
 
   final int bookId;
@@ -718,7 +789,13 @@ final class _Session {
   QueuePosition landing;
   bool playing = false;
   bool buffering = false;
-  bool finished = false;
+
+  /// Whether the engine has played the whole queue to its end. Positions it reports afterwards are
+  /// ignored (spike (b)), and playing starts the book again.
+  bool completed = false;
+
+  /// Whether the book is finished as the store has it (§4.5). See [PlayerReady.finished].
+  bool finished;
 
   /// Whether an interruption paused playback and nobody has pressed play or pause since, so that
   /// the interruption's end may start it again.

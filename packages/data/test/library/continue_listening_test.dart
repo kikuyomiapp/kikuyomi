@@ -109,13 +109,29 @@ void main() {
       expect(titles(await shelf()), ['A Book']);
     });
 
-    test('comes back when played again from an earlier chapter', () async {
+    test('stays out while the listener only moves back through it', () async {
       final id = await addFolderBook(db, clock);
       await listen(db, clock, id, 2, 300000);
-      expect(await shelf(), isEmpty);
-
       await listen(db, clock, id, 0, 5000);
-      expect(titles(await shelf()), ['A Book']);
+      expect(await shelf(), isEmpty);
+    });
+
+    test('comes back once started again', () async {
+      final id = await addFolderBook(db, clock);
+      await listen(db, clock, id, 2, 300000);
+      final last = (await chapterIdsOf(db, id)).last;
+
+      // What the player does when a finished book is started again.
+      await listen(db, clock, id, 0, 0);
+      await DriftPlaybackStore(
+        db,
+        deviceId: 'test-device',
+        clock: clock,
+      ).saveChapterListened(bookId: id, chapterId: last, listened: false);
+
+      final book = (await shelf()).single;
+      expect(book.chapterTitle, 'Opening');
+      expect(book.globalPositionMs, 0);
     });
 
     test('is a single file listened to near its end', () async {

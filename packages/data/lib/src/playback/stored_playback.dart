@@ -12,9 +12,14 @@ final class StoredPlayback {
     this.resumeFrom,
     this.lastPlayedAt,
     this.speed,
+    this.finished = false,
   });
 
   final Timeline timeline;
+
+  /// §4.5: the Timeline's last chapter is recorded as listened, so the book is finished. The same
+  /// test a book's details and Continue Listening make.
+  final bool finished;
 
   /// Where to resume, or null to start from the beginning.
   final ChapterPosition? resumeFrom;
@@ -148,6 +153,7 @@ Future<StoredPlayback> loadStoredPlayback(
         : await _resumePosition(db, state, playable),
     lastPlayedAt: state?.updatedAt,
     speed: book.playbackSpeed,
+    finished: playable.last.isListened,
   );
 }
 

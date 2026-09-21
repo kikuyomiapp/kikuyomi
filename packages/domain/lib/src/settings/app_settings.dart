@@ -19,6 +19,8 @@ enum BackupSetup {
 ///   iOS's bookmarks mean nothing to another device, or to the same device after a reinstall.
 /// - [lastBackupAt] and [backupDue] describe this installation's own backups.
 /// - [backupSetup] is this installation's first start.
+/// - [listenedBackfilled] is a step taken once on this installation's database. A backup carries
+///   each chapter's listened state itself.
 ///
 /// The preferences still to come that shape listening, such as skip intervals, smart rewind and a
 /// default speed, should be carried. When one arrives it gets a field in `proto/backup.proto`, whose
@@ -57,6 +59,15 @@ abstract final class AppSettings {
     decode: _decodeSetup,
   );
 
+  /// Whether chapters listened to before listened state was recorded (§4.5) have been recorded from
+  /// the positions saved in them. Not set until that has been done, which happens once: after it,
+  /// a chapter the listener marks not listened stays so, wherever its position is.
+  static const listenedBackfilled = Setting<bool>(
+    'library.listenedBackfilled',
+    encode: _encodeFlag,
+    decode: _decodeFlag,
+  );
+
   /// Every setting above. A store that has to be told its keys in advance, as `shared_preferences`'
   /// cached store does, is told these.
   static const all = <Setting<Object>>[
@@ -64,6 +75,7 @@ abstract final class AppSettings {
     lastBackupAt,
     backupDue,
     backupSetup,
+    listenedBackfilled,
   ];
 }
 

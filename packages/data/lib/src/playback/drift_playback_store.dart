@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' hide isNull;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
+import '../library/listened_chapters.dart';
 
 /// The database-backed [PlaybackStore]: where the coordinator's progress, listening sessions and
 /// per-book speed end up.
@@ -16,13 +17,20 @@ final class DriftPlaybackStore implements PlaybackStore {
   final String deviceId;
 
   /// One row per book in `playback_states`, replaced on every save, and the chapter's own last
-  /// position alongside it. Both writes happen in one transaction, so Continue Listening and the
-  /// chapter list can never disagree about where the listener is.
+  /// position alongside it, with the chapter recorded as listened when [listened] says so. All of
+  /// it happens in one transaction, so Continue Listening and the chapter list can never disagree
+  /// about where the listener is or whether the book is finished.
+  ///
+  /// The chapter's last position follows every save, down as well as up, as it always has: it is
+  /// where the listener last was in the chapter. Its listened state only ever goes one way here. A
+  /// chapter already listened keeps the time it was first recorded, however often it is reached
+  /// again.
   @override
   Future<void> saveProgress({
     required int bookId,
     required ChapterPosition position,
     required int globalMs,
+    required bool listened,
   }) {
     final now = _clock.now();
     return _db.transaction(() async {
@@ -46,7 +54,33 @@ final class DriftPlaybackStore implements PlaybackStore {
           updatedAt: Value(now),
         ),
       );
+      if (!listened) return;
+      await (_db.update(_db.chapters)..where(
+            (c) => c.id.equals(position.chapterId) & c.isListened.equals(false),
+          ))
+          .write(
+            ChaptersCompanion(
+              isListened: const Value(true),
+              listenedAt: Value(now),
+            ),
+          );
     });
+  }
+
+  /// As a chapter is marked by hand, with the same rules: see [setChaptersListened].
+  @override
+  Future<void> saveChapterListened({
+    required int bookId,
+    required int chapterId,
+    required bool listened,
+  }) async {
+    await setChaptersListened(
+      _db,
+      bookId: bookId,
+      chapterIds: {chapterId},
+      listened: listened,
+      clock: _clock,
+    );
   }
 
   @override

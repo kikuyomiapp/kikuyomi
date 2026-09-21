@@ -47,7 +47,7 @@ class BookDetailsView extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final progress = book.progress;
-    final finished = progress?.finished ?? false;
+    final finished = book.finished;
     final total = book.totalDurationMs;
     return LayoutBuilder(
       builder: (context, constraints) {

@@ -103,7 +103,11 @@ void main() {
       [for (final c in book.chapters) c.durationMs],
       [600000, 1200000, 300000],
     );
-    expect(book.progress!.finished, isFalse);
+    expect(
+      book.finished,
+      isTrue,
+      reason: 'it was recorded finished, and is read, not worked out',
+    );
   });
 
   group('listened chapters', () {
@@ -172,7 +176,8 @@ void main() {
       [for (final m in book.markers) (m.startMs, m.endMs)],
       [(0, 1200000), (1200000, 2400000), (2400000, 3600000)],
     );
-    expect([for (final m in book.markers) m.listened], [true, false, false]);
+    // A marker has no listened state of its own: the file's one chapter is not listened yet.
+    expect([for (final m in book.markers) m.listened], [false, false, false]);
     expect([for (final m in book.markers) m.current], [false, true, false]);
   });
 
@@ -193,13 +198,13 @@ void main() {
       expect(progress.chapterPositionMs, 60000);
       expect(progress.globalPositionMs, 660000);
       expect(progress.lastPlayedAt.isAtSameMomentAs(start), isTrue);
-      expect(progress.finished, isFalse);
+      expect((await overview(id)).finished, isFalse);
     });
 
     test('says when the book is finished', () async {
       final id = await addFolderBook(db, clock);
       await listen(db, clock, id, 2, 300000);
-      expect((await overview(id)).progress!.finished, isTrue);
+      expect((await overview(id)).finished, isTrue);
     });
   });
 

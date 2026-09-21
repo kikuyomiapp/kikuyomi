@@ -26,6 +26,7 @@ void main() {
       roundTrip(AppSettings.backupSetup, BackupSetup.skipped),
       BackupSetup.skipped,
     );
+    expect(roundTrip(AppSettings.listenedBackfilled, true), isTrue);
   });
 
   test('a time is read back as the same instant, in UTC', () {

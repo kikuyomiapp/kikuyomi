@@ -41,6 +41,7 @@ const threeChapters = [
 
 BookOverview book({
   BookProgress? progress,
+  bool finished = false,
   bool inLibrary = true,
   List<ChapterOverview> chapters = threeChapters,
   List<MarkerOverview> markers = const [],
@@ -55,16 +56,16 @@ BookOverview book({
   chapters: chapters,
   markers: markers,
   progress: progress,
+  finished: finished,
   coverFileName: cover,
 );
 
 /// Eleven minutes in: a minute into Middle.
-BookProgress elevenMinutesIn({bool finished = false}) => BookProgress(
+final elevenMinutesIn = BookProgress(
   chapterId: 11,
   chapterPositionMs: 60000,
   globalPositionMs: 660000,
   lastPlayedAt: DateTime.utc(2026, 9, 14),
-  finished: finished,
 );
 
 /// The details of [overview], recording what was pressed in [pressed].
@@ -144,9 +145,7 @@ void main() {
     tester,
   ) async {
     final pressed = <String>[];
-    await tester.pumpWidget(
-      details(book(progress: elevenMinutesIn()), pressed),
-    );
+    await tester.pumpWidget(details(book(progress: elevenMinutesIn), pressed));
 
     expect(find.text('24:00 left'), findsOneWidget);
     await tester.tap(find.text('Resume'));
@@ -158,7 +157,7 @@ void main() {
   ) async {
     final pressed = <String>[];
     await tester.pumpWidget(
-      details(book(progress: elevenMinutesIn(finished: true)), pressed),
+      details(book(progress: elevenMinutesIn, finished: true), pressed),
     );
 
     expect(find.text('Finished'), findsOneWidget);
@@ -169,7 +168,7 @@ void main() {
   testWidgets('marks the chapters listened and the one being listened to', (
     tester,
   ) async {
-    await tester.pumpWidget(details(book(progress: elevenMinutesIn())));
+    await tester.pumpWidget(details(book(progress: elevenMinutesIn)));
 
     expect(iconIn('Opening', Icons.check), findsOneWidget);
     expect(iconIn('Middle', Icons.graphic_eq), findsOneWidget);

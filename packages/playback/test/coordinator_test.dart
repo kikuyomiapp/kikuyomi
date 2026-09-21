@@ -80,6 +80,42 @@ Timeline estimatedBook({int estimated = 1, bool estimate = true}) =>
       ],
     );
 
+/// One chapter to each of [seconds], in a file of its own, with ids and file ids counting from 1.
+Timeline chaptersOf(List<int> seconds) => Timeline.build(
+  files: [
+    for (final (index, length) in seconds.indexed)
+      TimelineFile(id: index + 1, durationMs: length * s),
+  ],
+  chapters: [
+    for (final index in Iterable<int>.generate(seconds.length))
+      TimelineChapter(
+        id: index + 1,
+        title: 'Chapter ${index + 1}',
+        segments: [TimelineSegment(fileId: index + 1)],
+      ),
+  ],
+);
+
+/// A single hour-long file, the book's one chapter, whose three embedded markers of 20 minutes stand
+/// in for chapters (§4.5).
+Timeline markedBook() => Timeline.build(
+  files: const [TimelineFile(id: 1, durationMs: 3600 * s)],
+  chapters: [
+    TimelineChapter(
+      id: 1,
+      title: 'The Book',
+      segments: const [TimelineSegment(fileId: 1)],
+    ),
+  ],
+  markersByFile: const {
+    1: [
+      TimelineMarker(title: 'One', startMs: 0),
+      TimelineMarker(title: 'Two', startMs: 1200 * s),
+      TimelineMarker(title: 'Three', startMs: 2400 * s),
+    ],
+  },
+);
+
 void main() {
   late FakeClock clock;
   late FakeEngine engine;
@@ -107,14 +143,23 @@ void main() {
     Timeline? timeline,
     ChapterPosition? resumeFrom,
     Duration pausedFor = Duration.zero,
+    bool finished = false,
   }) => coordinator.open(
     PlaybackRequest(
       bookId: bookId,
       timeline: timeline ?? twoFileBook(),
       resumeFrom: resumeFrom,
       pausedFor: pausedFor,
+      finished: finished,
     ),
   );
+
+  /// Every progress save so far, as its chapter, offset and whether it recorded the chapter
+  /// listened.
+  List<(int, int, bool)> saved() => [
+    for (final p in store.progress)
+      (p.position.chapterId, p.position.offsetMs, p.listened),
+  ];
 
   /// Emits an engine event and lets the coordinator's queue drain.
   Future<void> emit(EngineEvent event) async {
@@ -254,6 +299,197 @@ void main() {
       await coordinator.play();
       expect(engine.lastSeek, q(0, 0));
       expect(ready().finished, isFalse);
+    });
+  });
+
+  group('listened state (§4.5)', () {
+    test('a chapter is recorded listened once progress is saved at its threshold, and not before', () async {
+      // Each chapter lasts 300 s, so 30 seconds is the larger: listened from 270 s.
+      await openBook();
+      await coordinator.seekTo(270 * s - 1);
+      await coordinator.seekTo(270 * s);
+      expect(saved(), [(1, 270 * s - 1, false), (1, 270 * s, true)]);
+    });
+
+    test('a long chapter is listened 3 percent short of its end', () async {
+      // 20 minutes: 3 percent is 36 seconds, more than 30, so listened from 1164 s.
+      await openBook(timeline: chaptersOf([1200, 300]));
+      await coordinator.seekTo(1164 * s - 1);
+      await coordinator.seekTo(1164 * s);
+      expect(saved(), [(1, 1164 * s - 1, false), (1, 1164 * s, true)]);
+    });
+
+    test('a chapter of 30 seconds or less is listened as soon as progress is saved in it', () async {
+      await openBook(timeline: chaptersOf([300, 20, 300]));
+      await coordinator.seekTo(100 * s);
+      await coordinator.nextChapter();
+      expect(saved().last, (2, 0, true));
+    });
+
+    test('playback records a chapter as it reaches the threshold', () async {
+      await openBook();
+      await coordinator.play();
+      await emit(EnginePositionChanged(q(0, 265 * s)));
+      clock.advance(sec(5));
+      await emit(EnginePositionChanged(q(0, 270 * s)));
+      expect(saved(), [(1, 265 * s, false), (1, 270 * s, true)]);
+    });
+
+    test('a seek past chapters records none of them', () async {
+      await openBook(timeline: chaptersOf([300, 300, 300]));
+      await coordinator.play();
+      await emit(EnginePositionChanged(q(0, 10 * s)));
+      await coordinator.seekTo(610 * s);
+      await coordinator.skip(sec(-300));
+      expect(saved(), [
+        (1, 10 * s, false),
+        (3, 10 * s, false),
+        (2, 10 * s, false),
+      ]);
+    });
+
+    test(
+      'moving on from a chapter short of its threshold does not record it',
+      () async {
+        await openBook();
+        await coordinator.seekTo(250 * s);
+        await coordinator.nextChapter();
+        await coordinator.skip(sec(60));
+        expect(saved(), [
+          (1, 250 * s, false),
+          (2, 0, false),
+          (2, 60 * s, false),
+        ]);
+      },
+    );
+
+    test("in a single file with markers, the file's one chapter is recorded, never a marker", () async {
+      await openBook(timeline: markedBook());
+      // The end of the first marker, past what would be its own threshold.
+      await coordinator.seekTo(1199 * s);
+      await coordinator.nextChapter();
+      expect(saved(), [(1, 1199 * s, false), (1, 1200 * s, false)]);
+
+      // An hour less 3 percent is 58:12, or 3492 s.
+      await coordinator.seekTo(3492 * s);
+      expect(saved().last, (1, 3492 * s, true));
+      expect(ready().finished, isTrue);
+    });
+
+    group('the book is finished', () {
+      test('once its last chapter is recorded listened', () async {
+        await openBook();
+        await coordinator.seekTo(569 * s);
+        expect(ready().finished, isFalse);
+        await coordinator.seekTo(570 * s);
+        expect(ready().finished, isTrue);
+        expect(ready().playing, isFalse);
+      });
+
+      test('not when an earlier chapter is', () async {
+        await openBook();
+        await coordinator.seekTo(299 * s);
+        expect(saved().last.$3, isTrue);
+        expect(ready().finished, isFalse);
+      });
+
+      test('when it plays to its end', () async {
+        await openBook();
+        await coordinator.play();
+        await emit(const EngineCompleted());
+        expect(saved().last, (2, 300 * s, true));
+        expect(ready().finished, isTrue);
+      });
+
+      test('when it is stored so and opened', () async {
+        await openBook(finished: true, resumeFrom: at(2, 300 * s));
+        expect(ready().finished, isTrue);
+      });
+
+      test('and stays so as the listener moves back through it', () async {
+        await openBook(finished: true, resumeFrom: at(2, 300 * s));
+        await coordinator.seekTo(10 * s);
+        await coordinator.play();
+        await emit(EnginePositionChanged(q(0, 11 * s)));
+        expect(ready().finished, isTrue);
+        expect(store.listened, isEmpty);
+      });
+    });
+
+    group('starting a finished book again', () {
+      test(
+        'records its last chapter not listened, after moving to the beginning',
+        () async {
+          await openBook();
+          await coordinator.play();
+          await emit(const EngineCompleted());
+          store.writes.clear();
+
+          await coordinator.play();
+
+          expect(engine.lastSeek, q(0, 0));
+          expect(store.listened, [(bookId: 1, chapterId: 2, listened: false)]);
+          expect(store.writes, ['saveProgress', 'saveChapterListened']);
+          expect(store.progress.last.position, at(1, 0));
+          expect(ready().finished, isFalse);
+        },
+      );
+
+      test('is what Play again does for a book opened finished', () async {
+        await openBook(finished: true, resumeFrom: at(2, 300 * s));
+        await coordinator.startAgain();
+        expect(engine.lastSeek, q(0, 0));
+        expect(store.listened, [(bookId: 1, chapterId: 2, listened: false)]);
+        expect(ready().finished, isFalse);
+        expect(ready().position, at(1, 0));
+      });
+
+      test('leaves an unfinished book as it is', () async {
+        await openBook(resumeFrom: at(2, 100 * s));
+        await coordinator.startAgain();
+        expect(engine.lastSeek, q(0, 0));
+        expect(store.listened, isEmpty);
+        expect(ready().finished, isFalse);
+      });
+    });
+
+    group('marked by hand elsewhere', () {
+      test('the last chapter marked listened finishes the open book', () async {
+        await openBook();
+        await coordinator.onListenedChanged(
+          bookId: 1,
+          chapterIds: {1, 2},
+          listened: true,
+        );
+        expect(ready().finished, isTrue);
+        expect(store.progress, isEmpty, reason: 'it is already stored');
+        expect(store.listened, isEmpty);
+      });
+
+      test('marked not listened, the book is no longer finished', () async {
+        await openBook(finished: true);
+        await coordinator.onListenedChanged(
+          bookId: 1,
+          chapterIds: {2},
+          listened: false,
+        );
+        expect(ready().finished, isFalse);
+      });
+
+      test('another chapter, or another book, changes nothing', () async {
+        await openBook(finished: true);
+        await coordinator.onListenedChanged(
+          bookId: 1,
+          chapterIds: {1},
+          listened: false,
+        );
+        await coordinator.onListenedChanged(
+          bookId: 2,
+          chapterIds: {2},
+          listened: false,
+        );
+        expect(ready().finished, isTrue);
+      });
     });
   });
 

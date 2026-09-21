@@ -56,7 +56,11 @@ final class PlayerReady extends PlayerState {
   final double speed;
   final SleepTimerState sleepTimer;
 
-  /// True once the book has played to its end.
+  /// §4.5: the book is finished, its last chapter recorded as listened. The same as what is stored,
+  /// which a book's details and Continue Listening read: true for a finished book opened again, and
+  /// from the moment playback reaches the last chapter's threshold. It stays true while the listener
+  /// moves about the book, and is cleared when the book is started again or the chapter is marked not
+  /// listened.
   final bool finished;
 
   int get remainingMs => totalMs - globalMs;

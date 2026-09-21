@@ -2,7 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
-import '../playback/stored_playback.dart';
+import 'book_queries.dart';
 import 'watch_tables.dart';
 
 /// A book as its details screen shows it.
@@ -20,6 +20,7 @@ final class BookOverview {
     required this.chapters,
     required this.markers,
     required this.progress,
+    required this.finished,
     required this.coverFileName,
   });
 
@@ -52,6 +53,13 @@ final class BookOverview {
 
   /// Where the listener is, or null for a book never started.
   final BookProgress? progress;
+
+  /// §4.5: the book's last chapter, the last one the player plays, is recorded as listened.
+  ///
+  /// Recorded, not worked out from where the listener is, so it is the same test Continue Listening
+  /// and the player make. A book can be finished without being started, when it is marked finished
+  /// by hand, and stays finished while its listener moves back through it.
+  final bool finished;
 }
 
 final class ChapterOverview {
@@ -70,8 +78,10 @@ final class ChapterOverview {
   /// otherwise what the source said, or null.
   final int? durationMs;
 
-  /// §4.5: the chapter is marked listened, or the listener has been in it and reached its duration
-  /// less the larger of 30 seconds or 3 percent.
+  /// §4.5: the chapter is recorded as listened, by playback reaching its threshold or by hand.
+  ///
+  /// Only what is recorded counts. A chapter marked not listened by hand reads as not listened
+  /// wherever the listener's position in it is.
   final bool listened;
 
   /// True for the chapter the saved progress is in.
@@ -96,7 +106,13 @@ final class MarkerOverview {
   /// Where it ends, exclusive.
   final int endMs;
 
-  /// §4.5's listened rule applied to the marker's own stretch.
+  /// Whether the file's one chapter is recorded as listened, the same for every marker.
+  ///
+  /// §4.5 anchors progress to that source chapter plus an offset, so listened state is recorded
+  /// for it and a marker has none of its own: every marker reads as listened once the chapter is,
+  /// which for a single file is once the book is finished, and none before. Where the listener is
+  /// shows as [current] instead. Working a marker's state out from positions would be inference that
+  /// a chapter marked not listened by hand could never override.
   final bool listened;
 
   /// True for the marker the saved progress is in.
@@ -112,7 +128,6 @@ final class BookProgress {
     required this.chapterPositionMs,
     required this.globalPositionMs,
     required this.lastPlayedAt,
-    required this.finished,
   });
 
   /// Progress is stored chapter-relative (§4.5): this chapter and offset are the truth.
@@ -122,9 +137,6 @@ final class BookProgress {
   /// Derived from the Timeline and cached with the progress, for display.
   final int globalPositionMs;
   final DateTime lastPlayedAt;
-
-  /// §4.5: the position is in the last chapter and that chapter is listened.
-  final bool finished;
 }
 
 /// The details of book [bookId], emitting again whenever any of them changes, or null while there is
@@ -182,30 +194,20 @@ Future<BookOverview?> _loadBookOverview(KikuyomiDatabase db, int bookId) async {
     db.playbackStates,
   )..where((p) => p.bookId.equals(bookId))).getSingleOrNull();
 
-  final timeline = await _timelineOf(db, bookId);
+  final timeline = await timelineOrNone(db, bookId);
   final onTimeline = {...?timeline?.chapterIds};
+  final last = (await lastPlayableChapters(db, [bookId]))[bookId];
 
   int? durationOf(ChapterRow chapter) =>
       timeline != null && onTimeline.contains(chapter.id)
       ? timeline.chapterDurationMs(chapter.id)
       : chapter.durationMs;
 
-  // Where the listener last was in a chapter, or null if they have never been in it. A chapter
-  // never reached also sits at zero, which for a chapter of 30 seconds or less already meets its
-  // threshold, so zero counts only where the saved progress is.
-  int? reachedOffset(ChapterRow chapter) {
-    if (state != null && state.chapterId == chapter.id) {
-      return state.chapterPositionMs;
-    }
-    return chapter.lastPositionMs > 0 ? chapter.lastPositionMs : null;
-  }
-
   var markers = const <MarkerOverview>[];
   final markerChapter = timeline == null
       ? null
       : chapters.where((c) => c.id == timeline.lastChapterId).firstOrNull;
   if (timeline != null && markerChapter != null) {
-    final offset = reachedOffset(markerChapter);
     // The Timeline presents markers only for a book of one chapter, so its offsets are the book's.
     final here = state != null && state.chapterId == markerChapter.id
         ? timeline.navigationEntryAt(state.chapterPositionMs)
@@ -216,13 +218,7 @@ Future<BookOverview?> _loadBookOverview(KikuyomiDatabase db, int bookId) async {
           title: entry.title,
           startMs: entry.startMs,
           endMs: entry.endMs,
-          listened:
-              markerChapter.isListened ||
-              _listened(
-                offset,
-                startMs: entry.startMs,
-                durationMs: entry.durationMs,
-              ),
+          listened: markerChapter.isListened,
           current: entry == here,
         ),
     ];
@@ -242,12 +238,7 @@ Future<BookOverview?> _loadBookOverview(KikuyomiDatabase db, int bookId) async {
           chapterId: chapter.id,
           title: chapter.title,
           durationMs: durationOf(chapter),
-          listened:
-              chapter.isListened ||
-              _listened(
-                reachedOffset(chapter),
-                durationMs: durationOf(chapter),
-              ),
+          listened: chapter.isListened,
           current: state?.chapterId == chapter.id,
         ),
     ],
@@ -259,32 +250,7 @@ Future<BookOverview?> _loadBookOverview(KikuyomiDatabase db, int bookId) async {
             chapterPositionMs: state.chapterPositionMs,
             globalPositionMs: state.globalPositionMs,
             lastPlayedAt: state.updatedAt,
-            finished:
-                timeline != null &&
-                timeline.isBookFinished(
-                  ChapterPosition(
-                    chapterId: state.chapterId,
-                    offsetMs: state.chapterPositionMs,
-                  ),
-                ),
           ),
+    finished: last?.isListened ?? false,
   );
-}
-
-/// §4.5's listened rule: [offsetMs] has reached the stretch that starts at [startMs] and lasts
-/// [durationMs], less the larger of 30 seconds or 3 percent. False where either is unknown.
-bool _listened(int? offsetMs, {int startMs = 0, required int? durationMs}) =>
-    offsetMs != null &&
-    durationMs != null &&
-    offsetMs >= startMs + listenedThresholdMs(durationMs);
-
-/// The Timeline the player would build for the book, or null while it cannot be played.
-Future<Timeline?> _timelineOf(KikuyomiDatabase db, int bookId) async {
-  try {
-    return (await loadStoredPlayback(db, bookId)).timeline;
-  } on UnplayableBookException {
-    return null;
-  } on InvalidTimelineException {
-    return null;
-  }
 }

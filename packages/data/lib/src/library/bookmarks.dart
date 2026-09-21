@@ -2,7 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
-import '../playback/stored_playback.dart';
+import 'book_queries.dart';
 import 'watch_tables.dart';
 
 /// A bookmark as the player's list of bookmarks shows it.
@@ -209,7 +209,7 @@ Future<List<BookmarkOverview>> _loadBookmarks(
       ),
   ]..sort(_inPlayingOrder);
 
-  final timeline = await _timelineOf(db, bookId);
+  final timeline = await timelineOrNone(db, bookId);
   final onTimeline = {...?timeline?.chapterIds};
   return [
     for (final (:bookmark, :chapter) in marks)
@@ -258,17 +258,6 @@ int _inPlayingOrder(_Mark a, _Mark b) => [
   a.bookmark.createdAt.compareTo(b.bookmark.createdAt),
   a.bookmark.id.compareTo(b.bookmark.id),
 ].firstWhere((order) => order != 0, orElse: () => 0);
-
-/// The Timeline the player would build for the book, or null while it cannot be played.
-Future<Timeline?> _timelineOf(KikuyomiDatabase db, int bookId) async {
-  try {
-    return (await loadStoredPlayback(db, bookId)).timeline;
-  } on UnplayableBookException {
-    return null;
-  } on InvalidTimelineException {
-    return null;
-  }
-}
 
 /// [text] trimmed, or null when nothing is left of it.
 String? _textOrNone(String? text) {

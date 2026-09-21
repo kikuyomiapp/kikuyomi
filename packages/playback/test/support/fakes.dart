@@ -73,18 +73,45 @@ final class FakeResolver implements MediaResolver {
 
 /// Records everything the coordinator persists.
 final class FakeStore implements PlaybackStore {
-  final progress = <({int bookId, ChapterPosition position, int globalMs})>[];
+  final progress =
+      <({int bookId, ChapterPosition position, int globalMs, bool listened})>[];
+  final listened = <({int bookId, int chapterId, bool listened})>[];
   final sessions = <ListeningSession>[];
   final speeds = <({int bookId, double speed})>[];
   final durations = <({int bookId, int fileId, int durationMs})>[];
+
+  /// Progress and listened-state writes in the order they were made, by method name.
+  final writes = <String>[];
 
   @override
   Future<void> saveProgress({
     required int bookId,
     required ChapterPosition position,
     required int globalMs,
-  }) async =>
-      progress.add((bookId: bookId, position: position, globalMs: globalMs));
+    required bool listened,
+  }) async {
+    writes.add('saveProgress');
+    progress.add((
+      bookId: bookId,
+      position: position,
+      globalMs: globalMs,
+      listened: listened,
+    ));
+  }
+
+  @override
+  Future<void> saveChapterListened({
+    required int bookId,
+    required int chapterId,
+    required bool listened,
+  }) async {
+    writes.add('saveChapterListened');
+    this.listened.add((
+      bookId: bookId,
+      chapterId: chapterId,
+      listened: listened,
+    ));
+  }
 
   @override
   Future<void> saveSession(ListeningSession session) async =>

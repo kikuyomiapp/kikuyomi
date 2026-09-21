@@ -27,12 +27,14 @@ void main() {
         bookId: book.book,
         position: ChapterPosition(chapterId: book.c1, offsetMs: 10000),
         globalMs: 10000,
+        listened: false,
       );
       clock.advance(const Duration(seconds: 5));
       await store.saveProgress(
         bookId: book.book,
         position: ChapterPosition(chapterId: book.c2, offsetMs: 5000),
         globalMs: 305000,
+        listened: false,
       );
 
       final row = await db.select(db.playbackStates).getSingle();
@@ -48,6 +50,7 @@ void main() {
         bookId: book.book,
         position: ChapterPosition(chapterId: book.c1, offsetMs: 10000),
         globalMs: 10000,
+        listened: false,
       );
       final chapter = await (db.select(
         db.chapters,
@@ -60,6 +63,7 @@ void main() {
         bookId: book.book,
         position: ChapterPosition(chapterId: book.c2, offsetMs: 42000),
         globalMs: 342000,
+        listened: false,
       );
       final stored = await loadStoredPlayback(db, book.book);
       expect(
