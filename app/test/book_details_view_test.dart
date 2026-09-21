@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kikuyomi/src/book_details_view.dart';
+import 'package:kikuyomi/src/listened_commands.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart'
     show
         BookOverview,
@@ -69,6 +71,9 @@ final elevenMinutesIn = BookProgress(
 );
 
 /// The details of [overview], recording what was pressed in [pressed].
+///
+/// Marking the book finished reports chapters 11 and 12 as the ones it marked, as it would for
+/// [threeChapters], where only Opening was listened.
 Widget details(BookOverview overview, [List<String>? pressed]) => MaterialApp(
   home: Scaffold(
     body: BookDetailsView(
@@ -76,9 +81,43 @@ Widget details(BookOverview overview, [List<String>? pressed]) => MaterialApp(
       covers: covers,
       onPlay: (from) => pressed?.add('play from ${from.name}'),
       onRemove: () => pressed?.add('remove'),
+      listenedCommands: ListenedCommands(
+        markChapters: (chapterIds, listened) async {
+          pressed?.add(
+            'mark ${chapterIds.join(', ')} ${listened ? 'listened' : 'not listened'}',
+          );
+          return chapterIds;
+        },
+        markFinished: () async {
+          pressed?.add('mark finished');
+          return {11, 12};
+        },
+        markNotFinished: () async => pressed?.add('mark not finished'),
+      ),
     ),
   ),
 );
+
+/// Tabs through the screen until the options button of chapter [title] has the keyboard's focus.
+Future<void> tabTo(WidgetTester tester, String title) async {
+  bool focused() =>
+      FocusManager.instance.primaryFocus?.context
+          ?.findAncestorWidgetOfExactType<PopupMenuButton<bool>>()
+          ?.tooltip ==
+      'Options for $title';
+  for (var i = 0; i < 20 && !focused(); i++) {
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+  }
+  expect(focused(), isTrue, reason: 'the options for $title take focus');
+}
+
+/// Makes the window tall enough for the list to build every chapter below the cover and buttons.
+void tallView(WidgetTester tester) {
+  tester.view.physicalSize = const Size(800, 1400);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+}
 
 Finder iconIn(String title, IconData icon) => find.descendant(
   of: find.widgetWithText(ListTile, title),
@@ -87,10 +126,7 @@ Finder iconIn(String title, IconData icon) => find.descendant(
 
 void main() {
   testWidgets('shows the title, credits, length and chapters', (tester) async {
-    // Tall enough for the list to build every chapter below the cover.
-    tester.view.physicalSize = const Size(800, 1200);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.reset);
+    tallView(tester);
     await tester.pumpWidget(details(book()));
 
     expect(find.text('A Book'), findsOneWidget);
@@ -168,6 +204,7 @@ void main() {
   testWidgets('marks the chapters listened and the one being listened to', (
     tester,
   ) async {
+    tallView(tester);
     await tester.pumpWidget(details(book(progress: elevenMinutesIn)));
 
     expect(iconIn('Opening', Icons.check), findsOneWidget);
@@ -179,6 +216,7 @@ void main() {
   testWidgets('lists embedded markers in place of the one chapter', (
     tester,
   ) async {
+    tallView(tester);
     await tester.pumpWidget(
       details(
         book(
@@ -215,6 +253,129 @@ void main() {
     expect(iconIn('Chapter One', Icons.check), findsOneWidget);
     expect(iconIn('Chapter Two', Icons.graphic_eq), findsOneWidget);
     expect(find.text('20:00'), findsOneWidget);
+    // A marker has no listened state of its own to set (§4.5).
+    expect(find.byType(PopupMenuButton<bool>), findsNothing);
+  });
+
+  testWidgets('says a book marked finished is finished, started or not', (
+    tester,
+  ) async {
+    final pressed = <String>[];
+    await tester.pumpWidget(details(book(finished: true), pressed));
+
+    expect(find.text('Finished'), findsOneWidget);
+    await tester.tap(find.text('Play again'));
+    expect(pressed, ['play from start']);
+  });
+
+  group("a chapter's menu", () {
+    testWidgets('marks a chapter not yet listened listened', (tester) async {
+      tallView(tester);
+      final pressed = <String>[];
+      await tester.pumpWidget(details(book(), pressed));
+
+      await tester.tap(find.byTooltip('Options for End'));
+      await tester.pumpAndSettle();
+      expect(find.text('Mark as not listened'), findsNothing);
+      await tester.tap(find.text('Mark as listened'));
+      await tester.pumpAndSettle();
+
+      expect(pressed, ['mark 12 listened']);
+    });
+
+    testWidgets('marks a listened chapter not listened', (tester) async {
+      tallView(tester);
+      final pressed = <String>[];
+      await tester.pumpWidget(details(book(), pressed));
+
+      await tester.tap(find.byTooltip('Options for Opening'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mark as not listened'));
+      await tester.pumpAndSettle();
+
+      expect(pressed, ['mark 10 not listened']);
+    });
+
+    testWidgets('is a button named for its chapter', (tester) async {
+      tallView(tester);
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(details(book()));
+
+      expect(
+        tester.getSemantics(find.byTooltip('Options for End')),
+        isSemantics(
+          tooltip: 'Options for End',
+          isButton: true,
+          hasTapAction: true,
+          isFocusable: true,
+        ),
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('is reached and used from the keyboard', (tester) async {
+      tallView(tester);
+      final pressed = <String>[];
+      await tester.pumpWidget(details(book(), pressed));
+
+      await tabTo(tester, 'End');
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('Mark as listened'), findsOneWidget);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(pressed, ['mark 12 listened']);
+    });
+  });
+
+  group('marking the whole book', () {
+    testWidgets('marks it finished, and Undo marks back what it marked', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(
+        details(book(progress: elevenMinutesIn), pressed),
+      );
+
+      await tester.tap(find.text('Mark as finished'));
+      await tester.pumpAndSettle();
+      expect(pressed, ['mark finished']);
+      expect(find.text('Marked as finished'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+      await tester.pumpAndSettle();
+      expect(pressed, ['mark finished', 'mark 11, 12 not listened']);
+    });
+
+    testWidgets('offers a finished book to be marked not finished', (
+      tester,
+    ) async {
+      final pressed = <String>[];
+      await tester.pumpWidget(
+        details(book(progress: elevenMinutesIn, finished: true), pressed),
+      );
+
+      expect(find.text('Mark as finished'), findsNothing);
+      await tester.tap(find.text('Mark as not finished'));
+      await tester.pumpAndSettle();
+      expect(pressed, ['mark not finished']);
+    });
+
+    testWidgets('is a pair of buttons, one for each way', (tester) async {
+      await tester.pumpWidget(details(book()));
+      expect(
+        find.widgetWithText(OutlinedButton, 'Mark as finished'),
+        findsOneWidget,
+      );
+
+      await tester.pumpWidget(details(book(finished: true)));
+      expect(
+        find.widgetWithText(OutlinedButton, 'Mark as not finished'),
+        findsOneWidget,
+      );
+    });
   });
 
   group('removing the book', () {

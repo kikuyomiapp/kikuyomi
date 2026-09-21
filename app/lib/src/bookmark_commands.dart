@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart' show BookmarkOverview;
 
 import 'bookmark_text_dialog.dart';
+import 'snack_bars.dart';
 
 /// The changes to bookmarks the player asks for.
 ///
@@ -46,7 +47,7 @@ Future<void> addBookmarkHere(
   try {
     added = await commands.add();
   } catch (error) {
-    _tell(messenger, 'Could not add the bookmark: $error');
+    tellInSnackBar(messenger, 'Could not add the bookmark: $error');
     return;
   }
   if (added == null || !context.mounted) return;
@@ -54,7 +55,7 @@ Future<void> addBookmarkHere(
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(
-      _offering(
+      offeringSnackBar(
         context,
         message: 'Bookmark added',
         action: 'Add note',
@@ -91,7 +92,7 @@ Future<void> promptBookmarkName(
   try {
     await commands.rename(bookmark.bookmarkId, title);
   } catch (error) {
-    _tell(messenger, 'Could not rename the bookmark: $error');
+    tellInSnackBar(messenger, 'Could not rename the bookmark: $error');
   }
 }
 
@@ -114,7 +115,7 @@ Future<void> promptBookmarkNote(
   try {
     await commands.setNote(bookmarkId, entered);
   } catch (error) {
-    _tell(messenger, 'Could not save the note: $error');
+    tellInSnackBar(messenger, 'Could not save the note: $error');
   }
 }
 
@@ -129,14 +130,14 @@ Future<void> deleteBookmarkWithUndo(
   try {
     await commands.delete(bookmark);
   } catch (error) {
-    _tell(messenger, 'Could not delete the bookmark: $error');
+    tellInSnackBar(messenger, 'Could not delete the bookmark: $error');
     return;
   }
   if (!context.mounted) return;
   messenger
     ..hideCurrentSnackBar()
     ..showSnackBar(
-      _offering(
+      offeringSnackBar(
         context,
         message: 'Bookmark deleted',
         action: 'Undo',
@@ -145,34 +146,13 @@ Future<void> deleteBookmarkWithUndo(
             await commands.restore(bookmark);
           } catch (error) {
             if (messenger.mounted) {
-              _tell(messenger, 'Could not put the bookmark back: $error');
+              tellInSnackBar(
+                messenger,
+                'Could not put the bookmark back: $error',
+              );
             }
           }
         },
       ),
     );
 }
-
-/// A snack bar saying [message] and offering [action].
-///
-/// Flutter keeps a snack bar with an action on screen until the action is taken. This one goes after
-/// the usual few seconds instead, so that bookmarks added one after another do not leave a message
-/// standing over the controls. Someone using a screen reader or switch access may need longer to
-/// reach the action, so for them it stays, with a button to close it.
-SnackBar _offering(
-  BuildContext context, {
-  required String message,
-  required String action,
-  required VoidCallback onPressed,
-}) {
-  final assisted = MediaQuery.accessibleNavigationOf(context);
-  return SnackBar(
-    content: Text(message),
-    action: SnackBarAction(label: action, onPressed: onPressed),
-    persist: assisted,
-    showCloseIcon: assisted,
-  );
-}
-
-void _tell(ScaffoldMessengerState messenger, String message) =>
-    messenger.showSnackBar(SnackBar(content: Text(message)));

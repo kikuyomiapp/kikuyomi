@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart' show removeBookFromLibrary;
 
 import 'book_details_view.dart';
+import 'listened_commands.dart';
 import 'open_book.dart';
 import 'providers.dart';
 import 'routes.dart';
+import 'services.dart';
 
 /// A book's details, watched from the database, so progress saved while the book plays shows here
 /// on returning from the player without anything being refreshed. Reached through [BookRoute].
@@ -33,6 +35,9 @@ class BookDetailsScreen extends ConsumerWidget {
                   fromStart: from == PlayFrom.start,
                 ),
                 onRemove: () => _remove(context, ref, book.title),
+                listenedCommands: _listenedCommands(
+                  ref.watch(servicesProvider),
+                ),
               ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) =>
@@ -40,6 +45,16 @@ class BookDetailsScreen extends ConsumerWidget {
       ),
     );
   }
+
+  /// Marks made in the database through [AppServices], which tells the player too, so a book open
+  /// there agrees about being finished. The details update by themselves, since they watch the
+  /// database.
+  ListenedCommands _listenedCommands(AppServices services) => ListenedCommands(
+    markChapters: (chapterIds, listened) =>
+        services.markChaptersListened(bookId, chapterIds, listened: listened),
+    markFinished: () => services.markBookFinished(bookId),
+    markNotFinished: () => services.markBookNotFinished(bookId),
+  );
 
   /// Takes the book out of the library and leaves its details, since there is nothing more to do
   /// with it here. A book that is playing carries on playing.

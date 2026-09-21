@@ -5,6 +5,7 @@ import 'package:kikuyomi_data/kikuyomi_data.dart' show BookOverview, CoverFiles;
 import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
 
 import 'format.dart';
+import 'listened_commands.dart';
 
 /// Where the play button starts a book.
 enum PlayFrom {
@@ -18,6 +19,12 @@ enum PlayFrom {
 /// A book's details: its credits and length, where the listener is, its chapters, and what can be
 /// done with it.
 ///
+/// Each chapter can be marked listened or not from a menu on its row, and the whole book marked
+/// finished or not (§4.5). What is marked is what the book's details, Continue Listening and the
+/// player all read, so a mark wins over wherever the listener has been. A single file's embedded
+/// markers have no menu: §4.5 records listened state for the file's one chapter, not for a marker,
+/// so marking the book finished or not is how it is set.
+///
 /// Fed with data rather than watching providers, so it can be tested without a database.
 class BookDetailsView extends StatelessWidget {
   const BookDetailsView({
@@ -26,6 +33,7 @@ class BookDetailsView extends StatelessWidget {
     required this.covers,
     required this.onPlay,
     required this.onRemove,
+    required this.listenedCommands,
   });
 
   final BookOverview book;
@@ -36,6 +44,9 @@ class BookDetailsView extends StatelessWidget {
 
   /// Called once the listener has confirmed they want the book out of the library.
   final VoidCallback onRemove;
+
+  /// Marking chapters, and the whole book, listened or not.
+  final ListenedCommands listenedCommands;
 
   /// Wider than this, the content stays at a readable measure in the middle of the window.
   static const _maxContentWidth = 720.0;
@@ -85,22 +96,22 @@ class BookDetailsView extends StatelessWidget {
             if (total != null)
               Text(formatClock(total), style: theme.textTheme.bodyMedium),
             const SizedBox(height: 16),
-            if (progress != null) ...[
-              if (finished)
-                Text('Finished', style: theme.textTheme.bodyMedium)
-              else ...[
-                if (total != null && total > 0)
-                  LinearProgressIndicator(
-                    value: (progress.globalPositionMs / total).clamp(0.0, 1.0),
-                  ),
-                const SizedBox(height: 4),
-                Text(
-                  total == null
-                      ? '${formatClock(progress.globalPositionMs)} listened'
-                      : '${formatClock(total - progress.globalPositionMs)} left',
-                  style: theme.textTheme.bodySmall,
+            // A book marked finished by hand may never have been started.
+            if (finished) ...[
+              Text('Finished', style: theme.textTheme.bodyMedium),
+              const SizedBox(height: 16),
+            ] else if (progress != null) ...[
+              if (total != null && total > 0)
+                LinearProgressIndicator(
+                  value: (progress.globalPositionMs / total).clamp(0.0, 1.0),
                 ),
-              ],
+              const SizedBox(height: 4),
+              Text(
+                total == null
+                    ? '${formatClock(progress.globalPositionMs)} listened'
+                    : '${formatClock(total - progress.globalPositionMs)} left',
+                style: theme.textTheme.bodySmall,
+              ),
               const SizedBox(height: 16),
             ],
             Wrap(
@@ -113,13 +124,27 @@ class BookDetailsView extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.play_arrow),
                   label: Text(
-                    progress == null
-                        ? 'Play'
-                        : finished
+                    finished
                         ? 'Play again'
+                        : progress == null
+                        ? 'Play'
                         : 'Resume',
                   ),
                 ),
+                if (finished)
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        markBookNotFinished(context, listenedCommands),
+                    icon: const Icon(Icons.remove_done),
+                    label: const Text('Mark as not finished'),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        markBookFinishedWithUndo(context, listenedCommands),
+                    icon: const Icon(Icons.done_all),
+                    label: const Text('Mark as finished'),
+                  ),
                 if (book.inLibrary)
                   OutlinedButton.icon(
                     onPressed: () => _confirmRemoval(context),
@@ -148,6 +173,12 @@ class BookDetailsView extends StatelessWidget {
                   durationMs: chapter.durationMs,
                   listened: chapter.listened,
                   current: chapter.current && !finished,
+                  onMark: (listened) => markChapterListened(
+                    context,
+                    listenedCommands,
+                    chapterId: chapter.chapterId,
+                    listened: listened,
+                  ),
                 ),
           ],
         );
@@ -188,6 +219,7 @@ class _EntryTile extends StatelessWidget {
     required this.durationMs,
     required this.listened,
     required this.current,
+    this.onMark,
   });
 
   final String title;
@@ -197,9 +229,15 @@ class _EntryTile extends StatelessWidget {
   /// Where the listener is. Not shown for a finished book, where it would only point at the end.
   final bool current;
 
+  /// Marks the chapter listened, or with false not listened, from the row's menu. Null for a row
+  /// with no listened state of its own to set, which has no menu.
+  final ValueChanged<bool>? onMark;
+
   @override
   Widget build(BuildContext context) {
     final duration = durationMs;
+    final onMark = this.onMark;
+    final length = duration == null ? null : Text(formatClock(duration));
     return ListTile(
       contentPadding: EdgeInsets.zero,
       selected: current,
@@ -216,7 +254,28 @@ class _EntryTile extends StatelessWidget {
             : null,
       ),
       title: Text(title),
-      trailing: duration == null ? null : Text(formatClock(duration)),
+      trailing: onMark == null
+          ? length
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ?length,
+                // A button of its own, rather than a long press on the row, so the menu is found and
+                // reached the same way by mouse, touch and keyboard, and a screen reader names it.
+                PopupMenuButton<bool>(
+                  tooltip: 'Options for $title',
+                  onSelected: onMark,
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: !listened,
+                      child: Text(
+                        listened ? 'Mark as not listened' : 'Mark as listened',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
     );
   }
 }
