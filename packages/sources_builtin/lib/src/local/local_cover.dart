@@ -62,7 +62,7 @@ Future<EmbeddedPicture?> _readImage(File image) async {
 
 /// The extension of the file at [path], or nothing when its name has none.
 String _extension(String path) {
-  final name = path.split(RegExp(r'[\/]')).last;
+  final name = path.split(RegExp(r'[\\/]')).last;
   final dot = name.lastIndexOf('.');
   return dot < 0 ? '' : name.substring(dot + 1);
 }
