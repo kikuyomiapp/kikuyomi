@@ -12,6 +12,7 @@ export 'src/backup/restore_plan.dart';
 export 'src/clock.dart';
 export 'src/library/book_field.dart';
 export 'src/library/contributor_role.dart';
+export 'src/playback/audio_format.dart';
 export 'src/playback/listening_session.dart';
 export 'src/playback/media_resolver.dart';
 export 'src/playback/playback_store.dart';
