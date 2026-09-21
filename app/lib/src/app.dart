@@ -9,6 +9,7 @@ import 'package:kikuyomi_backup/kikuyomi_backup.dart';
 
 import 'providers.dart';
 import 'routes.dart';
+import 'setup_gate.dart';
 
 class KikuyomiApp extends ConsumerStatefulWidget {
   const KikuyomiApp({super.key, this.openOnLaunch});
@@ -26,7 +27,10 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
 
   /// Made once and kept for the life of the app, so rebuilding the app never loses the screens the
   /// listener has open.
-  late final GoRouter _router = createRouter(navigatorKey: _navigator);
+  late final GoRouter _router = createRouter(
+    navigatorKey: _navigator,
+    setupGate: ref.read(setupGateProvider),
+  );
   late final AppLifecycleListener _lifecycle;
   late final StreamSubscription<BackupOutcome> _backupOutcomes;
 
@@ -46,6 +50,7 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
         .outcomes
         .listen(_reportFailedBackup);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_decideSetup());
       // Covers for books added before covers were kept wait for the first look in the import
       // folder, whose new books bring their own, so start-up does the one thing at a time.
       unawaited(_lookForNewBooks().then((_) => _lookForMissingCovers()));
@@ -87,6 +92,27 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   }
 
   static const _closingWait = Duration(seconds: 10);
+
+  /// Decides whether to offer backup setup (§5.1: restore on a fresh install), which the router then
+  /// follows. Not for a book opened from the command line, which was asked for by name.
+  Future<void> _decideSetup() async {
+    final services = ref.read(servicesProvider);
+    try {
+      await ref
+          .read(setupGateProvider)
+          .decide(
+            () async =>
+                widget.openOnLaunch == null &&
+                await shouldOfferSetup(
+                  settings: services.settings,
+                  canChooseFolder: services.backups.canChooseFolder,
+                  libraryIsEmpty: services.libraryIsEmpty,
+                ),
+          );
+    } catch (error, stack) {
+      _report(error, stack, 'while deciding whether to offer backup setup');
+    }
+  }
 
   /// A backup that failed is shown in Settings; this reports it the way Flutter reports errors too,
   /// for whoever is developing the app.

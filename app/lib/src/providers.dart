@@ -6,6 +6,7 @@ import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
 import 'services.dart';
+import 'setup_gate.dart';
 
 /// Supplied by `main()` once the database and engine are open.
 final servicesProvider = Provider<AppServices>(
@@ -49,6 +50,13 @@ final playerStateProvider = StreamProvider<PlayerState>((ref) {
 final continueListeningProvider = StreamProvider<List<ContinueListeningBook>>(
   (ref) => watchContinueListening(ref.watch(servicesProvider).database),
 );
+
+/// Whether backup setup is offered at start. The router redirects by it.
+final setupGateProvider = Provider<SetupGate>((ref) {
+  final gate = SetupGate();
+  ref.onDispose(gate.dispose);
+  return gate;
+});
 
 /// The folder backups go to, or null before one is chosen, from settings.
 final backupFolderProvider = StreamProvider<UserFolder?>(

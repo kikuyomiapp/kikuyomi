@@ -6,6 +6,8 @@ import 'library_screen.dart';
 import 'player_screen.dart';
 import 'restore_screen.dart';
 import 'settings_screen.dart';
+import 'setup_gate.dart';
+import 'setup_screen.dart';
 
 part 'routes.g.dart';
 
@@ -19,16 +21,48 @@ part 'routes.g.dart';
 /// through these same routes once the platforms register the scheme. A link meant for sharing will
 /// then need a book's global identity, its source and key (§4.4), rather than the database id
 /// [BookRoute] carries, which means nothing on another device.
+///
+/// With a [setupGate], the router keeps the app on [SetupRoute] while the gate offers setup, and
+/// leaves it for the home once setup is finished, following the gate as it changes.
 GoRouter createRouter({
   GlobalKey<NavigatorState>? navigatorKey,
   String initialLocation = '/',
+  SetupGate? setupGate,
 }) => GoRouter(
   navigatorKey: navigatorKey,
   initialLocation: initialLocation,
   routes: $appRoutes,
+  refreshListenable: setupGate,
+  redirect: setupGate == null
+      ? null
+      : (context, state) => setupRedirect(setupGate.offer, state.uri.path),
   errorBuilder: (context, state) =>
       _NotFoundScreen(location: state.uri.toString()),
 );
+
+/// Where the router goes instead of [location] while setup is [offer]ed, or null to go there.
+///
+/// While setup is offered every location leads to it, since the app starts on the home and a deep
+/// link would otherwise slip past it. Once it is finished, or was never offered, it leads home.
+String? setupRedirect(SetupOffer offer, String location) {
+  final setup = const SetupRoute().location;
+  return switch (offer) {
+    SetupOffer.offered when location != setup => setup,
+    SetupOffer.notOffered when location == setup => const HomeRoute().location,
+    _ => null,
+  };
+}
+
+/// Backup setup, offered when the app starts with an empty library. Outside the home, so that it
+/// has nothing beneath it to go back to: it is finished or skipped, not left.
+@TypedGoRoute<SetupRoute>(path: '/setup')
+class SetupRoute extends GoRouteData with $SetupRoute {
+  const SetupRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const SetupScreen();
+}
 
 /// The home: Continue Listening above the library.
 ///

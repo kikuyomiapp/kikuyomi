@@ -19,6 +19,11 @@ void main() {
     expect(const PlayerRoute().location, '/player');
     expect(const SettingsRoute().location, '/settings');
     expect(const RestoreRoute().location, '/settings/restore');
+    expect(const SetupRoute().location, '/setup');
+  });
+
+  testWidgets('setup stands alone, with nothing beneath it', (tester) async {
+    expect(pathsTo(const SetupRoute().location), ['/setup']);
   });
 
   testWidgets('settings open above the library, and restoring above them', (
