@@ -88,9 +88,13 @@ void main() {
     () {
       // Protobuf keeps the last value it reads for a field, so appending min_reader_version (field 2,
       // a varint) makes the backup demand a newer reader than this build.
-      final future = gzip.encode([...gzip.decode(file), 0x10, 0x02]);
+      final future = gzip.encode([
+        ...gzip.decode(file),
+        0x10,
+        backupFormatVersion + 1,
+      ]);
       final summary = readBackupSummary(future);
-      expect(summary.minReaderVersion, 2);
+      expect(summary.minReaderVersion, backupFormatVersion + 1);
       expect(summary.isRestorable, isFalse);
       expect(summary.bookCount, 2);
     },

@@ -199,29 +199,8 @@ void main() {
   });
 
   group('the backfill of positions saved before listened state was recorded', () {
-    /// Saves progress as the app did before it recorded listened state: never recording it.
-    Future<void> listenedBefore(
-      int bookId,
-      int chapterIndex,
-      int offsetMs,
-    ) async {
-      final timeline = (await loadStoredPlayback(db, bookId)).timeline;
-      final position = ChapterPosition(
-        chapterId: timeline.chapterIds[chapterIndex],
-        offsetMs: offsetMs,
-      );
-      await DriftPlaybackStore(
-        db,
-        deviceId: 'test-device',
-        clock: clock,
-      ).saveProgress(
-        bookId: bookId,
-        position: position,
-        globalMs: timeline.globalOf(position),
-        listened: false,
-      );
-      clock.advance(const Duration(minutes: 1));
-    }
+    Future<void> listenedBefore(int bookId, int chapterIndex, int offsetMs) =>
+        listenBeforeRecording(db, clock, bookId, chapterIndex, offsetMs);
 
     test(
       'records the chapters whose positions reached their thresholds',

@@ -111,6 +111,33 @@ Future<void> listen(
   clock.advance(const Duration(minutes: 1));
 }
 
+/// Saves progress as the app did before it recorded listened state, never recording a chapter as
+/// listened, then moves the clock on a minute.
+Future<void> listenBeforeRecording(
+  KikuyomiDatabase db,
+  FakeClock clock,
+  int bookId,
+  int chapterIndex,
+  int offsetMs,
+) async {
+  final timeline = (await loadStoredPlayback(db, bookId)).timeline;
+  final position = ChapterPosition(
+    chapterId: timeline.chapterIds[chapterIndex],
+    offsetMs: offsetMs,
+  );
+  await DriftPlaybackStore(
+    db,
+    deviceId: 'test-device',
+    clock: clock,
+  ).saveProgress(
+    bookId: bookId,
+    position: position,
+    globalMs: timeline.globalOf(position),
+    listened: false,
+  );
+  clock.advance(const Duration(minutes: 1));
+}
+
 /// Marks chapters listened or not by hand, as a book's details do, then moves the clock on a minute.
 Future<Set<int>> mark(
   KikuyomiDatabase db,

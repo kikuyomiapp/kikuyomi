@@ -216,6 +216,28 @@ void main() {
       },
     );
 
+    test('written before listened state was recorded, asks for it to be worked out from positions', () async {
+      final file = await backUp(InMemoryLibrary(fullLibrary()));
+      // Protobuf keeps the last value it reads for a field, so appending format_version (field 1,
+      // a varint) holding 1 makes the file one that a build before version 2 wrote.
+      final old = gzip.encode([...gzip.decode(file), 0x08, 0x01]);
+      final library = InMemoryLibrary();
+
+      final report = await restoreBackup(old, library: library);
+
+      expect(report.backup.formatVersion, 1);
+      expect(library.applied.single.listenedFromPositions, isTrue);
+    });
+
+    test('this build wrote, restores listened state as written', () async {
+      final library = InMemoryLibrary();
+      await restoreBackup(
+        await backUp(InMemoryLibrary(fullLibrary())),
+        library: library,
+      );
+      expect(library.applied.single.listenedFromPositions, isFalse);
+    });
+
     test('a second time changes nothing', () async {
       final file = await backUp(InMemoryLibrary(fullLibrary()));
       final restored = InMemoryLibrary();
@@ -371,7 +393,11 @@ void main() {
         final file = await backUp(InMemoryLibrary(fullLibrary()));
         // Protobuf keeps the last value it reads for a field, so appending min_reader_version (field 2,
         // a varint) makes the backup demand a newer reader than this build.
-        final future = gzip.encode([...gzip.decode(file), 0x10, 0x02]);
+        final future = gzip.encode([
+          ...gzip.decode(file),
+          0x10,
+          backupFormatVersion + 1,
+        ]);
 
         await expectLater(
           restoreBackup(future, library: library),
@@ -379,7 +405,7 @@ void main() {
             isA<UnsupportedBackupVersionException>().having(
               (e) => e.message,
               'message',
-              contains('format version 2'),
+              contains('format version ${backupFormatVersion + 1}'),
             ),
           ),
         );

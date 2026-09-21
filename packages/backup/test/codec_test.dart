@@ -186,14 +186,22 @@ void main() {
 
     test('a backup that needs a newer reader is refused, saying which', () {
       final message = unwrap(encodeBackup(fullLibrary(), info: info))
-        ..formatVersion = 2
-        ..minReaderVersion = 2;
+        ..formatVersion = backupFormatVersion + 1
+        ..minReaderVersion = backupFormatVersion + 1;
       expect(
         () => decodeBackup(wrap(message)),
         throwsA(
           isA<UnsupportedBackupVersionException>()
-              .having((e) => e.minReaderVersion, 'minReaderVersion', 2)
-              .having((e) => e.message, 'message', contains('version 2')),
+              .having(
+                (e) => e.minReaderVersion,
+                'minReaderVersion',
+                backupFormatVersion + 1,
+              )
+              .having(
+                (e) => e.message,
+                'message',
+                contains('version ${backupFormatVersion + 1}'),
+              ),
         ),
       );
     });

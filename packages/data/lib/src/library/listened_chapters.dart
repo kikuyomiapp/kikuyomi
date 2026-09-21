@@ -3,6 +3,7 @@ import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
 import 'book_queries.dart';
+import 'listened_backfill.dart';
 
 /// Marks chapters [chapterIds] of book [bookId] as [listened], or as not listened, by hand (§4.5),
 /// and returns the ids of the chapters whose state this changed.
@@ -86,59 +87,8 @@ Future<Set<int>> markBookNotFinished(
 /// recorded, and it moves no position. All the same it must run only once, before the listener can
 /// mark anything by hand: run later, it would record again a chapter the listener marked not
 /// listened whose position is past its threshold. [backfillListenedChaptersOnce] sees to that.
-Future<int> backfillListenedChapters(KikuyomiDatabase db) => db.transaction(
-  () async {
-    final states = {
-      for (final state in await db.select(db.playbackStates).get())
-        state.bookId: state,
-    };
-    final candidates =
-        await (db.select(db.chapters)..where(
-              (c) =>
-                  c.isListened.equals(false) &
-                  (c.lastPositionMs.isBiggerThanValue(0) |
-                      c.id.isInQuery(
-                        db.selectOnly(db.playbackStates)
-                          ..addColumns([db.playbackStates.chapterId]),
-                      )),
-            ))
-            .get();
-
-    final reachedByBook = <int, List<(ChapterRow, int)>>{};
-    for (final chapter in candidates) {
-      final state = states[chapter.bookId];
-      final offset = state != null && state.chapterId == chapter.id
-          ? state.chapterPositionMs
-          : chapter.lastPositionMs;
-      (reachedByBook[chapter.bookId] ??= []).add((chapter, offset));
-    }
-
-    var recorded = 0;
-    for (final MapEntry(key: bookId, value: reached) in reachedByBook.entries) {
-      final timeline = await timelineOrNone(db, bookId);
-      final onTimeline = {...?timeline?.chapterIds};
-      for (final (chapter, offsetMs) in reached) {
-        final durationMs = timeline != null && onTimeline.contains(chapter.id)
-            ? timeline.chapterDurationMs(chapter.id)
-            : chapter.durationMs;
-        if (durationMs == null || offsetMs < listenedThresholdMs(durationMs)) {
-          continue;
-        }
-        await (db.update(db.chapters)..where(
-              (c) => c.id.equals(chapter.id) & c.isListened.equals(false),
-            ))
-            .write(
-              ChaptersCompanion(
-                isListened: const Value(true),
-                listenedAt: Value(chapter.updatedAt),
-              ),
-            );
-        recorded++;
-      }
-    }
-    return recorded;
-  },
-);
+Future<int> backfillListenedChapters(KikuyomiDatabase db) =>
+    db.transaction(() => recordListenedFromPositions(db));
 
 /// Runs [backfillListenedChapters] the first time it is called for this installation, which
 /// [AppSettings.listenedBackfilled] records, and does nothing after that.

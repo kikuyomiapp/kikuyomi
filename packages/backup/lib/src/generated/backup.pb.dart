@@ -97,6 +97,13 @@ class Backup extends $pb.GeneratedMessage {
   /// The version of this schema the writer implemented. Informational: it says which fields a reader
   /// may expect, and helps diagnose a bad restore. It rises with every change to this file that
   /// matters to a reader, including purely additive ones.
+  ///
+  /// 1: the first version.
+  /// 2: `Chapter.is_listened` and `listened_at_ms` are recorded, by playback and by hand. Builds
+  ///    writing version 1 worked listened state out from positions and wrote no chapter as listened,
+  ///    so a reader restores listened state from a version 1 backup's positions instead of taking it
+  ///    as written. The fields and their meaning are unchanged, and a version 1 reader restores a
+  ///    version 2 backup correctly, so `min_reader_version` stays at 1.
   @$pb.TagNumber(1)
   $core.int get formatVersion => $_getIZ(0);
   @$pb.TagNumber(1)
@@ -1311,6 +1318,8 @@ class Chapter extends $pb.GeneratedMessage {
   @$pb.TagNumber(6)
   void clearPublishedAtMs() => $_clearField(6);
 
+  /// §4.5's listened state. False for every chapter in a backup of format version 1, whose writers
+  /// did not record it; see `Backup.format_version`.
   @$pb.TagNumber(7)
   $core.bool get isListened => $_getBF(6);
   @$pb.TagNumber(7)

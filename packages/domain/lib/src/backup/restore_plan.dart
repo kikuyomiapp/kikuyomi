@@ -21,6 +21,7 @@ final class RestorePlan {
     this.newCategories = const [],
     this.newBooks = const [],
     this.mergedBooks = const [],
+    this.listenedFromPositions = false,
   });
 
   /// Sources the library does not have.
@@ -34,6 +35,18 @@ final class RestorePlan {
 
   /// Books the library has, with what the backup adds to them. Only books that change are listed.
   final List<BookMerge> mergedBooks;
+
+  /// Whether the backup's listened states are to be worked out from its positions rather than taken
+  /// as written (§4.5).
+  ///
+  /// True for a backup written before listened state was recorded, which says every chapter is not
+  /// listened, even one the listener finished. Whoever applies the plan then records as listened each
+  /// chapter the plan wrote, whether added or given the backup's progress, whose position has reached
+  /// its threshold, as the library's own one-time backfill does. It leaves chapters already listened
+  /// alone, and chapters the plan did not write. False for a backup whose listened states are
+  /// recorded, which are restored exactly as written, so a chapter the listener marked not listened
+  /// stays so.
+  final bool listenedFromPositions;
 
   /// True when the restore changes nothing, as when the same backup is restored a second time.
   bool get isEmpty =>

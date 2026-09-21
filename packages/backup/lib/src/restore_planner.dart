@@ -12,6 +12,8 @@ import 'dart:math' as math;
 
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
+import 'codec.dart';
+
 /// Plans restoring [backup] into [current], the library as it is now.
 ///
 /// Matching follows §4.4 and ADR-0009. Sources match by their stable id, books by source and key,
@@ -50,9 +52,17 @@ import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 ///
 /// Reconciling two devices that both kept listening is not a restore's job. ADR-0011 gives it to sync,
 /// which will need rules that this planner deliberately does not attempt.
+///
+/// [formatVersion] is the version of the backup file [backup] was read from. A backup from before
+/// [backupListenedRecordedSince] says no chapter is listened, even one the listener finished, so its
+/// plan asks for listened state to be worked out from the positions it restores
+/// ([RestorePlan.listenedFromPositions]). Taking such a backup as written would put every finished
+/// book back on Continue Listening. A newer backup's listened state is restored as written, so a
+/// chapter the listener marked not listened stays so, wherever its position is.
 RestorePlan planRestore({
   required LibrarySnapshot backup,
   required LibrarySnapshot current,
+  int formatVersion = backupFormatVersion,
 }) {
   final sourceIds = {for (final source in current.sources) source.id};
   final booksHere = {
@@ -82,6 +92,7 @@ RestorePlan planRestore({
     ),
     newBooks: List.unmodifiable(newBooks),
     mergedBooks: List.unmodifiable(mergedBooks),
+    listenedFromPositions: formatVersion < backupListenedRecordedSince,
   );
 }
 

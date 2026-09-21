@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../database/database.dart';
+import '../library/listened_backfill.dart';
 
 /// Writes a [RestorePlan] to the database.
 ///
@@ -11,6 +12,13 @@ import '../database/database.dart';
 /// A reference that resolves to nothing, like a chapter key the book does not have, is a bug in
 /// whatever made the plan. It fails with a [StateError] rather than writing a row that points
 /// nowhere. Call this inside a transaction, so that such a failure leaves nothing half-written.
+///
+/// For a plan whose listened states are to be worked out from positions
+/// ([RestorePlan.listenedFromPositions]), the chapters it wrote are then recorded as listened where
+/// their positions have reached their thresholds, as the library's own backfill records them. Those
+/// are the chapters it added, those it gave the backup's progress, and the chapter a book's restored
+/// progress is in. Chapters already listened are left alone, and so is every chapter the plan did not
+/// write, so a restore never records again a chapter the listener marked not listened here.
 Future<void> applyRestorePlan(KikuyomiDatabase db, RestorePlan plan) async {
   for (final source in plan.newSources) {
     await db
@@ -54,15 +62,20 @@ Future<void> applyRestorePlan(KikuyomiDatabase db, RestorePlan plan) async {
     categoryIds.putIfAbsent(category.name, () => category.id);
   }
 
+  final written = <int>{};
   for (final book in plan.newBooks) {
-    await _insertBook(db, book, categoryIds);
+    written.addAll(await _insertBook(db, book, categoryIds));
   }
   for (final merge in plan.mergedBooks) {
-    await _mergeBook(db, merge, categoryIds);
+    written.addAll(await _mergeBook(db, merge, categoryIds));
+  }
+  if (plan.listenedFromPositions) {
+    await recordListenedFromPositions(db, onlyChapters: written);
   }
 }
 
-Future<void> _insertBook(
+/// Inserts [book] whole, and returns the ids of the chapters it wrote, which are all of them.
+Future<Iterable<int>> _insertBook(
   KikuyomiDatabase db,
   BookSnapshot book,
   Map<String, int> categoryIds,
@@ -91,9 +104,12 @@ Future<void> _insertBook(
   await _addSessions(db, bookId, book.sessions, chapterIds);
   await _addBookmarks(db, bookId, book.bookmarks, chapterIds);
   await _join(db, bookId, book.categories, categoryIds);
+  return chapterIds.values;
 }
 
-Future<void> _mergeBook(
+/// Applies [merge], and returns the ids of the chapters whose listened state or position it wrote:
+/// those it added, those given the backup's progress, and the one the book's progress is now in.
+Future<Set<int>> _mergeBook(
   KikuyomiDatabase db,
   BookMerge merge,
   Map<String, int> categoryIds,
@@ -138,12 +154,13 @@ Future<void> _mergeBook(
     )..where((c) => c.bookId.equals(book.id))).get())
       chapter.key: chapter.id,
   };
-  chapterIds.addAll(
-    await _insertChapters(db, book.id, merge.newChapters, fileIds),
-  );
+  final added = await _insertChapters(db, book.id, merge.newChapters, fileIds);
+  chapterIds.addAll(added);
+  final written = {...added.values};
 
   for (final progress in merge.chapterProgress) {
     final chapterId = _idOf(chapterIds, progress.chapterKey, 'chapter');
+    written.add(chapterId);
     await (db.update(db.chapters)..where((c) => c.id.equals(chapterId))).write(
       ChaptersCompanion(
         isListened: Value(progress.isListened),
@@ -155,10 +172,12 @@ Future<void> _mergeBook(
   }
   if (merge.progress case final progress?) {
     await _saveProgress(db, book.id, progress, chapterIds);
+    written.add(_idOf(chapterIds, progress.chapterKey, 'chapter'));
   }
   await _addSessions(db, book.id, merge.newSessions, chapterIds);
   await _addBookmarks(db, book.id, merge.newBookmarks, chapterIds);
   await _join(db, book.id, merge.newCategories, categoryIds);
+  return written;
 }
 
 /// The detail columns of a book row.

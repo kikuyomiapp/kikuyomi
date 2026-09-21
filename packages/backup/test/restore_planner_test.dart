@@ -141,6 +141,49 @@ void main() {
     );
   });
 
+  group('listened state (§4.5)', () {
+    final backup = libraryOf([
+      book(chapters: [chapter('one', positionMs: 300000)]),
+    ]);
+
+    test('from a backup written before it was recorded, is worked out from positions', () {
+      final plan = planRestore(
+        backup: backup,
+        current: const LibrarySnapshot(),
+        formatVersion: 1,
+      );
+      expect(plan.listenedFromPositions, isTrue);
+      expect(
+        plan.newBooks,
+        backup.books,
+        reason: 'the backup is otherwise restored as written',
+      );
+    });
+
+    test('from a backup that records it, is restored as written', () {
+      for (final version in [
+        backupListenedRecordedSince,
+        backupFormatVersion,
+        backupFormatVersion + 1,
+      ]) {
+        final plan = planRestore(
+          backup: backup,
+          current: const LibrarySnapshot(),
+          formatVersion: version,
+        );
+        expect(plan.listenedFromPositions, isFalse, reason: 'version $version');
+      }
+    });
+
+    test('is taken as written when no version is given', () {
+      final plan = planRestore(
+        backup: backup,
+        current: const LibrarySnapshot(),
+      );
+      expect(plan.listenedFromPositions, isFalse);
+    });
+  });
+
   group('matching', () {
     test('a book the library has is merged, not added a second time', () {
       final plan = planRestore(

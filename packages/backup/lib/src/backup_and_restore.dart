@@ -78,14 +78,19 @@ final class RestoreReport {
 ///
 /// The whole file is read before the library is touched, so when it cannot be restored from, the
 /// [BackupException] leaves the library exactly as it was. Planning and applying then happen together,
-/// inside the writer's transaction.
+/// inside the writer's transaction. The file's format version goes to the planner, which decides
+/// from it whether the backup's listened states can be taken as written.
 Future<RestoreReport> restoreBackup(
   List<int> bytes, {
   required RestoreWriter library,
 }) async {
   final backup = decodeBackup(bytes);
   final plan = await library.restore(
-    (current) => planRestore(backup: backup.library, current: current),
+    (current) => planRestore(
+      backup: backup.library,
+      current: current,
+      formatVersion: backup.formatVersion,
+    ),
   );
   return RestoreReport(backup: backup, plan: plan);
 }

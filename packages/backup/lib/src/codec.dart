@@ -27,8 +27,17 @@ import 'gzip_frame.dart';
 /// The format version this build writes, and the newest one it knows.
 ///
 /// Raise it with every change to `proto/backup.proto` that a reader could care about, additive or
-/// not.
-const backupFormatVersion = 1;
+/// not, including a change in what a field means. `proto/backup.proto` lists what each version
+/// changed.
+const backupFormatVersion = 2;
+
+/// The first format version whose chapters' `is_listened` is recorded, and so to be restored as
+/// written (§4.5).
+///
+/// Builds before it worked listened state out from positions and wrote `is_listened` false for
+/// every chapter, even one the listener finished. A restore from such a backup works the state out
+/// from its positions instead; see `RestorePlan.listenedFromPositions`.
+const backupListenedRecordedSince = 2;
 
 /// The `min_reader_version` this build writes: the oldest format version whose readers still
 /// restore its backups correctly.

@@ -71,7 +71,7 @@ void main() {
     folder.files[backupFileName(monday)] = gzip.encode([
       ...gzip.decode(backupAt(monday)),
       0x10,
-      0x02,
+      backupFormatVersion + 1,
     ]);
 
     final oldest = (await findBackups(folder)).last as UnrestorableBackup;
