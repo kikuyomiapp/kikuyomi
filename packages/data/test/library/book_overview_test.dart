@@ -160,6 +160,35 @@ void main() {
         expect(await listened(id), [false, false, true]);
       },
     );
+
+    test(
+      'read as not listened once marked so, wherever the listener is',
+      () async {
+        final id = await addFolderBook(db, clock);
+        final chapters = await chapterIdsOf(db, id);
+        await listen(db, clock, id, 0, 600000);
+        await listen(db, clock, id, 1, 1200000);
+        await mark(db, clock, id, [chapters[0], chapters[1]], listened: false);
+
+        final book = await overview(id);
+        expect(
+          [for (final c in book.chapters) c.listened],
+          [false, false, false],
+        );
+        expect(book.progress!.chapterPositionMs, 1200000);
+      },
+    );
+  });
+
+  test('has every marker listened once the single file is', () async {
+    final id = await addM4b(db, clock);
+    // An hour less 3 percent is 58:12.
+    await listen(db, clock, id, 0, 3492000);
+
+    final book = await overview(id);
+    expect(book.finished, isTrue);
+    expect([for (final m in book.markers) m.listened], [true, true, true]);
+    expect([for (final m in book.markers) m.current], [false, false, true]);
   });
 
   test("presents a single file's embedded markers as its chapters", () async {

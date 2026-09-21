@@ -178,4 +178,27 @@ void main() {
       expect((await loadStoredPlayback(db, b.book)).resumeFrom, isNull);
     });
   });
+
+  group('a finished book (§4.5)', () {
+    Future<void> setListened(int chapterId) async {
+      await (db.update(db.chapters)..where((c) => c.id.equals(chapterId)))
+          .write(const ChaptersCompanion(isListened: Value(true)));
+    }
+
+    test('is one whose last chapter is recorded as listened', () async {
+      final b = await addTwoChapterBook(db);
+      expect((await loadStoredPlayback(db, b.book)).finished, isFalse);
+      await setListened(b.c1);
+      expect((await loadStoredPlayback(db, b.book)).finished, isFalse);
+      await setListened(b.c2);
+      expect((await loadStoredPlayback(db, b.book)).finished, isTrue);
+    });
+
+    test('is judged by the last chapter the player plays', () async {
+      final b = await addTwoChapterBook(db);
+      await setListened(b.c1);
+      await markRemoved(db, b.c2);
+      expect((await loadStoredPlayback(db, b.book)).finished, isTrue);
+    });
+  });
 }

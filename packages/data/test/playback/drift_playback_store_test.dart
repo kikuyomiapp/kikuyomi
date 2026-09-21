@@ -74,6 +74,83 @@ void main() {
     });
   });
 
+  group('listened state (§4.5)', () {
+    Future<ChapterRow> chapter(int id) =>
+        (db.select(db.chapters)..where((c) => c.id.equals(id))).getSingle();
+
+    Future<void> save(int chapterId, int offsetMs, {required bool listened}) =>
+        store.saveProgress(
+          bookId: book.book,
+          position: ChapterPosition(chapterId: chapterId, offsetMs: offsetMs),
+          globalMs: offsetMs,
+          listened: listened,
+        );
+
+    test('is recorded with the progress that reaches the threshold', () async {
+      await save(book.c1, 270000, listened: true);
+      final row = await chapter(book.c1);
+      expect(row.isListened, isTrue);
+      expect(row.listenedAt!.isAtSameMomentAs(clock.now()), isTrue);
+      expect(row.lastPositionMs, 270000);
+    });
+
+    test('is not recorded by progress short of it', () async {
+      await save(book.c1, 269999, listened: false);
+      final row = await chapter(book.c1);
+      expect(row.isListened, isFalse);
+      expect(row.listenedAt, isNull);
+    });
+
+    test('keeps the time it was first recorded', () async {
+      await save(book.c1, 270000, listened: true);
+      final first = clock.now();
+      clock.advance(const Duration(minutes: 5));
+      await save(book.c1, 300000, listened: true);
+      expect(
+        (await chapter(book.c1)).listenedAt!.isAtSameMomentAs(first),
+        isTrue,
+      );
+    });
+
+    test('is never taken away by progress further back', () async {
+      await save(book.c1, 300000, listened: true);
+      await save(book.c1, 1000, listened: false);
+      final row = await chapter(book.c1);
+      expect(row.isListened, isTrue);
+      expect(row.lastPositionMs, 1000, reason: 'the last position follows');
+    });
+
+    test('is recorded for the chapter saved in, and no other', () async {
+      await save(book.c2, 300000, listened: true);
+      expect((await chapter(book.c1)).isListened, isFalse);
+      expect((await chapter(book.c2)).isListened, isTrue);
+    });
+
+    test('is taken away when the book is started again', () async {
+      await save(book.c2, 300000, listened: true);
+      clock.advance(const Duration(minutes: 1));
+      await save(book.c1, 0, listened: false);
+      await store.saveChapterListened(
+        bookId: book.book,
+        chapterId: book.c2,
+        listened: false,
+      );
+
+      final row = await chapter(book.c2);
+      expect(row.isListened, isFalse);
+      expect(row.listenedAt, isNull);
+      expect(row.lastPositionMs, 300000, reason: 'positions stay as they are');
+      expect((await loadStoredPlayback(db, book.book)).finished, isFalse);
+    });
+
+    test('of the last chapter is what finishes the book', () async {
+      await save(book.c1, 300000, listened: true);
+      expect((await loadStoredPlayback(db, book.book)).finished, isFalse);
+      await save(book.c2, 300000, listened: true);
+      expect((await loadStoredPlayback(db, book.book)).finished, isTrue);
+    });
+  });
+
   test('a listening session is stored against this device', () async {
     await store.saveSession(
       ListeningSession(

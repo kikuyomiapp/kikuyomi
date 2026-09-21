@@ -134,6 +134,25 @@ void main() {
       expect(book.globalPositionMs, 0);
     });
 
+    test(
+      'is left out once marked finished, wherever its listener is',
+      () async {
+        final id = await addFolderBook(db, clock);
+        await listen(db, clock, id, 1, 60000);
+        await markBookFinished(db, id, clock: clock);
+        expect(await shelf(), isEmpty);
+      },
+    );
+
+    test('comes back once marked not finished, though its place is past the threshold', () async {
+      final id = await addFolderBook(db, clock);
+      await listen(db, clock, id, 2, 300000);
+      await markBookNotFinished(db, id, clock: clock);
+
+      final book = (await shelf()).single;
+      expect(book.globalPositionMs, 2100000, reason: 'the place is kept');
+    });
+
     test('is a single file listened to near its end', () async {
       final id = await addM4b(db, clock);
       // An hour less 3 percent is 58:12.
