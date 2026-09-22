@@ -1,8 +1,9 @@
 # SourceAPI 1.0: the extension contract
 
-**Status: accepted** ([ADR-0016](adr/0016-source-api-1-0.md)), not yet implemented. The
-TypeScript SDK that extension authors install lives in a repository of its own; it mirrors this
-document and is released under the same API version.
+**Status: accepted** ([ADR-0016](adr/0016-source-api-1-0.md)). The Dart mirror in
+`packages/source_api` implements it; the runtime, the host bridges and the built-in sources do not
+yet. The TypeScript SDK that extension authors install lives in a repository of its own; it mirrors
+this document and is released under the same API version.
 
 This is the contract between the app and a source extension. It is written in TypeScript because
 that is what extension authors write; the Dart package `kikuyomi_source_api` mirrors it one to
@@ -295,26 +296,127 @@ one is broken. They are generous for honest sources and exist to bound a broken 
 The URL rule applies to media and cover URLs as well as to `http.fetch`, so the domains shown on
 the permissions screen before install are every domain the source can make the app contact.
 
+A megabyte here is 2^20 bytes.
+
+## Reading results
+
+Every result is read by the app's decoders, which are the same ones the contract test suite runs
+(§3.11), so an extension is held to these rules while it is being written as it is once it is
+installed. Below are the rules those decoders apply beyond the Limits table: the cases the types
+above leave open. None of them adds anything to the contract.
+
+**Absent.** An optional field may be left out, `undefined` or `null`; all three mean absent, since
+`undefined` reaches the app as `null`. A required field that is missing or `null` fails the call.
+
+**Unknown fields are ignored**, so a result written for a later minor version still reads.
+
+**Text.** Lengths count UTF-16 code units, as JavaScript's `length` does, so an author who checks a
+limit gets the same answer the app does. Text is trimmed. Short text is one line: tabs and line
+breaks fold into single spaces. A description keeps its line breaks, with `\r\n` and `\r` written
+as `\n`. Any other control character (U+0000 to U+001F, U+007F) fails the call; characters above
+them are kept, including the U+0092 a badly encoded page produces, because that is mojibake rather
+than a threat. Optional text that is empty once trimmed is absent, and required text may not be. An
+empty entry in `authors`, `narrators` or `genres` is left out rather than failing the call.
+
+**Keys** — a book, chapter or file key, a filter's `key`, an option's `value` — are taken exactly as
+written: never trimmed, never folded. They are identities the app matches on (§4.4), and changing
+one would break the match. A key holds no control character at all, tabs and line breaks included.
+
+**Numbers.** Every number is whole except `series.index`. It must be finite and within the whole
+numbers JavaScript holds exactly (±(2^53 − 1)); a fraction, a `NaN`, an infinity or a larger number
+fails the call. Durations, sizes, bitrates and positions are not negative, and a duration, size or
+bitrate of `0` is read as "not known", which is what a source with no figure for it usually means.
+A time lies within ±8,640,000,000,000,000 ms, the range of a `Date`. `series.index` is finite and
+not negative, and need not be whole.
+
+**Enumerations.** An unknown `format` is read as `unknown`, an unknown `status` as `unknown`, and an
+unknown `contentRating` as `adult`: the most restrictive value there is, never a laxer one. Every
+other unknown value — a filter `kind`, a `method`, a tri-state — fails the call, because there is no
+value to fall back to that would not be a guess.
+
+**Duplicates.** Two chapters of one book may not share a key: §4.4 matches chapters by key, and
+progress would land on whichever of them was written last. A book key that repeats within one page
+keeps its first appearance and the rest are left out, since a site that lists a book twice costs
+nothing to drop. Two filters may not share a key, groups included; two options of one filter may not
+share a value; two header names may not differ only in case.
+
+**Filters.** The limit of 100 counts headers, separators and groups as well as the filters inside
+groups. A group holds no group. A select and a sort each need at least one option, and a `default`,
+where there is one, is one of them. Where there is none, the filter starts at `''` for text, `false`
+for checkbox, `'ignore'` for tri-state, the first option for select, and nothing chosen for sort,
+which leaves the site listing results in its own order.
+
+**Media.** A resolution has at least one segment. A `range.endMs`, where there is one, is after
+`range.startMs`. A body belongs only to a POST.
+
+**URLs.** A URL is absolute, `http` or `https`, and carries no user name or password. It holds no
+control character, no backslash and no leading or trailing space, and its port, where it has one,
+is 1 to 65535. Its host is compared in lower case with a trailing dot ignored. `*.example.org`
+matches a subdomain at any depth but not `example.org` itself, so a manifest that needs both lists
+both, as §3.3's does. Any port is allowed on an allowed host: a port is not a domain. An IP
+address, in any notation, and `localhost` or a subdomain of it are never allowed, in a URL or in
+`domains`: an extension names domains, so that the permissions screen can show what it will
+contact and so that it cannot reach a device on the listener's own network. An internationalised
+name is written in its `xn--` (A-label) form on both sides, since the app has no IDNA
+implementation and guessing would be a way past the allowlist. A `domains` entry is a host name of
+at least two labels — so `*.com` is refused — with no scheme, port or path, and a `*` only as a
+leading `*.`. What the app fetches is the URL as it parsed it, never the extension's text: two
+parsers can read one string differently, and handing on the parsed form keeps the host that was
+checked the host that is contacted. The rule covers `coverUrl`, `webUrl`, every `request.url`
+(segments, variants, `getImageRequest` and `http.fetch`) and `ChallengeRequired`'s `url`.
+
+**Headers.** A name is an HTTP token, 1 to 256 characters. A value is at most 8,192 characters and
+holds no control character but a tab. The forbidden names are compared without regard to case.
+
+**Errors.** A thrown error is an object with a `kind` from the Errors table, an optional `message`,
+and that kind's own fields. A kind survives a field it does not need: a `RateLimited` whose
+`retryAfterMs` is not a number still backs off. A kind whose required field cannot be read does
+not, since the app could not act on it: a `ChallengeRequired` without a usable `url` is `Parse`. A
+message is never a reason to refuse an error; its control characters are replaced and it is cut to
+1,000 characters.
+
 ## Versioning
 
 `host.apiVersion` is `"1.0"`, and the manifest's `apiVersion` says which version an extension
-targets (§3.7). Minor versions only add: new optional methods, new optional fields, new host
-functions, new error kinds. An extension checks for a later host feature with `host.has()` rather
-than assuming it. A breaking change needs 2.0, with a published deprecation window.
+targets (§3.7). A version is two whole numbers without leading zeros, `MAJOR.MINOR`, and nothing
+else. Minor versions only add: new optional methods, new optional fields, new host functions, new
+error kinds. An extension checks for a later host feature with `host.has()` rather than assuming
+it. A breaking change needs 2.0, with a published deprecation window.
+
+An app runs an extension that targets a major version it supports at that major's newest minor or
+an older one. A newer minor, or a newer major, means the app has to be updated; a major the app no
+longer supports means the extension is obsolete.
 
 ## The Dart mirror
 
 `kikuyomi_source_api` (pure Dart, §2.4) holds:
 
-- `apiVersion`, and the range of versions the app accepts.
-- Immutable types matching the ones above: `BookSummary`, `BookDetails`, `ChapterInfo`,
-  `ChapterRef`, `ResolveContext`, `MediaResolution`, `MediaSegment`, `HttpRequest`,
-  `PageResult<T>`, `SearchQuery`, the sealed `Filter` family and `FilterValues`.
-- The sealed `SourceException` family, one class per error kind.
-- `abstract interface class ContentSource` with the methods of `Source`, each returning a
-  `Future` of those types.
-- Decoders from plain data to those types that apply the limits above, shared by the JavaScript
-  adapter and the tests so both enforce the same rules.
+- `apiVersion`, `ApiVersion`, and `SupportedApiVersions`, which says whether an extension targeting
+  a version is supported, needs a newer app, or is obsolete. It maps each supported major version
+  to the newest minor implemented of it rather than holding one range, because during a 2.0
+  deprecation window an app supports two majors at once.
+- Immutable types with value equality, matching the ones above: `BookSummary`, `BookDetails`,
+  `ChapterInfo`, `ChapterRef`, `ResolveContext`, `MediaResolution`, `MediaSegment`, `HttpRequest`,
+  `PageResult<T>`, `SearchQuery`, the sealed `Filter` family and `FilterValues`. The names are the
+  contract's, with one exception: `format` is a `MediaFormat`, because the app already has an
+  `AudioFormat` for what it has found a file to be (§7.3), which is packed differently and is not
+  the same claim.
+- The sealed `SourceException` family, one class per error kind, and a decoder for a thrown value.
+- `abstract interface class ContentSource` with the methods of `Source`, each returning a `Future`
+  of those types. Every source has all of them and declares which of the optional three it really
+  has in `capabilities`, so that a screen can leave out a Latest tab, or a cover be fetched, without
+  calling into the extension at all. Calling an optional method a source does not declare is a
+  programming error, not a source failure.
+- `SourceLimits`, one constant per row of the Limits table, so that the runtime and the host bridges
+  hold to the same figures as the decoders.
+- `DomainAllowlist`, built from a manifest's `domains`, which applies the URL rule and hands back
+  the parsed URL.
+- `PlainDataDecoder`, from plain data to those types, applying the limits and the rules under
+  "Reading results". It is shared by the JavaScript adapter and the tests, so both enforce the same
+  rules. A refusal names the field: `items[3].title: longer than 1,000 characters`.
+- Encoders for what the host passes in — a `SearchQuery` with its `FilterValues`, a `ChapterRef`, a
+  `ResolveContext`, a page number — and a reader for a search the app saved, which drops a value
+  whose filter the source no longer declares or no longer takes.
 
 The JavaScript adapter in `source_runtime` implements `ContentSource` over QuickJS (§3.6).
 Built-in sources implement it natively: Local first, replacing the Phase 1 stand-in, then
