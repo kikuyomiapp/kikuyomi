@@ -325,20 +325,43 @@ void main() {
       );
     });
 
-    test(
-      'refuse a language that is a language\'s name rather than its tag',
-      () {
+    test('keep a language tag, written the one way BCP 47 writes it', () {
+      for (final MapEntry(key: written, value: kept) in {
+        'en': 'en',
+        'pt-BR': 'pt-BR',
+        'EN-us': 'en-US',
+        'zh-hant-tw': 'zh-Hant-TW',
+        'eng': 'eng',
+        'es-419': 'es-419',
+        ' en-US ': 'en-US',
+      }.entries) {
         expect(
-          () =>
-              decoder.decodeBookDetails(details(and: {'language': 'English'})),
-          rejects('language', 'BCP 47'),
+          decoder
+              .decodeBookDetails(details(and: {'language': written}))
+              .language,
+          kept,
+          reason: written,
         );
-        for (final tag in ['en', 'pt-BR', 'zh-Hant-TW', 'en-US']) {
-          expect(
-            decoder.decodeBookDetails(details(and: {'language': tag})).language,
-            tag,
-            reason: tag,
+      }
+    });
+
+    test(
+      'drop a language that is a name rather than a tag, and keep the book',
+      () {
+        // A label on a book is worth less than the book, and sites write "English" where its tag
+        // belongs often enough.
+        for (final written in [
+          'English',
+          'Português (Brasil)',
+          'e',
+          'en_US',
+          '日本語',
+        ]) {
+          final book = decoder.decodeBookDetails(
+            details(and: {'language': written}),
           );
+          expect(book.language, isNull, reason: written);
+          expect(book.title, 'Moby-Dick', reason: written);
         }
       },
     );

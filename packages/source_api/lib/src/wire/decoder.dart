@@ -433,22 +433,32 @@ final class PlainDataDecoder {
     }
   }
 
-  /// A BCP 47 tag, such as `en` or `pt-BR`.
+  /// A BCP 47 tag, such as `en` or `pt-BR`, or nothing when the source wrote something else.
   ///
-  /// Checked loosely, for shape rather than for being registered: a primary subtag of two or three
-  /// letters and any number of subtags after it. The common mistake it catches is a language's
-  /// name, `English`, where its tag belongs; the app filters and groups by this value, so a name
-  /// there would quietly make its own language.
+  /// The shape is checked loosely, for a primary subtag of two or three letters with any number of
+  /// subtags after it, rather than for being registered. What does not fit is dropped rather than
+  /// failing the call: sites write "English" where its tag belongs often enough, and a label on a
+  /// book is worth less than the book. The app filters and groups by this value, so a name left in
+  /// it would quietly become a language of its own.
+  ///
+  /// What is kept is written the one way BCP 47 writes it, so that `EN-us` and `en-US` are one
+  /// language to filter by: the primary subtag in lower case, a four-letter script subtag in title
+  /// case, a two-letter region in upper case, and the rest in lower case.
   String? _language(Fields book) {
     final tag = book.optionalText('language');
-    if (tag == null) return null;
-    if (!_languageTag.hasMatch(tag)) {
-      rejectAt(
-        book.pathOf('language'),
-        '${quote(tag)} is not a BCP 47 language tag, such as "en" or "pt-BR"',
-      );
-    }
-    return tag;
+    if (tag == null || !_languageTag.hasMatch(tag)) return null;
+    final subtags = tag.split('-');
+    return [
+      for (var i = 0; i < subtags.length; i++)
+        if (i == 0)
+          subtags[i].toLowerCase()
+        else if (subtags[i].length == 4)
+          '${subtags[i][0].toUpperCase()}${subtags[i].substring(1).toLowerCase()}'
+        else if (subtags[i].length == 2)
+          subtags[i].toUpperCase()
+        else
+          subtags[i].toLowerCase(),
+    ].join('-');
   }
 
   static final _languageTag = RegExp(r'^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$');

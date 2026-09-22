@@ -331,6 +331,15 @@ them are kept, including the U+0092 a badly encoded page produces, because that 
 than a threat. Optional text that is empty once trimmed is absent, and required text may not be. An
 empty entry in `authors`, `narrators` or `genres` is left out rather than failing the call.
 
+**A language** that is not shaped like a BCP 47 tag — a primary subtag of two or three letters, then
+any number of subtags — is dropped rather than failing the call: sites write `English` where `en`
+belongs, and a label on a book is worth less than the book. What is kept is written the one way
+BCP 47 writes it, so that `EN-us` and `en-US` are one language to filter by: the primary subtag in
+lower case, a four-letter script subtag in title case, a two-letter region in upper case, the rest
+in lower case. This is the only field whose own format is checked; `publishedDate` and `isbn` are
+taken as the source gives them, and a `coverUrl` or `webUrl` that breaks the URL rule still fails
+the call, because that rule is the promise the permissions screen makes.
+
 **Keys** — a book, chapter or file key, a filter's `key`, an option's `value` — are taken exactly as
 written: never trimmed, never folded. They are identities the app matches on (§4.4), and changing
 one would break the match. A key holds no control character at all, tabs and line breaks included.
