@@ -6,8 +6,9 @@
 //     actually work from Dart? Probes 1 to 6, unchanged in meaning since the Windows run.
 //  2. What does the interrupt deadline measure? Upstream's ffi.cpp timed it with clock(), which is
 //     wall time in the Windows CRT and process CPU time on POSIX, Android included. Probes 7 to
-//     10. Probe 11 then checks what the host is told when the memory limit leaves no room for an
-//     error object, which probe 5 met by chance on API 26.
+//     10. Probes 11 and 12 then check what the host is told when the memory limit leaves no room
+//     for an error object, which probe 5 met by chance on API 26, synchronously and in an async
+//     function.
 //
 // This is a console probe wearing a Flutter app as a costume, because the plugin's native library
 // is only present in a built Flutter application. It runs every probe at start, unattended, and
@@ -591,6 +592,28 @@ Future<void> _runAll() async {
       final engine = FlutterQjs(memoryLimit: 1024 * 1024);
       try {
         await engine.evaluate('const a = []; while (true) { a.push({}); }');
+      } finally {
+        engine.close();
+      }
+    },
+  );
+
+  // 12. The same, in an async function, which is how extensions will run. The null then arrives
+  //     as a promise rejection rather than an exception, and before the fork handled it, Dart's
+  //     completeError(null) threw instead of completing, so the awaited future never ended. The
+  //     timeout turns such a hang into a failure rather than a run with no DONE line.
+  await _probeExpectingThrow(
+    'watchdog-memory-limit-async',
+    'out of memory',
+    () async {
+      final engine = FlutterQjs(memoryLimit: 1024 * 1024);
+      engine.dispatch();
+      try {
+        await Future<Object?>.value(
+          engine.evaluate(
+            '(async () => { const a = []; while (true) { a.push({}); } })()',
+          ),
+        ).timeout(const Duration(seconds: 5));
       } finally {
         engine.close();
       }
