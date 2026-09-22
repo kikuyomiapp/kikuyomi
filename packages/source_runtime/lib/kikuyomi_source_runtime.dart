@@ -8,7 +8,11 @@
 /// in `platform_adapters`, which is allowed to depend on plugins.
 library;
 
+export 'src/bridges/crypto_bridge.dart';
 export 'src/bridges/host_bridge.dart';
+export 'src/bridges/html_bridge.dart';
+export 'src/bridges/log_bridge.dart';
+export 'src/bridges/storage_bridge.dart';
 export 'src/engine/script_engine.dart';
 export 'src/extension/extension_runtime.dart';
 export 'src/extension/js_source_adapter.dart';

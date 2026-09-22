@@ -21,6 +21,15 @@ dependencies:
     path: ../source_api
   kikuyomi_networking:
     path: ../networking
+  # The html bridge (§3.5): the Dart team's parser, the one spikes/html_selectors measured, whose
+  # selector gaps SourceAPI 1.0 turns into refusals rather than wrong answers. BSD-3-Clause, pure
+  # Dart, so Android, Windows and iOS alike.
+  html: ^0.15.6
+  # The crypto bridge's hashes and HMAC. Dart team, BSD-3-Clause, pure Dart.
+  crypto: ^3.0.6
+  # The crypto bridge's AES. Pure Dart, MIT, and the only maintained AES implementation with CBC,
+  # CTR and GCM in one package. It reads a site's own responses and never touches media (§7.1).
+  pointycastle: ^4.0.0
 
 dev_dependencies:
   test: ^1.25.0
