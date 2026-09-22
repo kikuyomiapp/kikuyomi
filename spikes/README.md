@@ -17,7 +17,7 @@ From the roadmap in `docs/architecture.md` §8. Status as of the last commit.
 
 | Spike | Status | Outcome |
 |---|---|---|
-| `quickjs_binding/` | **Windows done, Android run in CI** | The fork in `third_party/flutter_qjs` runs on API 26 and API 35 emulators: it interrupts a runaway script, enforces its memory cap and survives an interrupt. On Android the deadline counted CPU time for the whole process, so the fork now uses a wall-clock deadline, verified on both. When the memory cap leaves no room for an error the host is told `null`, failing the memory-limit probe on API 26; a three-line fork patch, proposed in the spike README, fixes it. ADR-0001, still Proposed until that lands. |
+| `quickjs_binding/` | **Done** | The fork in `third_party/flutter_qjs` passes all twelve probes on Windows and on API 26 and API 35 emulators in CI. On Android the deadline counted CPU time for the whole process, so the fork now uses a wall-clock one; and where the memory cap left no room for an error, the host was handed `null` and now gets "out of memory". Known gap for `source_runtime`: host calls with a string argument restart the deadline. ADR-0001, Accepted. |
 | `html_selectors/` | **Done** | `package:html` covers what extensions need, but `:has()` is unsupported and `:empty`, `:nth-child(odd)` and `:nth-child(n)` on indented HTML **silently match nothing**. |
 | `playback/` | **Windows done, Android not run** | The stack works. Two undocumented behaviours would each silently corrupt resume; both are now requirements on the `PlaybackEngine` adapter. ADR-0006. |
 | `m4b_chapters/` | **Done** | Both chapter formats read in pure Dart, seek-based, ~1% of the file. No platform plugin and no ffmpeg at runtime. |

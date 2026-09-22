@@ -1,9 +1,9 @@
 # Runs the QuickJS binding probe (spike (a)) on Android emulators.
 #
-# ADR-0001 chose a vendored fork of flutter_qjs, in third_party/flutter_qjs, and stays Proposed
-# until its probe passes on Android: the other primary target, and the one where the interrupt
-# deadline's clock() means CPU time rather than wall time. The development machine cannot run an
-# emulator, so the proof runs here, on GitHub's Linux runners, which have KVM.
+# ADR-0001 chose a vendored fork of flutter_qjs, in third_party/flutter_qjs, and was accepted once
+# its probe passed here on Android, the other primary target. The development machine cannot run
+# an emulator, so the proof runs on GitHub's Linux runners, which have KVM, and runs again whenever
+# the fork or the probe changes, so that the answer stays true.
 #
 # Kept apart from ci.yml on purpose. It builds a throwaway spike rather than the app, it takes
 # several minutes of emulator time, and it only has anything new to say when the fork or the probe

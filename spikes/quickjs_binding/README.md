@@ -4,15 +4,14 @@
 This is the most important dependency in the project: the extension runtime is built on it, and
 every source extension ever written runs inside it.
 
-**Status.** Desk evaluation, source-level verification, a Windows build-and-run and an Android run
-on API 26 and API 35 emulators in CI are complete. `flutter_qjs`, vendored as Kikuyomi's fork in
-`third_party/flutter_qjs`, runs on Flutter 3.47.3 / Dart 3.13.3 on both platforms, and interrupts
-a runaway script and enforces its memory limit on both. Two findings came out of Android: the
-interrupt deadline measured CPU time for the whole process there, which the fork now fixes with a
-wall-clock deadline, verified on both emulators; and when the memory limit leaves no room for an
-error, the host is told `null`, which fails the memory-limit probe on API 26. A three-line fork
-patch, proposed below, fixes the second. ADR-0001 stays Proposed until it is applied and the run
-is green.
+**Status.** **Done.** Desk evaluation, source-level verification, a Windows build-and-run and an
+Android run on API 26 and API 35 emulators in CI are complete. `flutter_qjs`, vendored as
+Kikuyomi's fork in `third_party/flutter_qjs`, runs on Flutter 3.47.3 / Dart 3.13.3, and all twelve
+probes pass on Windows and on both API levels. Android forced two fixes into the fork: the
+interrupt deadline measured CPU time for the whole process there and is now wall-clock, and when
+the memory limit left no room for an error the host was handed `null` and now gets
+`InternalError: out of memory`. ADR-0001 is Accepted. One known gap remains for `source_runtime`:
+a host call with a string argument restarts the deadline.
 
 ## Criteria (§3.1)
 
@@ -166,18 +165,20 @@ to do with this package. Worth watching in CI.
 The probe's "expected a throw" helper cannot distinguish a throw for the right reason from a throw
 because everything is broken. On the unpatched run it scored two false passes for exactly that
 reason. The passing figures above were re-read individually against their error text. The probe
-now checks the error text itself, which is what caught the Android memory-limit failure below.
+now checks the error text itself, which is what caught the Android memory-limit failure below:
+the old check would have counted it a pass.
 
 ### Windows, again, with the fork
 
-The probe now runs against the vendored fork in `third_party/flutter_qjs` and has eleven probes
+The probe now runs against the vendored fork in `third_party/flutter_qjs` and has twelve probes
 (see Android below for what the new ones do). On the development machine, with the fork as it
-stands, probes 1 to 10 pass: the interrupt fires at 1000 ms, the blocked script is interrupted at
-1013 ms (the deadline is wall-clock, as before), the sleeper beside a spinning isolate is
-interrupted at 1010 ms, and a loop calling a host function with a string runs its full 4000 ms
-bound, 1.9 million calls, uninterrupted. Probe 11 fails, as it does everywhere until the fork is
-fixed. `windows/flutter/CMakeLists.txt` had never been committed, because the root `.gitignore`'s
-`flutter/` matches it too, so the probe did not build on Windows from a fresh clone; it now does.
+stands, all twelve pass: the interrupt fires at 1000 ms, the blocked script is interrupted at
+1020 ms (the deadline is wall-clock, as it always was on Windows), the sleeper beside a spinning
+isolate is interrupted at 1020 ms, a loop calling a host function with a string runs its full
+4000 ms bound, 1.8 million calls, uninterrupted, and both out-of-memory cases report
+`InternalError: out of memory`. `windows/flutter/CMakeLists.txt` had never been committed,
+because the root `.gitignore`'s `flutter/` matches it too, so the probe did not build on Windows
+from a fresh clone; it now does.
 
 ## Android: emulators in CI
 
@@ -190,17 +191,25 @@ boot, and runs `run_probe_on_device.sh`. That script installs and launches the p
 probe lines, the app's log and the whole logcat are uploaded as artifacts. It runs on every push
 that touches the fork, this spike or the workflow, and on demand.
 
-Getting the fork to build for Android took two changes that Windows could not have shown, both
-recorded in `third_party/flutter_qjs/README.kikuyomi.md`. Upstream's Gradle file was written for
-AGP 3.5 and Gradle 5, and now follows Flutter 3.47's plugin template. And QuickJS as upstream
-vendored it returned `NULL` from a function whose result is an integer, which MSVC only warned
-about and the NDK's clang 19 refuses.
+**All twelve probes pass on both API levels** in
+[run 6](https://github.com/kikuyomiapp/kikuyomi/actions/runs/35758353441), at commit `9d03405`.
+Getting there took four fork changes that Windows could not have shown, each recorded in
+`third_party/flutter_qjs/README.kikuyomi.md`:
+
+- upstream's Gradle file was written for AGP 3.5 and Gradle 5, and now follows Flutter 3.47's
+  plugin template;
+- QuickJS as upstream vendored it returned `NULL` from a function whose result is an integer,
+  which MSVC only warned about and the NDK's clang 19 refuses;
+- the interrupt deadline measured `clock()`, which on Android is CPU time for the whole process,
+  and now measures wall time;
+- when the memory limit left no room to build an error, the host was handed `null`, and now gets
+  `InternalError: out of memory`.
 
 ### What the new probes do
 
 Probes 1 to 6 are the Windows six, with the same meaning. Probes 7 to 10 measure the interrupt
-deadline, and pass when the measurement is unambiguous, stating what they found; probe 11 checks
-an error report.
+deadline, and pass when the measurement is unambiguous, stating what they found; probes 11 and 12
+check what the host is told when memory runs out.
 
 - **7, busy loop.** Control: wall and CPU time advance together, so the deadline fires near
   1000 ms whichever it counts.
@@ -217,41 +226,47 @@ an error report.
   string, judged by the deadline's own clock.
 - **11, memory limit, small objects.** Like probe 5, but filling the memory with empty objects,
   so that the allocation the limit refuses is tiny.
+- **12, memory limit, async.** Probe 11 inside an async function, awaited with a timeout, which
+  is how extensions will run.
 
 Every deadline probe reports wall time, `clock()` (read from Dart through FFI, the very function
-the handler used) and the calling thread's own CPU time.
+upstream's handler used) and the calling thread's own CPU time.
 
 ### Results
 
-[Run 3](https://github.com/kikuyomiapp/kikuyomi/actions/runs/35661107724) is the fork with
-upstream's `clock()` deadline, at commit `403a2ab`. [Run
-4](https://github.com/kikuyomiapp/kikuyomi/actions/runs/35662512078) adds the wall-clock patch,
-at `8b2ef85`, and probe 11. Times are wall-clock milliseconds; "CPU" is the script thread's own.
+Two runs matter. [Run 3](https://github.com/kikuyomiapp/kikuyomi/actions/runs/35661107724), at
+commit `403a2ab`, is the fork with upstream's `clock()` deadline, before probes 11 and 12
+existed; it shows the problem. [Run 6](https://github.com/kikuyomiapp/kikuyomi/actions/runs/35758353441),
+at `9d03405`, is the fork as it stands, with the wall-clock deadline and the null-exception fix.
+Times are wall-clock milliseconds; "CPU" is the script thread's own.
 
-| Probe | API 26, `clock()` | API 35, `clock()` | API 26, wall clock | API 35, wall clock |
+| Probe | API 26, run 3 | API 35, run 3 | API 26, run 6 | API 35, run 6 |
 |---|---|---|---|---|
-| 1 eval arithmetic | `2`, 1 ms | `2`, 5 ms | `2`, 0 ms | `2`, 4 ms |
+| 1 eval arithmetic | `2`, 1 ms | `2`, 5 ms | `2`, 0 ms | `2`, 2 ms |
 | 2 cold start | ok, 0 ms | ok, 0 ms | ok, 0 ms | ok, 0 ms |
-| 3 async, awaited promise | `42`, 86 ms | `42`, 481 ms | `42`, 38 ms | `42`, 2 ms |
-| 4 **interrupt an infinite loop** | interrupted, 1077 ms | interrupted, 1045 ms | interrupted, 1000 ms | interrupted, 1000 ms |
-| 5 **memory limit** | **FAIL**, see below, 1 ms | out of memory, 1 ms | **FAIL**, see below, 1 ms | out of memory, 2 ms |
-| 6 **reuse after interrupt** | `42`, 509 ms | `42`, 514 ms | `42`, 501 ms | `42`, 500 ms |
-| 7 busy loop | fired at 1003 ms, `clock()` 1000 | 1011 ms, `clock()` 1000 | 1000 ms, `clock()` 996 | 1000 ms, `clock()` 970 |
-| 8 blocked in a host call | **ran to its bound**: 4006 ms, `clock()` 110 | **ran to its bound**: 3999 ms, `clock()` 102 | interrupted at 1020 ms, CPU 15 | interrupted at 1014 ms, CPU 26 |
-| 9 other threads | sleeper **interrupted at 975 ms with 26 ms of its own CPU** | same, 1070 ms, 26 ms CPU | interrupted at 1018 ms, CPU 14 | interrupted at 1018 ms, CPU 26 |
-| 10 host-call restart | string loop ran 4000 ms, `clock()` 4057, 232k calls | 3999 ms, `clock()` 3152, 788k calls | 3999 ms, 2.4M calls | 3999 ms, 1.0M calls |
-| 11 memory limit, small objects | not yet written | not yet written | **FAIL**, see below | **FAIL**, see below |
+| 3 async, awaited promise | `42`, 86 ms | `42`, 481 ms | `42`, 40 ms | `42`, 1 ms |
+| 4 **interrupt an infinite loop** | interrupted, 1077 ms | interrupted, 1045 ms | interrupted, 1001 ms | interrupted, 1001 ms |
+| 5 **memory limit** | **FAIL**: `TypeError`, 1 ms | out of memory, 1 ms | out of memory (null thrown), 1 ms | out of memory, 1 ms |
+| 6 **reuse after interrupt** | `42`, 509 ms | `42`, 514 ms | `42`, 501 ms | `42`, 501 ms |
+| 7 busy loop | fired at 1003 ms, `clock()` 1000 | 1011 ms, `clock()` 1000 | 1000 ms, `clock()` 954 | 1000 ms, `clock()` 984 |
+| 8 blocked in a host call | **ran to its bound**: 4006 ms, `clock()` 110 | **ran to its bound**: 3999 ms, `clock()` 102 | interrupted at 1020 ms, CPU 15 | interrupted at 1019 ms, CPU 25 |
+| 9 other threads | sleeper **interrupted at 975 ms with 26 ms of its own CPU** | same, 1070 ms, 26 ms CPU | interrupted at 1005 ms, CPU 14 | interrupted at 1008 ms, CPU 24 |
+| 10 host-call restart | string loop ran 4000 ms, 232k calls | 3999 ms, 788k calls | 3999 ms, 2.5M calls | 3999 ms, 895k calls |
+| 11 memory limit, small objects | not yet written | not yet written | out of memory (null thrown), 1 ms | out of memory (null thrown), 2 ms |
+| 12 memory limit, async | not yet written | not yet written | out of memory (null rejection), 1 ms | out of memory (null rejection), 3 ms |
 | Verdicts, 8 / 9 / 10 | cpu-time / process-cpu / restarts | cpu-time / process-cpu / restarts | wall-clock / wall-clock / restarts | wall-clock / wall-clock / restarts |
+| **Total** | 9 of 10 | 10 of 10 | **12 of 12** | **12 of 12** |
 
-The load average when the probe started was 2 to 3 on API 26 and 17 to 20 on API 35, both
-on two cores: the API 35 image is still busy a minute after boot. On an earlier run
+Run 4 ([35662512078](https://github.com/kikuyomiapp/kikuyomi/actions/runs/35662512078)) and
+run 5 ([35663545249](https://github.com/kikuyomiapp/kikuyomi/actions/runs/35663545249)) had the
+wall-clock deadline but not yet the null fix. Their deadline figures match run 6's, and probe 5
+failed on API 26 in both, as in run 3: three runs out of three, so it is deterministic there.
+
+The load average when the probe started was 2 to 3 on API 26 and 16 to 20 on API 35, both on two
+cores: the API 35 image is still busy a minute after boot. On an earlier run
 ([run 2](https://github.com/kikuyomiapp/kikuyomi/actions/runs/35659857271)), with no settling
 time, API 35 gave the probe about a third of a core, and the busy loop reached its 1000 ms
 `clock()` deadline after **3644 ms** of wall time.
-
-**Of the six original probes, all pass on API 35, and five pass on API 26.** The memory-limit
-probe fails on API 26 in both runs. The binding builds, loads, evaluates, runs promises, interrupts
-a runaway script and survives the interrupt on both.
 
 ### The `clock()` finding: CPU time for the whole process
 
@@ -269,17 +284,18 @@ shows all three consequences on both API levels:
   3644 ms to fire.
 
 So the same timeout meant elapsed time on Windows and a share of the process's CPU on Android,
-which is what ADR-0001 anticipated, and **the deadline has to become wall-clock**. The fork now
+which is what ADR-0001 anticipated, and **the deadline had to become wall-clock**. The fork now
 does that, in commit `8b2ef85`: the handler in `third_party/flutter_qjs/cxx/ffi.cpp` reads
-`std::chrono::steady_clock`, about a dozen lines. Run 4 verifies it on both emulators: the
-blocked script is interrupted at 1014 to 1020 ms, the sleeper at 1018 ms whatever its neighbour
-does, and on the loaded API 35 emulator the busy loop fires at 1000 ms while the process has used
-only 970 ms of CPU. Windows, where `clock()` was already wall time, behaves as before.
+`std::chrono::steady_clock`, about a dozen lines. Runs 4 to 6 verify it on both emulators: the
+blocked script is interrupted at 1014 to 1020 ms, the sleeper at 1005 to 1018 ms whatever its
+neighbour does, and on the loaded API 35 emulator the busy loop fires at 1000 ms while the process
+has used less than 1000 ms of CPU. Windows, where `clock()` was already wall time, behaves as
+before.
 
-### The memory-limit failure: the host is told `null`
+### The memory-limit failure: the host was told `null`
 
-On API 26 the memory-limit probe stops the script, so **the limit is enforced**, but the host does
-not learn why. Instead of `InternalError: out of memory` it gets a Dart
+On API 26 the memory-limit probe stopped the script, so **the limit was enforced**, but the host
+did not learn why. Instead of `InternalError: out of memory` it got a Dart
 `TypeError: type 'Null' is not a subtype of type 'Object'`. Precisely:
 
 1. When an allocation would take the runtime past its limit, QuickJS builds an
@@ -287,43 +303,38 @@ not learn why. Instead of `InternalError: out of memory` it gets a Dart
 2. If the refused request was small, the headroom left under the limit cannot hold the error
    either. `JS_ThrowError2` then throws **`null`**, on purpose: its comment reads "out of memory:
    throw JS_NULL to avoid recursing". A script's own `catch (e)` sees `e === null`.
-3. flutter_qjs's `evaluate` does `throw _parseJSException(ctx)`, which converts that `null` to a
+3. flutter_qjs's `evaluate` did `throw _parseJSException(ctx)`, which converted that `null` to a
    Dart `null`, and Dart turns `throw null` into the `TypeError`.
 
-Whether probe 5 meets this depends on the allocator's size classes. API 26's jemalloc meets it, in
-both runs; API 35's allocator and Windows' happened not to. Probe 11 fills memory with empty
-objects so the refused request is tiny, and it fails on all three. It is a latent defect of
-QuickJS and flutter_qjs on every platform, which Android exposed.
+Whether probe 5 meets this depends on the allocator's size classes: API 26's jemalloc meets it
+every time, API 35's allocator and Windows' happen not to. Probe 11 makes the refused request tiny
+and met it on all three. It was a latent defect on every platform, which Android exposed.
 
-**A small fork patch fixes it**, and it is proposed, not applied: in
-`third_party/flutter_qjs/lib/src/wrapper.dart`, never hand back a null exception.
+In an async function it was worse. There the `null` arrives as a promise rejection, the
+rejection callback's `completeError(null)` threw instead of completing, and **the awaited future
+never completed**: an extension call that hit the memory limit would have hung its caller. This
+was found on Windows while checking the fix, and probe 12 now covers it.
 
-```diff
-   if (perr == null) jsFreeValue(ctx, e);
--  return err;
-+  // QuickJS throws null when it has no memory left to build an Error (JS_ThrowError2), and a
-+  // script may throw null or undefined itself. Dart cannot throw null, so never hand one back.
-+  return err ?? JSError('InternalError: null thrown (QuickJS throws null when out of memory)');
- }
-```
+The fix, commit `2451f2f`, is a few lines in `third_party/flutter_qjs/lib/src/wrapper.dart`:
+`_parseJSException` returns `InternalError: out of memory (QuickJS threw null)` for a thrown
+`null` and a plain `InternalError` for any other value with no Dart equivalent, and a promise
+rejected with `null` or `undefined` completes with an `InternalError` saying it may be out of
+memory. A script's own `throw null` is reported as out of memory too, because nothing tells the
+two apart. Lifting the limit in `JS_ThrowOutOfMemory` while the error is built, the obvious C fix,
+was tried first and crashed the process.
 
-With that change on the development machine, both small-object cases report
-`JSError: InternalError: null thrown (QuickJS throws null when out of memory)`, and all probes,
-11 included, pass on Windows. Being Dart, it behaves the same on Android. Lifting the limit in
-`JS_ThrowOutOfMemory` while the error is built, the obvious C fix, was also tried and crashed the
-process, so it is not proposed.
-
-### A second finding: host calls restart the deadline
+### Known gap: host calls restart the deadline
 
 On every platform and with either clock, a loop that calls a host function **with a string
-argument** is never interrupted: 2.4 million calls in 4 s on API 26. `ffi.cpp` restarts the
+argument** is never interrupted: 2.5 million calls in 4 s on API 26. `ffi.cpp` restarts the
 deadline on every entry from Dart into QuickJS, and converting a JS string for Dart
 (`jsToCString`) is one such entry, as are `jsCall` and each promise job. So the deadline bounds
 each stretch between host calls, not a script. The memory limit still stops such a loop if it
 allocates, but `while (true) console.log('x')` would run forever. This is the second reason for
 the host-callback patch ADR-0001 already plans: the host, not each native entry, should decide
-when a script's time starts and ends. Until then, `source_runtime` must not rely on the deadline to
-stop a script that calls host functions.
+when a script's time starts and ends. Until it lands, `source_runtime` must not rely on the
+deadline alone to stop a script that calls host functions. Probe 10 records the restart, so it
+will show when the patch fixes it.
 
 ### Caveats
 
@@ -331,8 +342,7 @@ stop a script that calls host functions.
   but has not been run.
 - The `google_apis` images keep the CPU busy after boot, especially API 35; the timings under the
   `clock()` deadline reflect that, which is itself part of the finding.
-- Each figure is from a single run. Probe 5 failing on API 26 is the exception: it failed the same
-  way in both runs.
+- Each timing is from a single run. The deadline figures agree across runs 4 to 6 within 20 ms.
 
 ### Why not on the development machine
 
@@ -352,14 +362,12 @@ or a physical phone over adb, would let the probe run locally too; CI no longer 
 
 ## Next, in order
 
-1. **Apply the null-exception patch** to the fork, re-run the emulator workflow, and accept
-   ADR-0001 if every probe passes on both API levels.
-2. **The host-callback patch.** Arm the deadline once per call from the host, not on every native
-   entry, so host calls cannot restart it, and let the host cancel a script because the user
-   navigated away, which §3.6 will want.
-3. Measure memory per runtime and the cost of pooling several, since the runtime pool in §2.7
+1. **The host-callback patch**, with `source_runtime`. Arm the deadline once per call from the
+   host, not on every native entry, so host calls cannot restart it, and let the host cancel a
+   script because the user navigated away, which §3.6 will want.
+2. Measure memory per runtime and the cost of pooling several, since the runtime pool in §2.7
    assumes several per worker isolate.
-4. Run the probe on an arm64 device when there is one.
+3. Run the probe on an arm64 device when there is one.
 
 How the fork is carried is decided: vendored in `third_party/flutter_qjs`, outside the pub
 workspace, with every change recorded in its `README.kikuyomi.md`.
