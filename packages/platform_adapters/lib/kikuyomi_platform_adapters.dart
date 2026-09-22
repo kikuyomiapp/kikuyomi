@@ -13,6 +13,7 @@ export 'src/audio/engine_formats.dart';
 export 'src/audio/just_audio_engine.dart';
 export 'src/audio/system_media_controls.dart';
 export 'src/drop/file_drop_target.dart' show FileDropTarget;
+export 'src/scripting/quickjs_script_engine.dart';
 export 'src/storage/device_folders.dart';
 export 'src/storage/shared_preferences_settings_store.dart';
 export 'src/storage/storage_locations.dart';

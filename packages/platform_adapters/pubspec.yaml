@@ -26,6 +26,8 @@ dependencies:
     path: ../playback
   kikuyomi_downloads:
     path: ../downloads
+  kikuyomi_source_runtime:
+    path: ../source_runtime
   just_audio: ^0.10.6
   just_audio_media_kit: ^2.1.0
   media_kit_libs_windows_audio: ^1.0.9
@@ -52,6 +54,10 @@ dependencies:
   saf_util: ^3.1.0
   # Reading and writing documents in such a tree. BSD-3-Clause; Android only, like saf_util.
   saf_stream: ^4.0.1
+  # ADR-0001's QuickJS binding, vendored as Kikuyomi's fork outside the workspace. MIT; Android,
+  # Windows, iOS, macOS and Linux. See third_party/flutter_qjs/README.kikuyomi.md.
+  flutter_qjs:
+    path: ../../third_party/flutter_qjs
 
 dev_dependencies:
   flutter_test:
