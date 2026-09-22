@@ -358,7 +358,12 @@ final class Fields {
       if (required) rejectAt(pathOf(name), _missing);
       return const [];
     }
-    final items = readArray(value, pathOf(name), what: 'entries');
+    final items = readArray(
+      value,
+      pathOf(name),
+      what: 'names',
+      max: SourceLimits.maxNames,
+    );
     return [
       for (var i = 0; i < items.length; i++)
         ?readText(items[i], '${pathOf(name)}[$i]'),

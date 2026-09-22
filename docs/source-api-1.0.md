@@ -282,11 +282,15 @@ one is broken. They are generous for honest sources and exist to bound a broken 
 | A title, label, name or other short text | 1,000 characters |
 | A description | 20,000 characters |
 | Results in one page | 200 |
+| Authors, narrators or genres of one book | 200 each |
 | Chapters in one book | 20,000 |
 | Segments in one chapter | 2,000 |
 | Variants of one segment | 10 |
 | Filters, counting those inside groups | 100 |
+| Options of one select or sort filter | 1,000 |
+| Headers on one request | 50 |
 | Header name and value | 256 and 8,192 characters; no `Host`, `Content-Length`, `Connection` or `Transfer-Encoding` |
+| A request body | 1 MB of text |
 | Any URL | `http` or `https`, and a host the manifest's `domains` allow, wildcards included |
 | An `http.fetch` response body | 10 MB |
 | One call to the extension | 30 s (the watchdog, §3.6) |
@@ -295,6 +299,15 @@ one is broken. They are generous for honest sources and exist to bound a broken 
 
 The URL rule applies to media and cover URLs as well as to `http.fetch`, so the domains shown on
 the permissions screen before install are every domain the source can make the app contact.
+
+Every list an extension returns is bounded, and each bound is far above what an honest source
+produces. **200 names** is more than the largest collection credits: the widest LibriVox anthologies
+run to a few dozen readers. **1,000 options** is longer than any list a person would scroll, and
+covers a filter that offers every language or every genre a site knows. **50 headers** is several
+times what any site asks for, and a transport would refuse many more. **1 MB of request body** is a
+thousand times the largest search form, and a source that needs more is not scraping a page. The
+error kinds carry no list at all, and an error's `message` is cut to length rather than refused,
+because a kind the app acts on is worth more than the text beside it.
 
 A megabyte here is 2^20 bytes.
 

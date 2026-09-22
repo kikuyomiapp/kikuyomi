@@ -324,6 +324,12 @@ final class PlainDataDecoder {
     if (body != null && method == HttpMethod.get) {
       rejectAt(request.pathOf('body'), 'only a POST request carries a body');
     }
+    if (body != null && body.length > SourceLimits.maxBodyLength) {
+      rejectAt(
+        request.pathOf('body'),
+        'longer than ${grouped(SourceLimits.maxBodyLength)} characters',
+      );
+    }
     return HttpRequest(
       url: _url(request, 'url'),
       method: method,
@@ -343,6 +349,13 @@ final class PlainDataDecoder {
     final path = request.pathOf('headers');
     if (data is! Map) {
       rejectAt(path, 'expected an object, got ${describe(data)}');
+    }
+    if (data.length > SourceLimits.maxHeaders) {
+      rejectAt(
+        path,
+        'holds ${grouped(data.length)} headers; at most '
+        '${grouped(SourceLimits.maxHeaders)} are allowed',
+      );
     }
     final headers = <String, String>{};
     final namesSeen = <String, String>{};
@@ -546,7 +559,11 @@ final class PlainDataDecoder {
   }
 
   List<Option> _options(Fields filter) {
-    final items = filter.array('options', what: 'options');
+    final items = filter.array(
+      'options',
+      what: 'options',
+      max: SourceLimits.maxOptions,
+    );
     if (items.isEmpty) {
       rejectAt(
         filter.pathOf('options'),

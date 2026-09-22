@@ -26,6 +26,12 @@ abstract final class SourceLimits {
   /// The most results in one page.
   static const maxPageItems = 200;
 
+  /// The most entries in one of a book's lists of names: its authors, its narrators, or its genres.
+  static const maxNames = 200;
+
+  /// The most options one select or sort filter offers.
+  static const maxOptions = 1000;
+
   /// The most chapters in one book.
   static const maxChapters = 20000;
 
@@ -39,11 +45,17 @@ abstract final class SourceLimits {
   /// inside groups.
   static const maxFilters = 100;
 
+  /// The most headers on one request.
+  static const maxHeaders = 50;
+
   /// The longest header name.
   static const maxHeaderNameLength = 256;
 
   /// The longest header value.
   static const maxHeaderValueLength = 8192;
+
+  /// The longest body a request may carry, in characters.
+  static const maxBodyLength = 1024 * 1024;
 
   /// Headers an extension may never set, in lower case. The HTTP client sets them from the request
   /// itself; letting an extension set them would let it smuggle a second request into the first or

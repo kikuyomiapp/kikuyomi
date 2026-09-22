@@ -284,6 +284,28 @@ void main() {
     },
   );
 
+  test('holds 1,000 options in one filter, and refuses 1,001', () {
+    List<Object?> many(int count) => [
+      for (var i = 0; i < count; i++) {'value': 'v$i', 'label': 'L$i'},
+    ];
+    Object? select(int count) => [
+      {
+        'kind': 'select',
+        'key': 'genre',
+        'label': 'Genre',
+        'options': many(count),
+      },
+    ];
+    expect(
+      (decoder.decodeFilters(select(1000)).single as SelectFilter).options,
+      hasLength(1000),
+    );
+    expect(
+      () => decoder.decodeFilters(select(1001)),
+      rejects('filters[0].options', 'at most 1,000'),
+    );
+  });
+
   test('refuses a tri-state default that is not one of the three', () {
     expect(
       () => decoder.decodeFilters([

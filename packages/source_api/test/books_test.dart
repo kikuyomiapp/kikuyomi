@@ -343,6 +343,33 @@ void main() {
       },
     );
 
+    test('hold 200 authors, narrators or genres, and refuse 201', () {
+      List<Object?> names(int count) => [
+        for (var i = 0; i < count; i++) 'Name $i',
+      ];
+      expect(
+        decoder
+            .decodeBookDetails(details(and: {'authors': names(200)}))
+            .authors,
+        hasLength(200),
+      );
+      for (final field in ['authors', 'narrators', 'genres']) {
+        expect(
+          () => decoder.decodeBookDetails(details(and: {field: names(201)})),
+          rejects(field, 'at most 200'),
+          reason: field,
+        );
+      }
+      expect(
+        () => decoder.decodeBookPage(
+          page([
+            {...summary(), 'narrators': names(201)},
+          ]),
+        ),
+        rejects('items[0].narrators', 'at most 200'),
+      );
+    });
+
     test('hold a description of 20,000 characters, and refuse 20,001', () {
       expect(
         decoder

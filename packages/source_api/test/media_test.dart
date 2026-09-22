@@ -311,6 +311,16 @@ void main() {
       }
     });
 
+    test('carries a body of 1,048,576 characters, and refuses one more', () {
+      Map<String, Object?> withBody(int length) =>
+          request(and: {'method': 'POST', 'body': text(length)});
+      expect(read(withBody(1024 * 1024)).body, hasLength(1024 * 1024));
+      expect(
+        () => read(withBody(1024 * 1024 + 1)),
+        rejects('body', 'longer than 1,048,576 characters'),
+      );
+    });
+
     test('refuses a body on a GET, which no client would send', () {
       expect(
         () => read(request(and: {'body': 'q=whales'})),
@@ -359,6 +369,14 @@ void main() {
           () => read({'X-Token': text(8193)}),
           rejects('headers["X-Token"]', 'longer than 8,192'),
         );
+      });
+
+      test('number 50 at most, which is more than any site asks for', () {
+        Map<Object?, Object?> many(int count) => {
+          for (var i = 0; i < count; i++) 'X-Header-$i': 'x',
+        };
+        expect(read(many(50)), hasLength(50));
+        expect(() => read(many(51)), rejects('headers', 'at most 50'));
       });
 
       test('refuse the names the app sets itself', () {
