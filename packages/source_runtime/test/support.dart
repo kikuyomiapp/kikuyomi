@@ -202,3 +202,122 @@ Future<(ExtensionRuntime, FakeScriptEngine)> loadFake(
   );
   return (runtime, engine);
 }
+
+/// A factory of plain data, for the worker isolate, which only values may cross to.
+///
+/// The engine it makes answers a fixed script rather than running one: a fake built from closures
+/// could not be sent, which is the very constraint [ScriptEngineFactory] exists to state.
+final class ScriptedEngineFactory implements ScriptEngineFactory {
+  const ScriptedEngineFactory();
+
+  @override
+  ScriptEngine create(ScriptRuntimeLimits limits) => ScriptedEngine(limits);
+}
+
+/// An engine that answers the protocol from a script written here.
+///
+/// `echo` gives back what it was called with, `rateLimited` and `challenge` fail with those kinds,
+/// `slow` is stopped by the watchdog, and `fetch` calls the host function the runtime installed,
+/// which is how a test sees a bridge crossing back out of the worker.
+final class ScriptedEngine implements ScriptEngine {
+  ScriptedEngine(this.limits);
+
+  @override
+  final ScriptRuntimeLimits limits;
+
+  static const methods = {'echo', 'rateLimited', 'challenge', 'slow', 'fetch'};
+
+  final _hostFunctions = <String, HostCall>{};
+
+  @override
+  void defineHostFunction(String name, HostCall call) =>
+      _hostFunctions[name] = call;
+
+  @override
+  Future<Object?> evaluate(
+    String code, {
+    String name = '<extension>',
+    Duration? deadline,
+  }) async {
+    if (code.contains('refuse to load')) {
+      throw const ScriptThrewException('SyntaxError: unexpected identifier');
+    }
+    return null;
+  }
+
+  @override
+  Future<Object?> call(
+    String name,
+    List<Object?> arguments, {
+    Duration? deadline,
+  }) async {
+    switch (name) {
+      case '__kikuyomiRuntime.sourceKeys':
+        return ['scripted'];
+      case '__kikuyomiRuntime.hasMethod':
+        return methods.contains(arguments[1]);
+      case '__kikuyomiRuntime.invoke':
+        final method = arguments[1];
+        final args = (arguments[2] as List<Object?>?) ?? const [];
+        switch (method) {
+          case 'echo':
+            return {
+              'ok': true,
+              'value': {'method': method, 'arguments': args},
+            };
+          case 'rateLimited':
+            return {
+              'ok': false,
+              'error': {
+                'kind': 'RateLimited',
+                'message': 'slow down',
+                'retryAfterMs': 1500,
+              },
+            };
+          case 'challenge':
+            return {
+              'ok': false,
+              'error': {
+                'kind': 'ChallengeRequired',
+                'url': 'https://example.org/check',
+              },
+            };
+          case 'slow':
+            throw const ScriptDeadlineException(Duration(seconds: 30));
+          case 'fetch':
+            try {
+              final answer = await _hostFunctions[HostApi.entryPoint]!([
+                'http',
+                'fetch',
+                args,
+              ]);
+              return {'ok': true, 'value': answer};
+            } catch (error) {
+              return {
+                'ok': false,
+                'error': {'kind': 'Parse', 'message': '$error'},
+              };
+            }
+          default:
+            return {
+              'ok': false,
+              'error': {
+                'kind': 'Parse',
+                'message': 'the source "scripted" has no $method()',
+              },
+            };
+        }
+      default:
+        throw ScriptEngineException('$name is not a function');
+    }
+  }
+
+  @override
+  void cancel() {}
+
+  @override
+  ScriptCancelHandle? get cancelHandle => null;
+
+  @override
+  Future<void> dispose() async {}
+}

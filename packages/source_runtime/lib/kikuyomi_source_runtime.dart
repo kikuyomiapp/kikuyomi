@@ -18,3 +18,4 @@ export 'src/engine/script_engine.dart';
 export 'src/extension/extension_runtime.dart';
 export 'src/extension/js_source_adapter.dart';
 export 'src/extension/prelude.dart';
+export 'src/worker/extension_worker.dart';
