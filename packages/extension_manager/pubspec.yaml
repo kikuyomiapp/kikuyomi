@@ -25,6 +25,9 @@ dependencies:
     path: ../sources_builtin
   kikuyomi_domain:
     path: ../domain
+  # §3.7's source id: the first 8 bytes of SHA-256 over the extension, source, language and version.
+  # Dart team, BSD-3-Clause, pure Dart.
+  crypto: ^3.0.6
 
 dev_dependencies:
   test: ^1.25.0
