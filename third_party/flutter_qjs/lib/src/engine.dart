@@ -121,6 +121,62 @@ class FlutterQjs {
     _ctx = jsNewContext(rt);
   }
 
+  /// Kikuyomi addition. Arms a deadline of [limit] for the call about to run.
+  ///
+  /// The [timeout] given to the constructor is restarted on every entry from Dart into QuickJS,
+  /// including converting a string argument of a host call, so it bounds each stretch between host
+  /// calls rather than a whole call: `while (true) host('x')` runs forever under it. A deadline
+  /// armed here is the host's, and nothing but the host clears it, so it bounds everything the
+  /// call does — the evaluation, the host calls it makes, and the promise jobs it queues — until
+  /// [disarmDeadline] is called or another deadline is armed.
+  ///
+  /// The runtime stays usable after the deadline fires, as it does after any interrupt.
+  void armDeadline(Duration limit) {
+    _ensureEngine();
+    jsArmDeadline(_rt!, limit.inMilliseconds);
+  }
+
+  /// Kikuyomi addition. Clears the deadline armed by [armDeadline], leaving the runtime idle.
+  void disarmDeadline() {
+    final rt = _rt;
+    if (rt != null) jsArmDeadline(rt, 0);
+  }
+
+  /// Kikuyomi addition. Asks for whatever is running in this runtime to stop.
+  ///
+  /// The script is interrupted at the next check of the interrupt handler, as it is by a deadline.
+  /// Call it from a host function the script itself called, or from another isolate through
+  /// [cancelRuntimeAt]: while a script runs, the isolate that started it is inside QuickJS and
+  /// reaches no message of its own.
+  void cancel() {
+    final rt = _rt;
+    if (rt != null) jsCancel(rt);
+  }
+
+  /// Kikuyomi addition. The address of this engine's runtime, for [cancelRuntimeAt].
+  ///
+  /// Null until the runtime exists, which is on the first evaluation or the first [armDeadline].
+  int? get runtimeAddress => _rt?.address;
+
+  /// Kikuyomi addition. Cancels whatever is running in the runtime at [address], from any isolate.
+  ///
+  /// [address] is that runtime's [runtimeAddress]. The runtime must still be open: cancelling a
+  /// runtime that has been closed writes to freed memory. Isolates of one group share the native
+  /// library and its memory, and the flag this sets is atomic, so the write is safe while the
+  /// runtime's own isolate is inside QuickJS.
+  static void cancelRuntimeAt(int address) =>
+      jsCancel(Pointer<JSRuntime>.fromAddress(address));
+
+  /// Kikuyomi addition. Why the last interrupt fired, cleared as it is read.
+  ///
+  /// One of [JSInterruptReason]'s values. QuickJS reports every interrupt as
+  /// `InternalError: interrupted`, so this is the only way to tell an armed deadline from a
+  /// cancellation, and either from a script that threw that error itself.
+  int takeInterruptReason() {
+    final rt = _rt;
+    return rt == null ? JSInterruptReason.NONE : jsTakeInterruptReason(rt);
+  }
+
   /// Free Runtime and Context which can be recreate when evaluate again.
   close() {
     final rt = _rt;

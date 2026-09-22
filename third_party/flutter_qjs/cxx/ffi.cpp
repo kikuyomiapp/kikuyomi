@@ -6,6 +6,7 @@
  * @LastEditTime: 2020-12-02 11:11:42
  */
 #include "ffi.h"
+#include <atomic>
 #include <chrono>
 #include <functional>
 #include <future>
@@ -34,10 +35,31 @@ extern "C"
     return new JSValue(JS_NULL);
   }
 
+  // Why the interrupt handler last stopped a script. The host reads it with
+  // jsTakeInterruptReason, because QuickJS reports every interrupt as the same
+  // "InternalError: interrupted" and the host has to tell a deadline from a cancellation.
+  enum JSInterruptReason {
+    JSInterruptReason_NONE = 0,
+    JSInterruptReason_TIMEOUT = 1,  // the per-entry timeout jsNewRuntime was given
+    JSInterruptReason_DEADLINE = 2, // the deadline the host armed for one call
+    JSInterruptReason_CANCEL = 3,   // the host asked for the running script to stop
+  };
+
   struct RuntimeOpaque {
       JSChannel * channel;
+      // The per-entry timeout, restarted on every entry from Dart into QuickJS. It bounds each
+      // stretch between host calls rather than a whole call, which is why `deadline` exists; it
+      // stays for callers that pass `timeout` to jsNewRuntime and never arm a deadline.
       int64_t timeout;
       int64_t start;
+      // The host's deadline for one call, as an absolute point on the same clock as js_now_ms(),
+      // or 0 for none. While it is armed it replaces the per-entry timeout entirely and no entry
+      // from Dart restarts it, so a script that calls host functions in a loop is still stopped.
+      // Atomic because the host may arm, disarm or cancel from another thread while the script
+      // runs: that is the only way to stop a script that never returns to its isolate's loop.
+      std::atomic<int64_t> deadline;
+      std::atomic<int> cancelled;
+      std::atomic<int> reason;
   };
 
   JSModuleDef *js_module_loader(
@@ -92,17 +114,73 @@ extern "C"
 
   int js_interrupt_handler(JSRuntime * rt, void * opaque) {
     RuntimeOpaque *op = (RuntimeOpaque *)opaque;
+    if (op->cancelled.exchange(0)) {
+      op->deadline.store(0);
+      op->start = 0;
+      op->reason.store(JSInterruptReason_CANCEL);
+      return 1;
+    }
+    const int64_t deadline = op->deadline.load();
+    if (deadline) {
+      if (js_now_ms() > deadline) {
+        op->deadline.store(0);
+        op->start = 0;
+        op->reason.store(JSInterruptReason_DEADLINE);
+        return 1;
+      }
+      return 0;
+    }
     if(op->timeout && op->start && (js_now_ms() - op->start) > op->timeout) {
       op->start = 0;
+      op->reason.store(JSInterruptReason_TIMEOUT);
       return 1;
     }
     return 0;
   }
 
+  // Arms a deadline `timeout_ms` from now for the call that is about to run, or clears it when
+  // `timeout_ms` is 0 or less. Unlike the per-entry timeout, nothing but the host clears it, so
+  // entering QuickJS again — a host call's string argument, a promise job, a nested jsCall — does
+  // not give the script another full timeout.
+  DLLEXPORT void jsArmDeadline(JSRuntime *rt, int64_t timeout_ms)
+  {
+    RuntimeOpaque *op = (RuntimeOpaque *)JS_GetRuntimeOpaque(rt);
+    if (!op)
+      return;
+    op->cancelled.store(0);
+    op->reason.store(JSInterruptReason_NONE);
+    op->deadline.store(timeout_ms > 0 ? js_now_ms() + timeout_ms : 0);
+    op->start = 0;
+  }
+
+  // Asks for whatever is running in this runtime to stop at the next interrupt check. Safe to call
+  // from another thread, and from a host function called by the script itself.
+  DLLEXPORT void jsCancel(JSRuntime *rt)
+  {
+    RuntimeOpaque *op = (RuntimeOpaque *)JS_GetRuntimeOpaque(rt);
+    if (op)
+      op->cancelled.store(1);
+  }
+
+  // Why the last interrupt fired, cleared as it is read. QuickJS reports every interrupt as
+  // "InternalError: interrupted", so without this the host cannot tell a deadline from a
+  // cancellation, and both from a script that threw that error itself.
+  DLLEXPORT int32_t jsTakeInterruptReason(JSRuntime *rt)
+  {
+    RuntimeOpaque *op = (RuntimeOpaque *)JS_GetRuntimeOpaque(rt);
+    return op ? op->reason.exchange(JSInterruptReason_NONE) : JSInterruptReason_NONE;
+  }
+
   DLLEXPORT JSRuntime *jsNewRuntime(JSChannel channel, int64_t timeout)
   {
     JSRuntime *rt = JS_NewRuntime();
-    RuntimeOpaque *opaque = new RuntimeOpaque({channel, timeout, 0});
+    RuntimeOpaque *opaque = new RuntimeOpaque();
+    opaque->channel = channel;
+    opaque->timeout = timeout;
+    opaque->start = 0;
+    opaque->deadline.store(0);
+    opaque->cancelled.store(0);
+    opaque->reason.store(JSInterruptReason_NONE);
     JS_SetRuntimeOpaque(rt, opaque);
     JS_SetHostPromiseRejectionTracker(rt, js_promise_rejection_tracker, opaque);
     JS_SetModuleLoaderFunc(rt, nullptr, js_module_loader, opaque);
@@ -194,10 +272,14 @@ extern "C"
     return JS_GetRuntime(ctx);
   }
 
+  // Runs on every entry from Dart into QuickJS: an evaluation, a call, a promise job, and
+  // converting a string for Dart. It restarts the per-entry timeout, which is why a script calling
+  // a host function in a loop was never interrupted. A deadline armed by the host is left alone,
+  // so it bounds the whole call however many times the script crosses back into the host.
   void js_begin_call(JSRuntime *rt) {
     JS_UpdateStackTop(rt);
     RuntimeOpaque * opaque = (RuntimeOpaque *)JS_GetRuntimeOpaque(rt);
-    if(opaque) opaque->start = js_now_ms();
+    if(opaque && !opaque->deadline.load()) opaque->start = js_now_ms();
   }
 
   DLLEXPORT JSValue *jsEval(JSContext *ctx, const char *input, size_t input_len, const char *filename, int32_t eval_flags)

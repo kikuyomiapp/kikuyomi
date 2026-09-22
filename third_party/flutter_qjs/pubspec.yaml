@@ -10,7 +10,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  ffi: ^1.0.0
+  # Kikuyomi: was `^1.0.0`, which cannot resolve beside packages that need ffi 2. The Dart source
+  # here uses only malloc, Utf8 and toNativeUtf8, which both majors have.
+  ffi: ">=1.0.0 <3.0.0"
 
 dev_dependencies:
   flutter_test:

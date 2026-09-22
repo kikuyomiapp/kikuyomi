@@ -233,6 +233,70 @@ final void Function(
     )>>('jsSetMemoryLimit')
     .asFunction();
 
+/// Why the interrupt handler last stopped a script, as `jsTakeInterruptReason` reports it. Kikuyomi
+/// addition: QuickJS reports every interrupt as `InternalError: interrupted`, so without this a
+/// host cannot tell its own deadline from its own cancellation.
+class JSInterruptReason {
+  /// Nothing was interrupted since this was last read.
+  static const NONE = 0;
+
+  /// The per-entry timeout `jsNewRuntime` was given.
+  static const TIMEOUT = 1;
+
+  /// The deadline the host armed for one call with [jsArmDeadline].
+  static const DEADLINE = 2;
+
+  /// The host asked for the running script to stop with [jsCancel].
+  static const CANCEL = 3;
+}
+
+/// DLLEXPORT void jsArmDeadline(JSRuntime *rt, int64_t timeout_ms)
+///
+/// Kikuyomi addition. Arms a deadline `timeoutMs` from now for the call about to run, or clears it
+/// when `timeoutMs` is 0 or less. Unlike the `timeout` given to `jsNewRuntime`, entering QuickJS
+/// again does not restart it, so it bounds a whole call rather than each stretch between host
+/// calls.
+final void Function(
+  Pointer<JSRuntime>,
+  int,
+) jsArmDeadline = _qjsLib
+    .lookup<
+        NativeFunction<
+            Void Function(
+      Pointer<JSRuntime>,
+      Int64,
+    )>>('jsArmDeadline')
+    .asFunction();
+
+/// DLLEXPORT void jsCancel(JSRuntime *rt)
+///
+/// Kikuyomi addition. Asks for whatever is running in this runtime to stop at the next interrupt
+/// check. Safe from another thread, which is the only way to stop a script that never returns to
+/// its isolate's event loop.
+final void Function(
+  Pointer<JSRuntime>,
+) jsCancel = _qjsLib
+    .lookup<
+        NativeFunction<
+            Void Function(
+      Pointer<JSRuntime>,
+    )>>('jsCancel')
+    .asFunction();
+
+/// DLLEXPORT int32_t jsTakeInterruptReason(JSRuntime *rt)
+///
+/// Kikuyomi addition. Why the last interrupt fired, cleared as it is read. One of
+/// [JSInterruptReason]'s values.
+final int Function(
+  Pointer<JSRuntime>,
+) jsTakeInterruptReason = _qjsLib
+    .lookup<
+        NativeFunction<
+            Int32 Function(
+      Pointer<JSRuntime>,
+    )>>('jsTakeInterruptReason')
+    .asFunction();
+
 /// void jsFreeRuntime(JSRuntime *rt)
 final void Function(
   Pointer<JSRuntime>,

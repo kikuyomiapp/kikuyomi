@@ -64,16 +64,34 @@ Only what is needed to build and run. Each is its own commit.
    `InternalError` saying it may be out of memory. A script's own `throw null` is reported as out
    of memory too; nothing tells the two apart.
 
+6. **A deadline the host arms for one call** (`cxx/ffi.cpp`, `lib/src/ffi.dart`,
+   `lib/src/engine.dart`). The `timeout` given to `jsNewRuntime` is restarted by `js_begin_call`,
+   which runs on every entry from Dart into QuickJS — an evaluation, a call, a promise job, and
+   converting a string argument of a host call — so it bounds each stretch between host calls
+   rather than a call: `while (true) log('x')` ran forever under it, on every platform.
+   `jsArmDeadline(rt, ms)` now sets a deadline that only the host clears, and while one is armed
+   `js_begin_call` leaves it alone and the per-entry timeout is not consulted at all.
+   `jsCancel(rt)` asks for the running script to stop, and `jsTakeInterruptReason(rt)` says which
+   of the three stopped it, because QuickJS reports every interrupt as
+   `InternalError: interrupted`. The deadline and the cancellation flag are `std::atomic`, so a
+   host in another thread or isolate can cancel a script whose own isolate is inside QuickJS;
+   `FlutterQjs.cancelRuntimeAt(address)` is that call, with the address from
+   `FlutterQjs.runtimeAddress`. The Dart side adds `armDeadline`, `disarmDeadline`, `cancel`,
+   `runtimeAddress`, `cancelRuntimeAt` and `takeInterruptReason` to `FlutterQjs`, and exports
+   `JSInterruptReason`. `IsolateQjs` is unchanged: Kikuyomi confines a runtime to its own worker
+   isolate (§3.6) and drives `FlutterQjs` there directly.
+7. **`ffi` 2** (`pubspec.yaml`). The constraint was `^1.0.0`, which cannot resolve beside packages
+   that need `ffi` 2, such as `smtc_windows`. It is now `>=1.0.0 <3.0.0`; the Dart source here
+   uses only `malloc`, `Utf8` and `toNativeUtf8`, which both majors have.
+
 ## Known defects
 
-Found by the probe, not yet fixed. `spikes/quickjs_binding/README.md` has the evidence. Both are
-for the host-callback change that `source_runtime` needs.
+Found by the probe, not yet fixed. `spikes/quickjs_binding/README.md` has the evidence.
 
-- **Host calls restart the deadline.** `js_begin_call` runs on every entry from Dart into
-  QuickJS, including converting a string for Dart, so a loop that calls a host function with a
-  string argument is never interrupted. To be fixed with the planned host-callback deadline.
-- **The deadline is a fixed timeout.** The host cannot cancel a running script, for instance
-  because the user navigated away. The host-callback change addresses this too.
+- **The probe has run on x86_64 emulators and on Windows, not on an arm64 device.**
+- **A cancellation from another isolate needs the runtime to be open.** `cancelRuntimeAt` writes to
+  the runtime's opaque, so cancelling one that has been closed writes to freed memory. The owner
+  of the runtime has to keep the address from being used after `close()`.
 
 ## Using it
 
