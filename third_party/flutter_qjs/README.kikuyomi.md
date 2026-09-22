@@ -53,16 +53,22 @@ Only what is needed to build and run. Each is its own commit.
    CPU was interrupted because another isolate was computing. The deadline now reads
    `std::chrono::steady_clock`, so one timeout means the same elapsed time on every platform.
    Windows behaves as before.
+5. **No `null` reaches Dart as an error** (`lib/src/wrapper.dart`). When the memory limit leaves
+   no room to build QuickJS's "out of memory" error, QuickJS throws `null` instead
+   (`JS_ThrowError2`, on purpose). `evaluate` rethrew it as a Dart `throw null`, so the host got
+   `TypeError: type 'Null' is not a subtype of type 'Object'`; in an async function the promise
+   rejected with `null`, `completeError(null)` threw, and the awaited future never completed.
+   `_parseJSException` now returns `JSError('InternalError: out of memory (QuickJS threw null)')`
+   for a thrown `null`, and a plain `InternalError` for anything else with no Dart equivalent,
+   such as `undefined`. A promise rejected with `null` or `undefined` completes with an
+   `InternalError` saying it may be out of memory. A script's own `throw null` is reported as out
+   of memory too; nothing tells the two apart.
 
 ## Known defects
 
-Found by the probe, not yet fixed. `spikes/quickjs_binding/README.md` has the evidence.
+Found by the probe, not yet fixed. `spikes/quickjs_binding/README.md` has the evidence. Both are
+for the host-callback change that `source_runtime` needs.
 
-- **A null exception reaches Dart as `throw null`.** When the memory limit leaves no room to
-  build the "out of memory" error, QuickJS throws `null` instead, and `evaluate` rethrows it, so
-  the host gets `TypeError: type 'Null' is not a subtype of type 'Object'`. The limit is still
-  enforced. Proposed fix, verified on Windows: `_parseJSException` in `lib/src/wrapper.dart`
-  returns `err ?? JSError('InternalError: null thrown (QuickJS throws null when out of memory)')`.
 - **Host calls restart the deadline.** `js_begin_call` runs on every entry from Dart into
   QuickJS, including converting a string for Dart, so a loop that calls a host function with a
   string argument is never interrupted. To be fixed with the planned host-callback deadline.

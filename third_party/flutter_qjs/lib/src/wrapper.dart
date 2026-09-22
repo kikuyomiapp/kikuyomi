@@ -9,6 +9,7 @@ part of '../flutter_qjs.dart';
 
 dynamic _parseJSException(Pointer<JSContext> ctx, [Pointer<JSValue>? perr]) {
   final e = perr ?? jsGetException(ctx);
+  final tag = jsValueGetTag(e);
   var err;
   try {
     err = _jsToDart(ctx, e);
@@ -16,7 +17,12 @@ dynamic _parseJSException(Pointer<JSContext> ctx, [Pointer<JSValue>? perr]) {
     err = exception;
   }
   if (perr == null) jsFreeValue(ctx, e);
-  return err;
+  // Dart cannot throw null. QuickJS throws null when the memory limit leaves no room to build its
+  // "out of memory" error (JS_ThrowError2), and a script's own `throw null` looks the same.
+  return err ??
+      JSError(tag == JSTag.NULL
+          ? 'InternalError: out of memory (QuickJS threw null)'
+          : 'InternalError: a value with no Dart equivalent was thrown');
 }
 
 void _definePropertyValue(
@@ -197,7 +203,11 @@ dynamic _jsToDart(Pointer<JSContext> ctx, Pointer<JSValue> val,
           },
           (e) {
             JSRef.dupRecursive(e);
-            if (!completer.isCompleted) completer.completeError(e);
+            // completeError(null) throws instead of completing, and the future would never end.
+            if (!completer.isCompleted)
+              completer.completeError(e ??
+                  JSError('InternalError: out of memory, or rejected with null or '
+                      'undefined (QuickJS rejects with null when out of memory)'));
           },
         ], jsPromise);
         jsPromise.free();
