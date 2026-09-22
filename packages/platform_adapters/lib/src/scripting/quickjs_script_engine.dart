@@ -194,7 +194,7 @@ final class QuickJsScriptEngine implements ScriptEngine {
     _qjs.armDeadline(deadline);
     try {
       final result = body();
-      if (result is! Future) return result;
+      if (result is! Future) return _plain(result);
       final left = deadline - started.elapsed;
       return await result.timeout(
         left.isNegative ? Duration.zero : left,
@@ -204,7 +204,7 @@ final class QuickJsScriptEngine implements ScriptEngine {
           _qjs.cancel();
           throw ScriptDeadlineException(deadline, 'the call did not settle');
         },
-      );
+      ).then(_plain);
     } on ScriptException {
       rethrow;
     } catch (error) {
@@ -212,6 +212,42 @@ final class QuickJsScriptEngine implements ScriptEngine {
     } finally {
       if (!_disposed) _qjs.disarmDeadline();
     }
+  }
+
+  /// [value] with every JavaScript handle in it released and replaced by null.
+  ///
+  /// Only plain data crosses this interface, and the binding hands back a live reference for
+  /// anything else: a function, or an object it could not read. Such a reference belongs to the
+  /// runtime, so leaving it to a caller that has no way to free it makes closing the runtime report
+  /// a leaked reference — which is how this was found. A script whose last statement is
+  /// `globalThis.f = function () {}` returns one without meaning to, so this is the common case
+  /// rather than the odd one.
+  Object? _plain(Object? value, [Map<Object, Object?>? seen]) {
+    if (value is JSRef) {
+      value.free();
+      return null;
+    }
+    if (value is List) {
+      final visited = seen ?? Map<Object, Object?>.identity();
+      if (visited.containsKey(value)) return visited[value];
+      final copy = <Object?>[];
+      visited[value] = copy;
+      for (final element in value) {
+        copy.add(_plain(element, visited));
+      }
+      return copy;
+    }
+    if (value is Map) {
+      final visited = seen ?? Map<Object, Object?>.identity();
+      if (visited.containsKey(value)) return visited[value];
+      final copy = <Object?, Object?>{};
+      visited[value] = copy;
+      for (final entry in value.entries) {
+        copy[_plain(entry.key, visited)] = _plain(entry.value, visited);
+      }
+      return copy;
+    }
+    return value;
   }
 
   /// What [error] means, told apart by the reason the fork recorded for the last interrupt.

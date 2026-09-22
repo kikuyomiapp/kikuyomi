@@ -5,9 +5,14 @@
 # an emulator, so the proof runs on GitHub's Linux runners, which have KVM, and runs again whenever
 # the fork or the probe changes, so that the answer stays true.
 #
+# It also runs Kikuyomi's own `ScriptEngine` (packages/source_runtime) over the fork
+# (`QuickJsScriptEngine`, packages/platform_adapters), which is the only way to run it on a device:
+# `flutter test` does not build a plugin's native library.
+#
 # Kept apart from ci.yml on purpose. It builds a throwaway spike rather than the app, it takes
-# several minutes of emulator time, and it only has anything new to say when the fork or the probe
-# changes. Pushes that touch neither do not run it; workflow_dispatch runs it on demand.
+# several minutes of emulator time, and it only has anything new to say when the engine, the fork
+# or the probe changes. Pushes that touch none of them do not run it; workflow_dispatch runs it on
+# demand.
 name: Android emulator (QuickJS probe)
 
 on:
@@ -15,6 +20,12 @@ on:
     paths:
       - "third_party/flutter_qjs/**"
       - "spikes/quickjs_binding/**"
+      # The probe now drives Kikuyomi's own ScriptEngine as well as the binding, so a change to the
+      # interface, to the engine behind it, or to the contract they read their limits from is a
+      # change to what this workflow proves.
+      - "packages/source_runtime/**"
+      - "packages/platform_adapters/**"
+      - "packages/source_api/**"
       - ".github/workflows/android-emulator.yml"
   workflow_dispatch:
 

@@ -35,11 +35,17 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   # For the buffers the probe's own clock readings need; flutter_qjs already depends on it.
-  ffi: ^1.2.1
+  ffi: ^2.2.0
   # Kikuyomi's fork (ADR-0001): published 0.3.7 does not run on Dart 3.13. See
   # third_party/flutter_qjs/README.kikuyomi.md for what the fork changes.
   flutter_qjs:
     path: ../../../third_party/flutter_qjs
+  # The ScriptEngine interface, and the QuickJS engine behind it. The engine's own checks cannot run
+  # under `flutter test`, because a plugin's native library is not built there, so they run here.
+  kikuyomi_source_runtime:
+    path: ../../../packages/source_runtime
+  kikuyomi_platform_adapters:
+    path: ../../../packages/platform_adapters
 
 dev_dependencies:
   flutter_test:

@@ -19,7 +19,10 @@ android {
         applicationId = "com.example.qjs_probe"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // ADR-0012's minimum, and the lower of the two emulators the workflow runs. Pinned rather
+        // than taken from Flutter because the probe now depends on kikuyomi_platform_adapters,
+        // whose plugins ask for more than Flutter's default.
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)

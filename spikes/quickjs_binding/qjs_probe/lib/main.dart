@@ -9,6 +9,12 @@
 //     10. Probes 11 and 12 then check what the host is told when the memory limit leaves no room
 //     for an error object, which probe 5 met by chance on API 26, synchronously and in an async
 //     function.
+//  3. Does Kikuyomi's own `ScriptEngine` work on a device? Probes 13 to 19 drive
+//     `QuickJsScriptEngine` (packages/platform_adapters) through the interface in
+//     packages/source_runtime: load a small extension, call a method, take a typed error, and meet
+//     the deadline, the memory limit and a cancellation. These cannot run under `flutter test`,
+//     because a plugin's native library is not built there, so they run here. Probe 14 is the one
+//     the fork's per-call deadline was written for.
 //
 // This is a console probe wearing a Flutter app as a costume, because the plugin's native library
 // is only present in a built Flutter application. It runs every probe at start, unattended, and
@@ -27,6 +33,7 @@
 // Probes 7 to 10 are measurements. They pass when the measurement is unambiguous and state what it
 // found as `verdict=...`; they fail only when the numbers fit no explanation.
 
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
@@ -34,6 +41,8 @@ import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
+import 'package:kikuyomi_platform_adapters/kikuyomi_platform_adapters.dart';
+import 'package:kikuyomi_source_runtime/kikuyomi_source_runtime.dart';
 
 int _passed = 0;
 int _failed = 0;
@@ -621,6 +630,279 @@ Future<void> _runAll() async {
   );
 }
 
+// ---------------------------------------------------------------------------------------------
+// Probes 13 to 19: Kikuyomi's own `ScriptEngine` (packages/source_runtime) over the fork
+// (`QuickJsScriptEngine`, packages/platform_adapters). The probes above test the binding; these
+// test the interface the extension system is written against, end to end, in a built app — which
+// is the only place it can be tested, because `flutter test` does not build a plugin's native
+// library.
+//
+// Probe 14 is the one the fork's per-call deadline was written for: under the old deadline,
+// `while (true) hostLog('x')` ran for ever on every platform.
+
+/// The deadline these probes give a call. Short, so a probe that is not stopped is obvious.
+const _engineDeadlineMs = 1000;
+
+const _engineLimits = ScriptRuntimeLimits(
+  callTimeout: Duration(milliseconds: _engineDeadlineMs),
+);
+
+/// A whole extension, small enough to read: one source, one method, one host call inside it.
+const _probeExtension = '''
+const extension = {
+  sources: {
+    probe: {
+      async getPopular(page) {
+        const suffix = await hostGreet('page ' + page);
+        return { items: [{ key: 'b' + page, title: 'Book ' + suffix }], hasNextPage: page < 2 };
+      },
+      boom() {
+        const error = new Error('the source is unhappy');
+        error.kind = 'RateLimited';
+        error.retryAfterMs = 1500;
+        throw error;
+      },
+    },
+  },
+};
+globalThis.__probe_invoke = function (method, args) {
+  return extension.sources.probe[method].apply(null, args);
+};
+''';
+
+/// Runs [body] with an engine of its own, disposed however it ends.
+Future<T> _withEngine<T>(
+  Future<T> Function(ScriptEngine engine) body, {
+  ScriptRuntimeLimits limits = _engineLimits,
+}) async {
+  final engine = const QuickJsScriptEngineFactory().create(limits);
+  try {
+    return await body(engine);
+  } finally {
+    await engine.dispose();
+  }
+}
+
+/// The exception [body] fails with, or a failure saying it did not fail.
+Future<ScriptException> _failure(Future<Object?> Function() body) async {
+  final Object? result;
+  try {
+    result = await body();
+  } on ScriptException catch (e) {
+    return e;
+  }
+  throw StateError('expected a ScriptException, got $result');
+}
+
+T _expect<T extends ScriptException>(ScriptException actual) => actual is T
+    ? actual
+    : throw StateError('expected a $T, got ${actual.runtimeType}: $actual');
+
+/// Cancels through [handle] after [wait], from an isolate of its own, and says when it did.
+///
+/// Top level on purpose: a closure written inside a probe captures that probe's whole context,
+/// including the engine itself, and an engine holds a `Future` and cannot be sent to an isolate.
+Future<DateTime> _cancelFromAnotherIsolate(
+  ScriptCancelHandle handle,
+  Duration wait,
+) => Isolate.run(() {
+  sleep(wait);
+  final sentAt = DateTime.now();
+  handle.cancel();
+  return sentAt;
+});
+
+Future<void> _runEngineProbes() async {
+  // 13. A whole extension through the interface: load it, call a method with plain-data arguments,
+  //     let it await a host function, and read the result back as plain data.
+  await _probe('engine-extension-call', () async {
+    return _withEngine((engine) async {
+      engine.defineHostFunction(
+        'hostGreet',
+        (args) async => 'of ${args.first}',
+      );
+      await engine.evaluate(_probeExtension, name: 'probe-extension.js');
+      final result = await engine.call('__probe_invoke', [
+        'getPopular',
+        [1],
+      ]);
+      if (result is! Map) throw StateError('expected an object, got $result');
+      final items = result['items'];
+      final title = items is List && items.isNotEmpty && items.first is Map
+          ? (items.first as Map)['title']
+          : null;
+      if (title != 'Book of page 1') {
+        throw StateError('expected "Book of page 1", got ${_oneLine(title)}');
+      }
+      if (result['hasNextPage'] != true) {
+        throw StateError('expected hasNextPage, got $result');
+      }
+      return 'called getPopular(1) and got $title';
+    });
+  });
+
+  // 14. The deadline the host arms for one call, which is what the fork's third change is for.
+  //     A loop calling a host function with a string argument restarted the old deadline on every
+  //     call (probe 10 still records that), so it ran until something else stopped it. Under an
+  //     armed deadline it must stop near 1000 ms.
+  await _probe('engine-deadline-host-call-loop', () async {
+    return _withEngine((engine) async {
+      var calls = 0;
+      engine.defineHostFunction('hostLog', (args) {
+        calls++;
+        return null;
+      });
+      await engine.evaluate(
+        'globalThis.__probe_spin = function () { while (true) { hostLog("x"); } };',
+      );
+      final watch = Stopwatch()..start();
+      final failure = _expect<ScriptDeadlineException>(
+        await _failure(() => engine.call('__probe_spin', [])),
+      );
+      watch.stop();
+      if (watch.elapsedMilliseconds > _engineDeadlineMs * 3) {
+        throw StateError(
+          'stopped, but ${watch.elapsedMilliseconds}ms after a '
+          '${_engineDeadlineMs}ms deadline',
+        );
+      }
+      return 'stopped after ${watch.elapsedMilliseconds}ms and $calls host calls: '
+          '${_oneLine(failure)}';
+    });
+  });
+
+  // 15. A call that is not running cannot be interrupted: an extension awaiting a host promise
+  //     that never settles would hang its caller for ever. The engine bounds the future as well as
+  //     the script, so this ends at the deadline too.
+  await _probe('engine-deadline-idle-call', () async {
+    return _withEngine((engine) async {
+      final never = Completer<Object?>();
+      engine.defineHostFunction('hostWait', (args) => never.future);
+      await engine.evaluate(
+        'globalThis.__probe_wait = async function () { await hostWait(); return 1; };',
+      );
+      final watch = Stopwatch()..start();
+      final failure = _expect<ScriptDeadlineException>(
+        await _failure(() => engine.call('__probe_wait', [])),
+      );
+      watch.stop();
+      if (watch.elapsedMilliseconds > _engineDeadlineMs * 3) {
+        throw StateError('waited ${watch.elapsedMilliseconds}ms');
+      }
+      return 'stopped after ${watch.elapsedMilliseconds}ms: ${_oneLine(failure)}';
+    });
+  });
+
+  // 16. The memory limit as a typed error, and a runtime that is still usable afterwards, which is
+  //     what §3.6's pooling assumes.
+  await _probe('engine-memory-limit-and-reuse', () async {
+    return _withEngine(
+      limits: const ScriptRuntimeLimits(
+        memoryBytes: 1024 * 1024,
+        callTimeout: Duration(milliseconds: _engineDeadlineMs),
+      ),
+      (engine) async {
+        await engine.evaluate(
+          'globalThis.__probe_eat = function () { const a = []; while (true) { a.push({}); } };'
+          'globalThis.__probe_add = function (a, b) { return a + b; };',
+        );
+        final failure = _expect<ScriptMemoryException>(
+          await _failure(() => engine.call('__probe_eat', [])),
+        );
+        final after = await engine.call('__probe_add', [40, 2]);
+        if (after != 42) {
+          throw StateError('expected 42 after the limit, got $after');
+        }
+        return 'typed error, and the runtime still answers: ${_oneLine(failure)}';
+      },
+    );
+  });
+
+  // 17. What an extension throws comes back as a typed error rather than a crash. The adapter turns
+  //     the thrown value into one of the contract's error kinds; here the point is only that the
+  //     engine reports the throw and stays usable.
+  await _probe('engine-typed-error', () async {
+    return _withEngine((engine) async {
+      await engine.evaluate(_probeExtension, name: 'probe-extension.js');
+      final failure = _expect<ScriptThrewException>(
+        await _failure(
+          () => engine.call('__probe_invoke', [
+            'boom',
+            <Object?>[],
+          ]),
+        ),
+      );
+      if (!failure.message.contains('the source is unhappy')) {
+        throw StateError('lost the message: ${_oneLine(failure)}');
+      }
+      return 'reported the throw: ${_oneLine(failure)}';
+    });
+  });
+
+  // 18. The host can stop a script it is inside: a host function the script itself called cancels
+  //     the call, and the call ends as cancelled rather than as a deadline.
+  await _probe('engine-cancel-from-host-call', () async {
+    return _withEngine(
+      // A long deadline, so that a cancellation cannot be mistaken for the watchdog.
+      limits: const ScriptRuntimeLimits(callTimeout: Duration(seconds: 10)),
+      (engine) async {
+        late final ScriptEngine self;
+        engine.defineHostFunction('hostStop', (args) {
+          self.cancel();
+          return null;
+        });
+        self = engine;
+        await engine.evaluate(
+          'globalThis.__probe_stoppable = function () { while (true) { hostStop("x"); } };',
+        );
+        final watch = Stopwatch()..start();
+        final failure = _expect<ScriptCancelledException>(
+          await _failure(() => engine.call('__probe_stoppable', [])),
+        );
+        watch.stop();
+        return 'cancelled after ${watch.elapsedMilliseconds}ms: ${_oneLine(failure)}';
+      },
+    );
+  });
+
+  // 19. The same from another isolate, which is the case that matters: while a script runs, the
+  //     isolate that started it is inside the engine and reaches none of its own messages. The
+  //     handle is plain data and the flag behind it is atomic, so another thread can set it.
+  await _probe('engine-cancel-from-another-isolate', () async {
+    return _withEngine(
+      limits: const ScriptRuntimeLimits(callTimeout: Duration(seconds: 10)),
+      (engine) async {
+        await engine.evaluate(
+          'globalThis.__probe_forever = function () { while (true) {} };',
+        );
+        final handle = engine.cancelHandle;
+        if (handle == null) {
+          throw StateError('the engine offers no cancel handle');
+        }
+        final started = DateTime.now();
+        final stopping = _cancelFromAnotherIsolate(
+          handle,
+          const Duration(milliseconds: 500),
+        );
+        // Let the isolate start before this one disappears into QuickJS.
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        final watch = Stopwatch()..start();
+        final outcome = await _failure(() => engine.call('__probe_forever', []));
+        watch.stop();
+        final sent = (await stopping).difference(started).inMilliseconds;
+        final failure = _expect<ScriptCancelledException>(outcome);
+        if (watch.elapsedMilliseconds > 5000) {
+          throw StateError(
+            'cancelled only after ${watch.elapsedMilliseconds}ms, asked at ${sent}ms',
+          );
+        }
+        return 'cancelled from another isolate after ${watch.elapsedMilliseconds}ms, '
+            'asked at ${sent}ms: ${_oneLine(failure)}';
+      },
+    );
+  });
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _emit('QJS_PROBE INFO probe=spike-a-qjs-probe');
@@ -638,6 +920,7 @@ Future<void> main() async {
   );
 
   await _runAll();
+  await _runEngineProbes();
 
   _emit('QJS_PROBE DONE passed=$_passed failed=$_failed');
 

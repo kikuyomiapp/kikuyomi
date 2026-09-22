@@ -3,6 +3,7 @@
 - **Status:** Accepted (2026-09-22)
 - **Date:** 2026-09-13; accepted 2026-09-22 after the Android run
 - **Relates to:** `docs/architecture.md` §3.1 and §3.6, decision 2; spike (a) in `spikes/quickjs_binding/`
+- **Updated:** 2026-09-23, when the per-call deadline landed with `source_runtime`
 
 ## Context
 
@@ -71,12 +72,18 @@ fork's README:
 Android therefore did not fail in a way a few lines could not fix, and the Rust route is not
 needed.
 
-**Known gaps, for `source_runtime`.** The binding's deadline is restarted on every entry from Dart
-into QuickJS, including converting a string argument of a host call, so a loop calling a host
-function with a string is never interrupted, on any platform. The deadline is also a fixed
-timeout that the host cannot use to cancel a script. Both are for the host-callback patch below;
-until it lands, `source_runtime` must not rely on the deadline alone to stop a script that calls
-host functions. The probe has run on x86_64 emulators only, not yet on an arm64 device.
+**The deadline gaps are closed (2026-09-23).** Both were fixed with `source_runtime`, as this ADR
+said they would be. The host now arms a deadline for one call with `jsArmDeadline`, and no entry
+from Dart into QuickJS restarts it, so `while (true) log('x')` is stopped; `jsCancel` lets the host
+end a call because the listener navigated away; and `jsTakeInterruptReason` says which of the three
+stopped a script, since QuickJS reports every interrupt as `InternalError: interrupted`. Both flags
+are atomic, so a cancellation can come from another isolate, which is the only way to stop a script
+that never returns to its own isolate's loop. Probes 13 to 19 in the spike drive `ScriptEngine`
+over all of it.
+
+**Known gaps.** The probe has run on x86_64 emulators and on Windows, not yet on an arm64 device.
+A cancel handle holds a runtime's address, so using one after its runtime is closed would write to
+freed memory: whoever holds a handle has to drop it when the call it belongs to ends.
 
 ## Consequences
 
@@ -85,11 +92,12 @@ Choosing `flutter_qjs` means **taking ownership of a small C++ bridge and its Da
 fix, replacing the `clock()`-based timeout with a wall-clock deadline so one value means one thing
 everywhere, and replacing the fixed timeout with a host-supplied callback so playback or
 navigation can cancel a running script. The first two are done and proven on Windows and Android.
-The third now has a second reason: the deadline is restarted on every entry from Dart into
-QuickJS, so it has to be armed by the host per call rather than by the bridge per entry. The
-Android run added three small changes nobody anticipated: the Gradle file, the clang fix and the
-null-exception fix. All are modest patches to code we control, which is the argument for forking
-rather than depending.
+The third had a second reason: the deadline was restarted on every entry from Dart into QuickJS, so
+it had to be armed by the host per call rather than by the bridge per entry. All three are now
+done. The Android run added three small changes nobody anticipated: the Gradle file, the clang fix
+and the null-exception fix, and `source_runtime` added a fourth, widening the `ffi` constraint so
+the fork can resolve beside packages that need ffi 2. All are modest patches to code we control,
+which is the argument for forking rather than depending.
 
 That the first of those took three lines and produced a fully passing probe is the strongest
 evidence for this option. The package is not rotten; it is merely unattended.

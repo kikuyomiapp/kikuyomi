@@ -10,8 +10,13 @@ Kikuyomi's fork in `third_party/flutter_qjs`, runs on Flutter 3.47.3 / Dart 3.13
 probes pass on Windows and on both API levels. Android forced two fixes into the fork: the
 interrupt deadline measured CPU time for the whole process there and is now wall-clock, and when
 the memory limit left no room for an error the host was handed `null` and now gets
-`InternalError: out of memory`. ADR-0001 is Accepted. One known gap remains for `source_runtime`:
-a host call with a string argument restarts the deadline.
+`InternalError: out of memory`. ADR-0001 is Accepted.
+
+The gap that was left for `source_runtime` — a host call restarts the deadline — is now closed in
+the fork, and the probe has grown seven more probes that drive Kikuyomi's own `ScriptEngine`
+rather than the binding. See "Kikuyomi's ScriptEngine" below. The spike has therefore outlived its
+throwaway purpose in one respect: it is where the engine is tested on a device, because
+`flutter test` does not build a plugin's native library.
 
 ## Criteria (§3.1)
 
@@ -360,14 +365,49 @@ it checks the SDK and licences and not whether an emulator can start, so a green
 evidence that Android is runnable. Installing the driver elevated from Android Studio's SDK Tools,
 or a physical phone over adb, would let the probe run locally too; CI no longer depends on either.
 
+## Kikuyomi's ScriptEngine: probes 13 to 19
+
+The binding is not what the app is written against. `ScriptEngine` (packages/source_runtime) is,
+and `QuickJsScriptEngine` (packages/platform_adapters) implements it over the fork. Probes 13 to 19
+drive that interface end to end, which can only be done in a built app, so they live here beside
+the binding's own probes.
+
+- **13, an extension through the interface.** A small extension is loaded, a method called with
+  plain-data arguments, a host function awaited inside it, and the result read back as plain data.
+- **14, the deadline the host arms.** `while (true) hostLog('x')`, the very loop probe 10 records
+  running for ever under the old deadline. It must stop near the deadline.
+- **15, a call that is not running.** An extension awaiting a host promise that never settles
+  cannot be interrupted, because no JavaScript is running for the interrupt handler to stop. The
+  engine bounds the future as well as the script, so the call still ends at its deadline.
+- **16, the memory limit as a typed error**, and a runtime that answers again afterwards, which is
+  what §3.6's pooling assumes.
+- **17, a typed error** from a script that throws.
+- **18, cancellation from a host call** the script itself made, reported as a cancellation rather
+  than as a deadline.
+- **19, cancellation from another isolate**, which is the case that matters: while a script runs,
+  the isolate that started it is inside QuickJS and reaches none of its own messages.
+
+On Windows all nineteen pass. Probe 14 stops at 1003 ms after about 130,000 host calls, where the
+same loop under the old deadline (probe 10, still in the run) reaches its own 4000 ms bound.
+Probe 19 is cancelled 449 ms after the call starts, the cancellation having been sent at 501 ms
+from another isolate.
+
+Two findings from writing them, both now fixed in the code rather than here:
+
+- **A returned JavaScript function is a live reference.** `globalThis.f = function () {}` is an
+  assignment, so it is also the script's completion value, and the binding hands back a reference
+  the caller has no way to free. Closing the runtime then reports a leaked reference. The engine
+  now releases anything that is not plain data before returning, which is also what the interface
+  promises.
+- **A closure sent to an isolate captures its whole context.** `Isolate.run(() => handle.cancel())`
+  written inside a probe captured the engine too, and an engine holds a `Future`, which is not
+  sendable. The cancel handle is plain data; the closure around it was not.
+
 ## Next, in order
 
-1. **The host-callback patch**, with `source_runtime`. Arm the deadline once per call from the
-   host, not on every native entry, so host calls cannot restart it, and let the host cancel a
-   script because the user navigated away, which §3.6 will want.
-2. Measure memory per runtime and the cost of pooling several, since the runtime pool in §2.7
+1. Measure memory per runtime and the cost of pooling several, since the runtime pool in §2.7
    assumes several per worker isolate.
-3. Run the probe on an arm64 device when there is one.
+2. Run the probe on an arm64 device when there is one.
 
 How the fork is carried is decided: vendored in `third_party/flutter_qjs`, outside the pub
 workspace, with every change recorded in its `README.kikuyomi.md`.
