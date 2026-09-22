@@ -11,6 +11,7 @@ library;
 export 'src/bridges/crypto_bridge.dart';
 export 'src/bridges/host_bridge.dart';
 export 'src/bridges/html_bridge.dart';
+export 'src/bridges/http_bridge.dart';
 export 'src/bridges/log_bridge.dart';
 export 'src/bridges/storage_bridge.dart';
 export 'src/engine/script_engine.dart';

@@ -42,6 +42,23 @@ final class HostCallException implements Exception {
   String toString() => message;
 }
 
+/// A failure that reaches the extension as one of the contract's error kinds.
+///
+/// A bridge that throws reaches JavaScript as a plain `Error` with a message, and the kind is lost:
+/// the binding turns a Dart exception into its text. That is right for an extension's own mistake,
+/// which is a mistake and nothing more, but wrong for a site that could not be reached — the
+/// contract says `http.fetch` throws `Network` for that, and an extension catches it by kind.
+///
+/// So a bridge returns this instead of throwing, and the prelude turns it back into an error
+/// carrying its `kind`, which the extension can catch and which, if it does not, arrives at the app
+/// as that kind.
+Map<String, Object?> hostError(String kind, String message) => {
+  hostErrorMarker: {'kind': kind, 'message': message},
+};
+
+/// The field the prelude recognises a [hostError] by.
+const hostErrorMarker = '__kikuyomiError';
+
 /// Everything the `host` module tells an extension, and the `kikuyomi` object is built from.
 ///
 /// `host` is synchronous and read-only (§3.5), so it is data handed to the runtime as it starts

@@ -42,8 +42,27 @@ const kikuyomiPrelude = r'''
   var StringFrom = String;
   var MathFloor = Math.floor;
 
+  // A bridge that could not do what was asked answers with an error rather than throwing one, so
+  // that the kind the contract names — Network for a site that could not be reached — survives the
+  // crossing. Here it becomes an Error an extension can catch, with its kind on it.
+  function hostFailure(data) {
+    var error = new Error(StringFrom(data.message || ''));
+    error.kind = data.kind;
+    error.name = StringFrom(data.kind || 'Error');
+    return error;
+  }
+
+  function unwrap(value) {
+    if (value && typeof value === 'object' && value.__kikuyomiError) {
+      throw hostFailure(value.__kikuyomiError);
+    }
+    return value;
+  }
+
   function call(module, method, args) {
-    return hostCall(module, method, args);
+    var value = hostCall(module, method, args);
+    if (value && typeof value.then === 'function') return value.then(unwrap);
+    return unwrap(value);
   }
 
   // ------------------------------------------------------------------ text and bytes
@@ -110,11 +129,11 @@ const kikuyomiPrelude = r'''
         code = byte & 0x07;
         extra = 3;
       } else {
-        out += '�';
+        out += '\uFFFD';
         continue;
       }
       if (i + extra > bytes.length) {
-        out += '�';
+        out += '\uFFFD';
         break;
       }
       var broken = false;
@@ -128,11 +147,11 @@ const kikuyomiPrelude = r'''
         i++;
       }
       if (broken) {
-        out += '�';
+        out += '\uFFFD';
         continue;
       }
       if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
-        out += '�';
+        out += '\uFFFD';
       } else if (code > 0xffff) {
         code -= 0x10000;
         out += String.fromCharCode(0xd800 + (code >> 10), 0xdc00 + (code & 0x3ff));

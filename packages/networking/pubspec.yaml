@@ -16,5 +16,10 @@ resolution: workspace
 environment:
   sdk: "^3.13.3"
 
+dependencies:
+  # The transport itself, injected as a `Client` so a test can answer without a network. Dart team,
+  # BSD-3-Clause, pure Dart: Android, Windows and iOS alike.
+  http: ^1.5.0
+
 dev_dependencies:
   test: ^1.25.0

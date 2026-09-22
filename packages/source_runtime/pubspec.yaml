@@ -33,3 +33,7 @@ dependencies:
 
 dev_dependencies:
   test: ^1.25.0
+  # MockClient, for answering an extension's requests without a socket: the allowlist refuses IP
+  # addresses on purpose, so a local server cannot stand in for a site here. Already resolved
+  # through kikuyomi_networking.
+  http: ^1.5.0
