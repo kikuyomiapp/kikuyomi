@@ -196,15 +196,20 @@ final class QuickJsScriptEngine implements ScriptEngine {
       final result = body();
       if (result is! Future) return _plain(result);
       final left = deadline - started.elapsed;
-      return await result.timeout(
-        left.isNegative ? Duration.zero : left,
-        onTimeout: () {
-          // The script is idle, or blocked on something outside the engine. Ask it to stop, so that
-          // it does not carry on when the job queue next runs.
-          _qjs.cancel();
-          throw ScriptDeadlineException(deadline, 'the call did not settle');
-        },
-      ).then(_plain);
+      return await result
+          .timeout(
+            left.isNegative ? Duration.zero : left,
+            onTimeout: () {
+              // The script is idle, or blocked on something outside the engine. Ask it to stop, so that
+              // it does not carry on when the job queue next runs.
+              _qjs.cancel();
+              throw ScriptDeadlineException(
+                deadline,
+                'the call did not settle',
+              );
+            },
+          )
+          .then(_plain);
     } on ScriptException {
       rethrow;
     } catch (error) {

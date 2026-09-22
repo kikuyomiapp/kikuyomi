@@ -1,0 +1,126 @@
+/// `ContentSource` over an extension's JavaScript (§3.6).
+///
+/// "A `JsSourceAdapter` implements the Dart `ContentSource` interface by forwarding calls to an
+/// `ExtensionRuntime`." So the rest of the app cannot tell an extension from a built-in source:
+/// both are a `ContentSource`, both answer with the contract's types, and both fail with the
+/// contract's error kinds.
+///
+/// Each method does three things and nothing else: encode the arguments with `source_api`'s
+/// encoders, call the method on the source, and decode the result with `PlainDataDecoder`, which
+/// holds it to SourceAPI 1.0's Limits and its "Reading results" rules. A result that breaks one
+/// fails that one call with [ParseException] and is never partly written to the library.
+library;
+
+import 'package:kikuyomi_source_api/kikuyomi_source_api.dart';
+
+import 'extension_runtime.dart';
+
+/// One source of one extension.
+final class JsSourceAdapter implements ContentSource {
+  JsSourceAdapter({
+    required ExtensionRuntime runtime,
+    required this.sourceKey,
+    required this.capabilities,
+  }) : _runtime = runtime;
+
+  /// Opens a source, asking the extension which of the optional methods it really has.
+  ///
+  /// The manifest declares capabilities too, and a caller that has read it can pass them to the
+  /// constructor instead and call nothing. This asks the extension because the extension is what
+  /// will be called: a manifest that claims `latest` for a source without `getLatest` would
+  /// otherwise fail a listener's tap rather than never offering the tab.
+  static Future<JsSourceAdapter> open({
+    required ExtensionRuntime runtime,
+    required String sourceKey,
+  }) async {
+    final capabilities = <SourceCapability>{};
+    if (await runtime.hasMethod(sourceKey, 'getLatest')) {
+      capabilities.add(SourceCapability.latest);
+    }
+    if (await runtime.hasMethod(sourceKey, 'getFilters')) {
+      capabilities.add(SourceCapability.filters);
+    }
+    if (await runtime.hasMethod(sourceKey, 'getImageRequest')) {
+      capabilities.add(SourceCapability.imageRequest);
+    }
+    return JsSourceAdapter(
+      runtime: runtime,
+      sourceKey: sourceKey,
+      capabilities: Set.unmodifiable(capabilities),
+    );
+  }
+
+  final ExtensionRuntime _runtime;
+
+  /// The manifest's key for this source, under which the extension exports it.
+  final String sourceKey;
+
+  @override
+  final Set<SourceCapability> capabilities;
+
+  @override
+  Future<PageResult<BookSummary>> getPopular(int page) async => _runtime.decoder
+      .decodeBookPage(await _invoke('getPopular', [encodePage(page)]));
+
+  @override
+  Future<PageResult<BookSummary>> getLatest(int page) async {
+    _require(SourceCapability.latest, 'getLatest');
+    return _runtime.decoder.decodeBookPage(
+      await _invoke('getLatest', [encodePage(page)]),
+    );
+  }
+
+  @override
+  Future<PageResult<BookSummary>> search(SearchQuery query, int page) async =>
+      _runtime.decoder.decodeBookPage(
+        await _invoke('search', [encodeSearchQuery(query), encodePage(page)]),
+      );
+
+  @override
+  Future<List<Filter>> getFilters() async {
+    _require(SourceCapability.filters, 'getFilters');
+    return _runtime.decoder.decodeFilters(
+      await _invoke('getFilters', const []),
+    );
+  }
+
+  @override
+  Future<BookDetails> getBookDetails(String bookKey) async => _runtime.decoder
+      .decodeBookDetails(await _invoke('getBookDetails', [bookKey]));
+
+  @override
+  Future<List<ChapterInfo>> getChapters(String bookKey) async =>
+      _runtime.decoder.decodeChapters(await _invoke('getChapters', [bookKey]));
+
+  @override
+  Future<MediaResolution> resolveMedia(
+    ChapterRef chapter,
+    ResolveContext context,
+  ) async => _runtime.decoder.decodeMediaResolution(
+    await _invoke('resolveMedia', [
+      encodeChapterRef(chapter),
+      encodeResolveContext(context),
+    ]),
+  );
+
+  @override
+  Future<HttpRequest> getImageRequest(Uri url) async {
+    _require(SourceCapability.imageRequest, 'getImageRequest');
+    return _runtime.decoder.decodeHttpRequest(
+      await _invoke('getImageRequest', [url.toString()]),
+    );
+  }
+
+  Future<Object?> _invoke(String method, List<Object?> arguments) =>
+      _runtime.invoke(sourceKey, method, arguments);
+
+  /// Calling an optional method a source does not declare is a programming error in the app, not a
+  /// source failure, so it is an [UnsupportedError] rather than a [SourceException].
+  void _require(SourceCapability capability, String method) {
+    if (!capabilities.contains(capability)) {
+      throw UnsupportedError(
+        'the source "$sourceKey" of ${_runtime.extensionId} has no $method()',
+      );
+    }
+  }
+}
