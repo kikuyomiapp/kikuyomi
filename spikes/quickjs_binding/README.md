@@ -404,7 +404,7 @@ bridges, and call it through `JsSourceAdapter`.
 - **22, an error's kind.** An error thrown with the SDK's shape arrives as `NotFoundException`,
   which is the whole reason nothing is thrown across the boundary.
 
-## The LibriVox extension: probes 23 to 31
+## The LibriVox extension: probes 23 to 32
 
 The extension the app ships (`app/assets/extensions/librivox/main.js`) is JavaScript, so nothing
 under `flutter test` can run it either. These run the real file on the real engine against LibriVox
@@ -433,16 +433,22 @@ cannot quietly prove nothing.
   rather than two, because the extension memoises the one document that holds both.
 - **30, resolving a chapter** to the file on the Archive, with its format, its length and a file key
   that is the file's own name.
-- **31, nothing found.** LibriVox answers a search that matches nothing with an error object and
+- **31, the same extension in a worker isolate**, which is the path the app really takes (§3.6),
+  with `http`, `storage` and `log` proxied back to the isolate that started it. Nothing else runs
+  QuickJS in a spawned isolate: the tests use a fake engine there, and every probe above it runs the
+  engine in the isolate it was made in. So this is the only place that says whether the engine, its
+  native library and the plain-data crossing all work where the app puts them.
+- **32, nothing found.** LibriVox answers a search that matches nothing with an error object and
   status 200. That is an empty page; asked for one book by id, the same answer is `NotFound`.
 
 ## Results
 
-On Windows all thirty-one pass. Probe 14 stops at 1003 ms after about 130,000 host calls, where the
+On Windows all thirty-two pass. Probe 14 stops at 1003 ms after about 130,000 host calls, where the
 same loop under the old deadline (probe 10, still in the run) reaches its own 4000 ms bound.
 Probe 19 is cancelled 449 ms after the call starts, the cancellation having been sent at 501 ms
-from another isolate. Probe 20 runs the whole prelude in 103 ms. The nine LibriVox probes take 3 to
-7 ms each, which is what a source call costs once the answer is already in hand.
+from another isolate. Probe 20 runs the whole prelude in 103 ms. The nine in-isolate LibriVox probes take 3 to
+7 ms each, which is what a source call costs once the answer is already in hand; probe 31, which
+starts a worker isolate and a QuickJS runtime inside it, takes 205 ms.
 
 Two findings from writing them, both now fixed in the code rather than here:
 

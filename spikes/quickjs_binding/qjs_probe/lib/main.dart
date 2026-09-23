@@ -1410,7 +1410,60 @@ Future<void> _runLibriVoxProbes() async {
     });
   });
 
-  // 31. A search that matches nothing comes back from LibriVox as an error object with status 200.
+  // 31. The path the app really takes: the runtime confined to a worker isolate of its own (§3.6),
+  //     with http, storage and log proxied back to the isolate that started it. Nothing else runs
+  //     QuickJS in a spawned isolate — the tests use a fake engine there, and every probe above it
+  //     runs the engine here — so this is the only place that says whether the engine, the native
+  //     library and the plain-data crossing all work where the app puts them.
+  await _probe('librivox-in-a-worker', () async {
+    final http = await _LibriVoxFixtures.load();
+    final worker = await ExtensionWorker.start(
+      engineFactory: const QuickJsScriptEngineFactory(),
+      bundle: ExtensionBundle(
+        extensionId: 'org.kikuyomi.librivox',
+        code: code,
+        domains: DomainAllowlist([
+          'librivox.org',
+          '*.librivox.org',
+          'archive.org',
+          '*.archive.org',
+        ]),
+      ),
+      host: const HostFacts(appVersion: '1.0.0'),
+      bridges: [
+        http,
+        StorageBridge(
+          extensionId: 'org.kikuyomi.librivox',
+          store: InMemoryExtensionStore(),
+        ),
+        LogBridge(extensionId: 'org.kikuyomi.librivox', sink: console),
+      ],
+    );
+    try {
+      final source = await JsSourceAdapter.open(
+        runtime: worker,
+        sourceKey: 'librivox',
+      );
+      final page = await source.getPopular(1);
+      if (page.items.length != 3) {
+        throw StateError('expected three books, got ${page.items.length}');
+      }
+      final chapters = await source.getChapters('9638');
+      if (chapters.length != 9) {
+        throw StateError('expected nine sections, got ${chapters.length}');
+      }
+      if (http.asked.isEmpty) {
+        throw StateError('the http bridge was never reached from the worker');
+      }
+      return 'the worker answered ${page.items.first.title} and '
+          '${chapters.length} sections, over ${http.asked.length} requests '
+          'proxied back to this isolate';
+    } finally {
+      await worker.dispose();
+    }
+  });
+
+  // 32. A search that matches nothing comes back from LibriVox as an error object with status 200.
   //     That is an empty page, not a failure; asked for one book by id, the same answer means the
   //     book is gone, which is NotFound.
   await _probe('librivox-nothing-found', () async {
