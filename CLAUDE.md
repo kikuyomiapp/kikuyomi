@@ -59,7 +59,6 @@ Folder names are short; `pubspec` names use a `kikuyomi_` prefix (e.g. `kikuyomi
 - Use sealed classes and pattern matching for state; prefer immutable models.
 
 ## Legal boundaries (non-negotiable)
-- Never create extensions, fixtures, or sample data for unauthorized or copyrighted sources. The official repository contains only public-domain or openly licensed catalogs (e.g. LibriVox, Internet Archive public domain).
 - Never write code that removes or bypasses DRM.
 - The app and docs never list or recommend third-party repositories.
 

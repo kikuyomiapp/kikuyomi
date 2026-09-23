@@ -12,10 +12,9 @@ import 'package:kikuyomi_extension_manager/kikuyomi_extension_manager.dart';
 
 /// The extensions that ship inside the app (§3.10).
 ///
-/// "An official repository hosts JavaScript extensions for public-domain and openly licensed
-/// catalogues such as LibriVox and Internet Archive public-domain collections. It proves the whole
-/// extension pipeline end to end, serves as the reference implementation extension authors copy
-/// from, and gives new users something to listen to on first launch."
+/// "An official repository hosts JavaScript extensions. It proves the whole extension pipeline end
+/// to end, serves as the reference implementation extension authors copy from, and gives new users
+/// something to listen to on first launch."
 ///
 /// The repository and installing from it (§3.8) come later. Until then the same extension ships as an
 /// asset, in exactly the package format §3.3 describes, so it is read by the same reader an installed
