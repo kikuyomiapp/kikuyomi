@@ -327,21 +327,26 @@ void main() {
           ),
         ).clientFor('org.example.a');
 
+        // One stopwatch across all four, because the limiter paces from the first request and not
+        // from whenever a later one was asked for: timing the last two on their own would measure
+        // 400 ms less however long the first two took, which is the server's speed, not the
+        // limiter's.
+        final watch = Stopwatch()..start();
+
         // The burst goes straight out; only what follows it waits.
-        final burst = Stopwatch()..start();
         await client.send(NetworkRequest(url: server.url('/1')));
         await client.send(NetworkRequest(url: server.url('/2')));
-        burst.stop();
-        expect(burst.elapsedMilliseconds, lessThan(200));
+        expect(watch.elapsedMilliseconds, lessThan(200));
 
-        final after = Stopwatch()..start();
         await client.send(NetworkRequest(url: server.url('/3')));
         await client.send(NetworkRequest(url: server.url('/4')));
-        after.stop();
+        watch.stop();
 
-        // Two gaps of 200 ms, whatever the server's own speed. A millisecond of slack, because the
-        // limiter's own clock and the stopwatch are not the same clock.
-        expect(after.elapsedMilliseconds, greaterThanOrEqualTo(398));
+        // A burst of two, then the sustained rate: the third request starts one interval after the
+        // first and the fourth two, so the fourth cannot have started before 400 ms had passed. A
+        // few milliseconds of slack, because the limiter schedules on DateTime.now() and waits on a
+        // timer while this measures with a Stopwatch, and the three need not agree exactly.
+        expect(watch.elapsedMilliseconds, greaterThanOrEqualTo(395));
       },
     );
   });
