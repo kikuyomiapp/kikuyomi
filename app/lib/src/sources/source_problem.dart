@@ -2,6 +2,8 @@ import 'package:kikuyomi_extension_manager/kikuyomi_extension_manager.dart';
 import 'package:kikuyomi_source_api/kikuyomi_source_api.dart';
 import 'package:kikuyomi_source_runtime/kikuyomi_source_runtime.dart';
 
+import 'source_registry.dart';
+
 /// A source failure, in words a listener can act on.
 ///
 /// SourceAPI 1.0's Errors table says the app "reacts to each kind rather than just showing its
@@ -88,6 +90,14 @@ SourceProblem describeSourceProblem(
           '$sourceName needs you to sign in, and Kikuyomi cannot sign in to a '
           'source yet.',
       detail: _detail(message),
+    ),
+    // §3.9's stub source: the extension was removed and the books it brought are still here. Nothing
+    // to retry, and one thing that helps, so the message says that thing.
+    ExtensionMissingException() => SourceProblem(
+      message:
+          'The $sourceName extension is not installed. Install it again to use '
+          'this source; your books, their progress and your bookmarks were '
+          'kept.',
     ),
     ExtensionLoadException(:final message) => SourceProblem(
       message: 'The $sourceName extension could not be loaded.',
