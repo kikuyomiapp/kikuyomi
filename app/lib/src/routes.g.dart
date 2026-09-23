@@ -61,6 +61,25 @@ RouteBase get $homeRoute => GoRouteData.$route(
         ),
       ],
     ),
+    GoRouteData.$route(
+      path: 'browse',
+      hasOverriddenOnExit: false,
+      factory: $BrowseRoute._fromState,
+      routes: [
+        GoRouteData.$route(
+          path: 'source',
+          hasOverriddenOnExit: false,
+          factory: $SourceRoute._fromState,
+          routes: [
+            GoRouteData.$route(
+              path: 'book',
+              hasOverriddenOnExit: false,
+              factory: $SourceBookRoute._fromState,
+            ),
+          ],
+        ),
+      ],
+    ),
   ],
 );
 
@@ -154,6 +173,83 @@ mixin $RestoreRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/settings/restore');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $BrowseRoute on GoRouteData {
+  static BrowseRoute _fromState(GoRouterState state) => const BrowseRoute();
+
+  @override
+  String get location => GoRouteData.$location('/browse');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $SourceRoute on GoRouteData {
+  static SourceRoute _fromState(GoRouterState state) =>
+      SourceRoute(sourceId: int.parse(state.uri.queryParameters['source-id']!));
+
+  SourceRoute get _self => this as SourceRoute;
+
+  @override
+  String get location => GoRouteData.$location(
+    '/browse/source',
+    queryParams: {'source-id': _self.sourceId.toString()},
+  );
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $SourceBookRoute on GoRouteData {
+  static SourceBookRoute _fromState(GoRouterState state) => SourceBookRoute(
+    sourceId: int.parse(state.uri.queryParameters['source-id']!),
+    bookKey: state.uri.queryParameters['book-key']!,
+  );
+
+  SourceBookRoute get _self => this as SourceBookRoute;
+
+  @override
+  String get location => GoRouteData.$location(
+    '/browse/source/book',
+    queryParams: {
+      'source-id': _self.sourceId.toString(),
+      'book-key': _self.bookKey,
+    },
+  );
 
   @override
   void go(BuildContext context) => context.go(location);

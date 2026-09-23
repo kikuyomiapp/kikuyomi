@@ -17,16 +17,36 @@ import 'package:flutter/material.dart';
 ///
 /// While the image loads, the tinted surface shows alone. A cover that cannot be read or decoded,
 /// like a book with none, shows headphones on it instead.
+///
+/// [BookCover.network] is the same cover for a book being browsed at a source, whose image is a URL
+/// and not a file yet. It is decoded at the size it is shown in the same way, and it takes the
+/// headers §6.3 says some sites need. Nothing is written to disk: a book's cover is kept only once
+/// the book is in the library, and the image cache is what makes scrolling back up cheap.
 class BookCover extends StatelessWidget {
   const BookCover({
     super.key,
     required this.file,
     required this.size,
     required this.semanticLabel,
-  });
+  }) : url = null,
+       headers = const {};
+
+  const BookCover.network({
+    super.key,
+    required this.url,
+    required this.size,
+    required this.semanticLabel,
+    this.headers = const {},
+  }) : file = null;
 
   /// The image, or null for a book with no cover.
   final File? file;
+
+  /// Where the image is, for a book that is not in the library yet, or null.
+  final Uri? url;
+
+  /// What the site needs on the request for it (§6.3).
+  final Map<String, String> headers;
 
   /// The cover's width and height in logical pixels. Covers are square, the shape audiobook art
   /// almost always has.
@@ -38,7 +58,7 @@ class BookCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final file = this.file;
+    final image = imageProvider(context);
     final placeholder = Center(
       child: Icon(
         Icons.headphones,
@@ -56,10 +76,10 @@ class BookCover extends StatelessWidget {
           dimension: size,
           child: ColoredBox(
             color: colors.surfaceContainerHighest,
-            child: file == null
+            child: image == null
                 ? placeholder
                 : Image(
-                    image: coverImage(file, context),
+                    image: image,
                     width: size,
                     height: size,
                     fit: BoxFit.contain,
@@ -74,13 +94,32 @@ class BookCover extends StatelessWidget {
     );
   }
 
+  /// The image this cover shows, decoded no larger than the cover in device pixels, or null for a
+  /// book with neither a file nor a URL.
+  @visibleForTesting
+  ImageProvider<Object>? imageProvider(BuildContext context) {
+    final file = this.file;
+    if (file != null) return _sized(FileImage(file), context);
+    final url = this.url;
+    if (url != null) {
+      return _sized(NetworkImage(url.toString(), headers: headers), context);
+    }
+    return null;
+  }
+
   /// The image [file] as this cover decodes it: no larger than the cover in device pixels.
   @visibleForTesting
-  ImageProvider<Object> coverImage(File file, BuildContext context) {
+  ImageProvider<Object> coverImage(File file, BuildContext context) =>
+      _sized(FileImage(file), context);
+
+  ImageProvider<Object> _sized(
+    ImageProvider<Object> image,
+    BuildContext context,
+  ) {
     final ratio = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0;
     final pixels = math.max(1, (size * ratio).round());
     return ResizeImage(
-      FileImage(file),
+      image,
       width: pixels,
       height: pixels,
       policy: ResizeImagePolicy.fit,

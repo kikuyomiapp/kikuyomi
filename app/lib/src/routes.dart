@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'book_details_screen.dart';
+import 'browse_screen.dart';
 import 'library_screen.dart';
 import 'player_screen.dart';
 import 'restore_screen.dart';
 import 'settings_screen.dart';
 import 'setup_gate.dart';
 import 'setup_screen.dart';
+import 'source_book_screen.dart';
+import 'source_screen.dart';
 
 part 'routes.g.dart';
 
@@ -77,6 +80,15 @@ class SetupRoute extends GoRouteData with $SetupRoute {
       path: 'settings',
       routes: [TypedGoRoute<RestoreRoute>(path: 'restore')],
     ),
+    TypedGoRoute<BrowseRoute>(
+      path: 'browse',
+      routes: [
+        TypedGoRoute<SourceRoute>(
+          path: 'source',
+          routes: [TypedGoRoute<SourceBookRoute>(path: 'book')],
+        ),
+      ],
+    ),
   ],
 )
 class HomeRoute extends GoRouteData with $HomeRoute {
@@ -108,7 +120,49 @@ class PlayerRoute extends GoRouteData with $PlayerRoute {
       const PlayerScreen();
 }
 
-/// Settings, from the home's app bar. There is no tabbed shell yet, so it sits above the home.
+/// Browse: the sources, and what can be found in them. The second tab of §2.6's shell.
+///
+/// Under the home rather than beside it, so that leaving Browse goes back to the library instead of
+/// out of the app, and so a source reached by its location alone has somewhere to go back to.
+class BrowseRoute extends GoRouteData with $BrowseRoute {
+  const BrowseRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const BrowseScreen();
+}
+
+/// One source's catalogue: its popular books, and search.
+///
+/// The source is a query parameter rather than part of the path because a §3.7 source id is a signed
+/// 64-bit number, which a path pattern would have to spell out negatives for.
+class SourceRoute extends GoRouteData with $SourceRoute {
+  const SourceRoute({required this.sourceId});
+
+  final int sourceId;
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      SourceScreen(sourceId: sourceId);
+}
+
+/// A book at a source, before it is in the library.
+///
+/// Identified the way §4.4 identifies a book everywhere else, by its source and its key, because
+/// that is all the app knows about it until it has been added. The key is a query parameter: it is
+/// an opaque string a source chose, and may hold slashes.
+class SourceBookRoute extends GoRouteData with $SourceBookRoute {
+  const SourceBookRoute({required this.sourceId, required this.bookKey});
+
+  final int sourceId;
+  final String bookKey;
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      SourceBookScreen(sourceId: sourceId, bookKey: bookKey);
+}
+
+/// Settings, from the home's app bar. There is no More tab yet, so it sits above the home.
 class SettingsRoute extends GoRouteData with $SettingsRoute {
   const SettingsRoute();
 

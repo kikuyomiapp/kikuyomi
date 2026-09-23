@@ -12,12 +12,17 @@ import 'package:kikuyomi_data/kikuyomi_data.dart'
     as data
     show markBookFinished, markBookNotFinished;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
+import 'package:kikuyomi_networking/kikuyomi_networking.dart' as net;
 import 'package:kikuyomi_platform_adapters/kikuyomi_platform_adapters.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
+// Named apart: the app's own BookDetails and the contract's are different model layers (§4.1).
+import 'package:kikuyomi_source_api/kikuyomi_source_api.dart' as api;
+import 'package:kikuyomi_source_runtime/kikuyomi_source_runtime.dart';
 import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart';
 
 import 'app_version.dart';
 import 'book_files.dart';
+import 'sources/source_registry.dart';
 
 /// The composition root (§2.8): the one place concrete implementations are chosen and wired
 /// together. Everything below the app works against interfaces.
@@ -31,6 +36,8 @@ final class AppServices {
     required this.backups,
     required this.backupScheduler,
     required this.playable,
+    required this.sources,
+    required this.extensionConsole,
   }) : covers = CoverFiles(locations.covers),
        _importFolder = ImportFolder(mediaRoot: locations.mediaRoot);
 
@@ -47,9 +54,43 @@ final class AppServices {
     await _backfillListened(database, settings);
     final deviceId = await _deviceId(locations.appData);
     final audioFocus = await AudioFocus.configure();
+    // §2.7's one NetworkService, which owns the cookie jars and the rate limiters, and decides the
+    // User-Agent no extension may change.
+    final network = net.NetworkService(
+      policy: net.NetworkPolicy(userAgent: 'Kikuyomi/${_plainVersion()}'),
+    );
+    final console = InMemoryExtensionLog();
+    final sources = await SourceRegistry.start(
+      database: database,
+      network: network,
+      // Per-extension storage is kept only while the app runs, until §4.3's extension_preference
+      // table arrives with the rest of the extension tables in a later schema version. No bundled
+      // extension stores anything yet, so nothing is lost; an extension that did would start each
+      // run with an empty store.
+      store: InMemoryExtensionStore(),
+      log: console,
+      host: const HostFacts(appVersion: appVersion),
+      engineFactory: const QuickJsScriptEngineFactory(),
+      appVersion: appVersion,
+      onError: (error, stack) => FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'kikuyomi',
+          context: ErrorDescription('while reading a bundled extension'),
+        ),
+      ),
+    );
     final coordinator = PlaybackCoordinator(
       engine: JustAudioEngine(),
-      resolver: LocalMediaResolver(database, mediaRoot: locations.mediaRoot),
+      // One resolver for the whole library: files on the device go to the local one, and a book
+      // that streams is resolved through its source, just in time (§6.3).
+      resolver: SourceMediaResolver(
+        database,
+        openSource: sources.open,
+        onDevice: LocalMediaResolver(database, mediaRoot: locations.mediaRoot),
+        clock: clock,
+      ),
       store: DriftPlaybackStore(database, deviceId: deviceId, clock: clock),
       clock: clock,
     );
@@ -96,6 +137,8 @@ final class AppServices {
       backups: backups,
       backupScheduler: backupScheduler,
       playable: EngineFormats.forThisDevice(),
+      sources: sources,
+      extensionConsole: console,
     );
   }
 
@@ -120,6 +163,12 @@ final class AppServices {
   /// Where the covers of books in the library are kept, and how the names book rows record for them
   /// are found.
   final CoverFiles covers;
+
+  /// Every source the app offers, and the extension runtimes behind them (§3.6).
+  final SourceRegistry sources;
+
+  /// What extensions have written to the in-app console (§3.5). There is no screen for it yet.
+  final InMemoryExtensionLog extensionConsole;
 
   final ImportFolder _importFolder;
 
@@ -294,6 +343,111 @@ final class AppServices {
         onError(error, stack);
       }
     }
+    // Then the books that stream, whose covers are a URL rather than a picture in a file. A book
+    // whose cover cannot be fetched is left to be looked for again, exactly as a local one is.
+    for (final book in await booksAwaitingSourceCover(database)) {
+      try {
+        await _oneAtATime(() async {
+          final image = await fetchSourceCover(book);
+          if (image == null) return;
+          await keepBookCover(
+            database,
+            book.bookId,
+            image,
+            covers: covers,
+            clock: clock,
+          );
+        });
+      } catch (error, stack) {
+        onError(error, stack);
+      }
+    }
+  }
+
+  /// Opens the source with [sourceId], starting its extension's runtime on first use (§3.6).
+  ///
+  /// Fails with an [ExtensionLoadException] for an extension that will not load, which is what a
+  /// Browse screen shows rather than an empty grid.
+  Future<api.ContentSource> openSource(int sourceId) => sources.open(sourceId);
+
+  /// What a source says about one of its books, and what is in it.
+  ///
+  /// Both in one call because the screen that asks shows both, and because adding the book writes
+  /// both. Fails with a [SourceException], whose kind the screen reacts to.
+  Future<({api.BookDetails details, List<api.ChapterInfo> chapters})>
+  previewSourceBook(int sourceId, String bookKey) async {
+    final source = await openSource(sourceId);
+    final details = await source.getBookDetails(bookKey);
+    final chapters = await source.getChapters(bookKey);
+    return (details: details, chapters: chapters);
+  }
+
+  /// Puts a book from a source in the library and returns its id.
+  ///
+  /// From here on it is a book like any other: the library shows it, its details screen reads the
+  /// same rows, and the player opens it through the same Timeline. Its cover is fetched in the
+  /// background, as a local book's is looked for, because a book should appear the moment it is
+  /// added rather than when its picture arrives.
+  Future<int> addSourceBook({
+    required int sourceId,
+    required api.BookDetails details,
+    required List<api.ChapterInfo> chapters,
+  }) async {
+    final saved = await saveSourceBook(
+      database,
+      sourceId: sourceId,
+      details: details,
+      chapters: chapters,
+      clock: clock,
+      addToLibrary: true,
+    );
+    unawaited(
+      lookForMissingCovers(
+        onError: (error, stack) => FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stack,
+            library: 'kikuyomi',
+            context: ErrorDescription("while fetching a book's cover"),
+          ),
+        ),
+      ),
+    );
+    return saved.bookId;
+  }
+
+  /// Fetches the cover of [book] through its source, or null when there is nothing to show.
+  ///
+  /// The request comes from the source when it declares `getImageRequest`, because §6.3's referers,
+  /// tokens and cookies are real; otherwise it is a plain GET, and the extension is not called at
+  /// all. Either way the URL is held to the extension's declared domains, on the first request and
+  /// on every redirect, because those domains are the promise the permissions screen makes.
+  Future<CoverImage?> fetchSourceCover(BookAwaitingCover book) async {
+    final extensionId = sources.extensionIdOf(book.sourceId);
+    final domains = sources.domainsOf(book.sourceId);
+    if (extensionId == null || domains == null) return null;
+    final problem = domains.problemWith(book.coverUrl);
+    if (problem != null) return null;
+    final request = await sources.imageRequestFor(book.sourceId, book.coverUrl);
+    final response = await sources
+        .httpClientFor(extensionId)
+        .send(
+          net.NetworkRequest(url: request.url, headers: request.headers),
+          check: (url) {
+            final problem = domains.problemWith(url);
+            if (problem != null) throw FormatException('$url: $problem');
+          },
+        );
+    if (response.status != 200 || response.body.isEmpty) return null;
+    final contentType = response.headers['content-type']
+        ?.split(';')
+        .first
+        .trim()
+        .toLowerCase();
+    return CoverImage(
+      mimeType: contentType ?? 'image/jpeg',
+      bytes: response.body,
+    );
   }
 
   /// Opens a book in the player, resuming where it was left with smart rewind applied.
@@ -490,6 +644,10 @@ String _join(String directory, String name) =>
 
 /// How far the system controls' skip buttons move: the same as the player screen's.
 const _skipInterval = Duration(seconds: 30);
+
+/// The app's version without its build number, for a User-Agent and for comparing against an
+/// extension's `minAppVersion`.
+String _plainVersion() => appVersion.split('+').first;
 
 /// Reads the cover of a book already in the library: for a book in a folder, the image there named
 /// as its cover, or failing that the picture in its first file; for a book in one file, the picture

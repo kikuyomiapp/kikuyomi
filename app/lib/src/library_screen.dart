@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart'
     show audioExtensions;
 
+import 'app_shell.dart';
 import 'backup_actions.dart';
 import 'backup_reminder.dart';
 import 'book_drop_zone.dart';
@@ -43,8 +44,8 @@ enum _Adding { file, folder }
 /// The app's home: the books to continue listening to, above the library, and where books are
 /// added, with the "Add book" button or, on desktop, by dropping them onto the window.
 ///
-/// §2.6's adaptive shell will split this into Home and Library tabs. Until that shell exists, this
-/// one screen is both.
+/// The first tab of §2.6's shell. That section splits this into Home and Library tabs of their own;
+/// until it does, this one screen is both, and Browse is the other tab.
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
 
@@ -65,7 +66,8 @@ class LibraryScreen extends ConsumerWidget {
     return BookDropZone(
       enabled: locations.acceptsDroppedFiles,
       onDropped: (paths) => _addDropped(context, ref, paths),
-      child: Scaffold(
+      child: AppShell(
+        tab: AppTab.library,
         appBar: AppBar(
           title: const Text('Kikuyomi'),
           actions: [
