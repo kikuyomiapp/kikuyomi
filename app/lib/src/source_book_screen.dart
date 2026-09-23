@@ -49,8 +49,8 @@ class _SourceBookScreenState extends ConsumerState<SourceBookScreen> {
     });
     try {
       final preview = await ref
-          .read(servicesProvider)
-          .previewSourceBook(widget.sourceId, widget.bookKey);
+          .read(sourceGatewayProvider)
+          .preview(widget.sourceId, widget.bookKey);
       if (!mounted) return;
       setState(() {
         _details = preview.details;
@@ -81,8 +81,8 @@ class _SourceBookScreenState extends ConsumerState<SourceBookScreen> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final added = await ref
-          .read(servicesProvider)
-          .addSourceBook(
+          .read(sourceGatewayProvider)
+          .addToLibrary(
             sourceId: widget.sourceId,
             details: details,
             chapters: chapters,
@@ -115,9 +115,7 @@ class _SourceBookScreenState extends ConsumerState<SourceBookScreen> {
     }
   }
 
-  String get _name =>
-      ref.read(sourceRegistryProvider).describe(widget.sourceId)?.name ??
-      'This source';
+  String get _name => ref.read(sourceGatewayProvider).nameOf(widget.sourceId);
 
   @override
   Widget build(BuildContext context) {

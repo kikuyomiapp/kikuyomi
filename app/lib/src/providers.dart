@@ -7,6 +7,7 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
 import 'services.dart';
 import 'setup_gate.dart';
+import 'sources/source_gateway.dart';
 import 'sources/source_registry.dart';
 
 /// Supplied by `main()` once the database and engine are open.
@@ -17,6 +18,12 @@ final servicesProvider = Provider<AppServices>(
 /// Every source the app offers, from manifests alone (§3.6). Reading it runs no extension code.
 final sourceRegistryProvider = Provider<SourceRegistry>(
   (ref) => ref.watch(servicesProvider).sources,
+);
+
+/// What the Browse screens reach the sources through. Overridden in a widget test with a fake
+/// source, which is how those screens are tested without a database, an engine or a network.
+final sourceGatewayProvider = Provider<SourceGateway>(
+  (ref) => AppSourceGateway(ref.watch(servicesProvider)),
 );
 
 /// The library, straight from the database. §2.6: screens watch Drift streams rather than holding

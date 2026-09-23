@@ -17,7 +17,7 @@ class BrowseScreen extends ConsumerWidget {
     tab: AppTab.browse,
     appBar: AppBar(title: const Text('Browse')),
     body: SourcesView(
-      sources: ref.watch(sourceRegistryProvider).sources,
+      sources: ref.watch(sourceGatewayProvider).sources,
       onOpen: (source) => source.canBrowse
           ? SourceRoute(sourceId: source.id).push<void>(context)
           : const HomeRoute().go(context),

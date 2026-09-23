@@ -54,8 +54,8 @@ class _SourceScreenState extends ConsumerState<SourceScreen> {
   Future<void> _openSource() async {
     try {
       final source = await ref
-          .read(servicesProvider)
-          .openSource(widget.sourceId);
+          .read(sourceGatewayProvider)
+          .open(widget.sourceId);
       if (!mounted) return;
       setState(() {
         _source = source;
@@ -115,14 +115,12 @@ class _SourceScreenState extends ConsumerState<SourceScreen> {
     _reload();
   }
 
-  String get _name =>
-      ref.read(sourceRegistryProvider).describe(widget.sourceId)?.name ??
-      'This source';
+  String get _name => ref.read(sourceGatewayProvider).nameOf(widget.sourceId);
 
   @override
   Widget build(BuildContext context) {
     final description = ref
-        .watch(sourceRegistryProvider)
+        .watch(sourceGatewayProvider)
         .describe(widget.sourceId);
     final name = description?.name ?? 'Source';
     final hasFilters =
