@@ -18,7 +18,7 @@
 //  4. Does the extension protocol run? Probes 20 to 22 load a small extension through
 //     `ExtensionRuntime`, with the real prelude and the real bridges, and call it through
 //     `JsSourceAdapter`. The prelude is JavaScript, and only QuickJS can say whether it runs.
-//  5. Does the LibriVox extension the app ships work? Probes 23 to 31 run the real
+//  5. Does the LibriVox extension the app ships work? Probes 23 to 33 run the real
 //     app/assets/extensions/librivox/main.js on the real engine against LibriVox answers recorded
 //     into assets/librivox/fixtures. Never against the live site: a probe that reached the network
 //     would fail for reasons that have nothing to do with the code, and would ask a volunteer-run
@@ -1071,7 +1071,7 @@ Future<void> _runProtocolProbes() async {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Probes 23 to 31: the LibriVox extension the app ships, on the real engine.
+// Probes 23 to 33: the LibriVox extension the app ships, on the real engine.
 //
 // The extension is JavaScript, so nothing under `flutter test` can run it: the engine's native
 // library only exists inside a built Flutter application. So it runs here, against answers recorded
@@ -1479,6 +1479,46 @@ Future<void> _runLibriVoxProbes() async {
         return 'an empty search is empty, and a missing book is NotFound: '
             '${_oneLine(error)}';
       }
+    });
+  });
+
+  // 33. The whole of opening and playing one book costs LibriVox one request. Details, chapters
+  //     and the audio of every chapter all read the same extended document, and the extension
+  //     keeps the fetch itself rather than its result, so calls that overlap join the one already
+  //     on its way instead of starting another. This is what made pressing play on a streamed book
+  //     slow: one request per chapter, each waiting for the last.
+  await _probe('librivox-one-fetch-per-book', () async {
+    return withSource((source, http) async {
+      await source.getBookDetails('9638');
+      final chapters = await source.getChapters('9638');
+      // All at once, which is what a book being resolved in the background does.
+      final resolutions = await Future.wait([
+        for (final chapter in chapters)
+          source.resolveMedia(
+            ChapterRef(bookKey: '9638', chapterKey: chapter.key),
+            const ResolveContext(
+              purpose: ResolvePurpose.stream,
+              network: NetworkType.unknown,
+            ),
+          ),
+      ]);
+      if (resolutions.length != chapters.length) {
+        throw StateError('resolved ${resolutions.length} of ${chapters.length}');
+      }
+      final keys = {
+        for (final resolution in resolutions) resolution.segments.single.fileKey,
+      };
+      if (keys.length != chapters.length) {
+        throw StateError('$keys is not one file per section');
+      }
+      if (http.asked.length != 1) {
+        throw StateError(
+          'details, chapters and ${chapters.length} resolutions cost '
+          '${http.asked.length} requests',
+        );
+      }
+      return 'details, ${chapters.length} chapters and ${chapters.length} '
+          'resolutions, one request';
     });
   });
 }

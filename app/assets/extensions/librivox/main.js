@@ -17,8 +17,9 @@
 //   * `title=` matches a whole title; only `title=^x` matches a prefix. So every title search is
 //     sent with the caret.
 //   * A book's sections — its chapters — come only with `extended=1`, and then in the same response
-//     as its details, so `getBookDetails` and `getChapters` would fetch the same document twice.
-//     One entry is memoised for a minute to spare LibriVox the second request.
+//     as its details, so `getBookDetails`, `getChapters` and every one of a book's `resolveMedia`
+//     calls all want the same document. A few books' documents are kept for a few minutes, so the
+//     whole of opening and playing a book costs LibriVox one request.
 //   * Descriptions are HTML. The contract wants plain text with its line breaks kept, so the markup
 //     is unwound here rather than shown to the listener.
 //   * `language` is a name such as "English", which is not a BCP 47 tag. The app drops a tag it
@@ -44,9 +45,16 @@ var PAGE_SIZE = 50;
  *  most of the payload and nothing a grid of covers shows. */
 var LIST_FIELDS = '{id,title,authors,totaltimesecs,url_zip_file}';
 
-/** How long one book's extended document is kept, so that `getChapters` after `getBookDetails`
- *  costs LibriVox nothing. Short, because a refresh a minute later should see the site again. */
-var BOOK_MEMO_MS = 60000;
+/** How long one book's extended document is kept, so that everything the app asks about a book it
+ *  is opening costs LibriVox one request: its details, its chapters, and the audio of each chapter
+ *  as it is played. Long enough to cover playing a book with a hundred sections, short enough that
+ *  a listener who presses Refresh a few minutes later sees the site again. */
+var BOOK_CACHE_MS = 5 * 60 * 1000;
+
+/** How many books' documents are kept at once. A handful, because each is tens of kilobytes and
+ *  the runtime lives for as long as the app does: a cache that grew with the catalogue would be a
+ *  leak. The least recently used is dropped. */
+var BOOK_CACHE_SIZE = 4;
 
 // ---------------------------------------------------------------------------------------- errors
 
@@ -346,28 +354,69 @@ function summaryOf(book) {
 }
 
 /**
- * One book's extended document: its details and its sections in one response.
+ * The books whose extended document is being fetched or has been, newest first.
  *
- * Memoised for a minute and one book deep, because the app asks for details and then for chapters,
- * and again for the audio of the chapter it plays first. Nothing else is kept between calls: the
- * runtime belongs to the extension for as long as the app is running, and a cache that grows with
- * the catalogue would be a leak.
+ * Each entry holds the *promise* rather than the document. That is what makes several calls about
+ * one book cost one request even when they overlap: opening a book asks for its details and its
+ * chapters at once, and playing it asks about each of its sections, and all of them join the one
+ * fetch that is already on its way instead of starting another. Bounded by BOOK_CACHE_SIZE and
+ * BOOK_CACHE_MS, so nothing here grows with the catalogue or outlives the site's answer.
  */
-var memo = null;
+var bookCache = [];
 
-async function bookById(bookKey) {
-  var key = textOf(bookKey);
-  if (!key) throw sourceError('NotFound', 'a LibriVox book is named by its id');
-  var now = Date.now();
-  if (memo && memo.key === key && now - memo.at < BOOK_MEMO_MS) return memo.book;
+/** The live entry for [key], moved to the front, or null when there is none worth keeping. */
+function cachedBook(key, now) {
+  for (var i = 0; i < bookCache.length; i++) {
+    var entry = bookCache[i];
+    if (entry.key !== key) continue;
+    bookCache.splice(i, 1);
+    if (now - entry.at >= BOOK_CACHE_MS) return null;
+    bookCache.unshift(entry);
+    return entry;
+  }
+  return null;
+}
+
+/** Drops [pending] for [key], so that a fetch that failed is not handed to the next caller. */
+function forgetBook(key, pending) {
+  for (var i = 0; i < bookCache.length; i++) {
+    if (bookCache[i].key === key && bookCache[i].pending === pending) {
+      bookCache.splice(i, 1);
+      return;
+    }
+  }
+}
+
+async function fetchBook(key) {
   var body = await getJson(API + '?format=json&extended=1&id=' + encodeURIComponent(key));
   var books = Array.isArray(body.books) ? body.books : [];
   // Asked for one book by id, "could not be found" means exactly that.
   if (!books.length || !books[0] || typeof books[0] !== 'object') {
     throw sourceError('NotFound', 'LibriVox has no book ' + key);
   }
-  memo = { key: key, at: now, book: books[0] };
   return books[0];
+}
+
+/**
+ * One book's extended document: its details and its sections in one response.
+ */
+function bookById(bookKey) {
+  var key = textOf(bookKey);
+  if (!key) {
+    return Promise.reject(sourceError('NotFound', 'a LibriVox book is named by its id'));
+  }
+  var now = Date.now();
+  var entry = cachedBook(key, now);
+  if (entry) return entry.pending;
+  var pending = fetchBook(key);
+  bookCache.unshift({ key: key, at: now, pending: pending });
+  while (bookCache.length > BOOK_CACHE_SIZE) bookCache.pop();
+  // A fetch that failed is worth nothing to the next caller, who should ask the site again. The
+  // handler is on a promise of its own so that the one handed out still rejects for its awaiter.
+  pending.catch(function () {
+    forgetBook(key, pending);
+  });
+  return pending;
 }
 
 function sectionsOf(book) {
