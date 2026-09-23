@@ -112,6 +112,22 @@ final lastBackupOutcomeProvider = StreamProvider<BackupOutcome?>((ref) {
   });
 });
 
+/// What the source a book came from is called, for a message about a failure at it.
+///
+/// A streamed book fails with one of the contract's error kinds, and those messages are written
+/// around the source's name (§3.4). Disposed once nothing shows it.
+final bookSourceNameProvider = FutureProvider.autoDispose.family<String, int>((
+  ref,
+  bookId,
+) async {
+  final db = ref.watch(servicesProvider).database;
+  final book = await (db.select(
+    db.books,
+  )..where((b) => b.id.equals(bookId))).getSingleOrNull();
+  if (book == null) return 'This source';
+  return ref.watch(sourceGatewayProvider).nameOf(book.sourceId);
+});
+
 /// A book's details, straight from the database. Disposed once no screen shows the book, so a
 /// details screen visited once does not keep its queries running for the life of the app.
 final bookOverviewProvider = StreamProvider.autoDispose

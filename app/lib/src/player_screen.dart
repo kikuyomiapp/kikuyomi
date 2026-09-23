@@ -14,12 +14,15 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart'
         PlayerIdle,
         PlayerLoading,
         PlayerReady;
+import 'package:kikuyomi_source_api/kikuyomi_source_api.dart'
+    show SourceException;
 
 import 'bookmark_commands.dart';
 import 'player_shortcuts.dart';
 import 'player_view.dart';
 import 'providers.dart';
 import 'services.dart';
+import 'sources/source_error_view.dart';
 
 /// The player for the book the coordinator has open. Reached through `PlayerRoute`.
 class PlayerScreen extends ConsumerWidget {
@@ -50,20 +53,49 @@ class PlayerScreen extends ConsumerWidget {
           data: (state) => switch (state) {
             PlayerIdle() => const Center(child: Text('Nothing is playing')),
             PlayerLoading() => const Center(child: CircularProgressIndicator()),
-            PlayerFailed(:final error) => Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  'Playback failed: $error',
-                  textAlign: TextAlign.center,
-                ),
-              ),
+            PlayerFailed(:final bookId, :final error) => _Failure(
+              bookId: bookId,
+              error: error,
             ),
             PlayerReady() => _ReadyPlayer(state: state),
           },
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => Center(child: Text('$error')),
         ),
+      ),
+    );
+  }
+}
+
+/// What the player shows when playback failed.
+///
+/// A streamed book fails with one of the contract's error kinds, and those are shown the way Browse
+/// shows them: named after the source, with the extension's own words underneath, and with a way out
+/// where there is one. Playing again re-resolves the URL, which is what an expired one needs.
+///
+/// Anything else — a local file that has gone, an engine that would not open what it was given — is
+/// not a source's doing, and is shown as it is.
+class _Failure extends ConsumerWidget {
+  const _Failure({required this.bookId, required this.error});
+
+  final int bookId;
+  final Object error;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final error = this.error;
+    final sourceName = ref.watch(bookSourceNameProvider(bookId)).value;
+    if (error is SourceException && sourceName != null) {
+      return SourceErrorView(
+        error: error,
+        sourceName: sourceName,
+        onRetry: ref.read(servicesProvider).coordinator.play,
+      );
+    }
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text('Playback failed: $error', textAlign: TextAlign.center),
       ),
     );
   }
