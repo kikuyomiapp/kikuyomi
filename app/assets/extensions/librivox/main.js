@@ -440,7 +440,10 @@ var librivox = {
     var byTitle = booksInList(await getJson(listUrl(titleQuery(text), page)));
     var byAuthor = booksInList(await getJson(listUrl(authorQuery(text), page)));
     var items = summariesOf(byTitle);
-    var seen = {};
+    // A bare object, not `{}`: a book key is a string a source chose, and on an ordinary object the
+    // keys `__proto__` and `constructor` would answer for themselves. LibriVox only ever gives
+    // numbers, but this file is the one extension authors will copy.
+    var seen = Object.create(null);
     for (var i = 0; i < items.length; i++) seen[items[i].key] = true;
     var authored = summariesOf(byAuthor);
     for (var j = 0; j < authored.length; j++) {
