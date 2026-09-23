@@ -6,7 +6,7 @@ import '../database/database.dart';
 ///
 /// A new table is either added here, when the backup format carries it, or left out on purpose, as
 /// §5.2's download queue will be. The test that compares this with the schema fails until one or the
-/// other is decided.
+/// other is decided, and names the tables left out.
 List<TableInfo<Table, Object?>> backedUpTables(KikuyomiDatabase db) => [
   db.sources,
   db.books,
@@ -21,6 +21,20 @@ List<TableInfo<Table, Object?>> backedUpTables(KikuyomiDatabase db) => [
   db.categories,
   db.bookCategories,
 ];
+
+/// The tables a backup leaves out on purpose, and why.
+///
+/// A backup is the listener's library (ADR-0008), and restoring one must not depend on anything a
+/// restore cannot put back:
+///
+/// - `extensions` is what is installed *on this device*. A backup carries no extension code, and the
+///   folder a folder-installed extension came from means nothing on the device being restored to.
+///   Naming the extensions a restored library wants is worth doing — it is how a restore can offer to
+///   install them again — but that needs somewhere to install them from, so it waits for the
+///   repository door and a backup format version of its own.
+/// - `extension_preferences` is one extension's own storage, keyed by an extension that may not be
+///   installed. It follows the extensions.
+const backupLeavesOut = ['extensions', 'extension_preferences'];
 
 /// A signal after every committed change to what a backup carries: the library, chapters, progress,
 /// listening sessions, bookmarks and categories.

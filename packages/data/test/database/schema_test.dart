@@ -1,4 +1,4 @@
-// What schema version 1 promises, checked against a real SQLite database in memory.
+// What the schema promises, checked against a real SQLite database in memory.
 //
 // Most of these are guarantees that live in the schema rather than in Dart code — foreign keys,
 // uniqueness, cascades, restrictions — so they can only be verified by running statements.
@@ -87,7 +87,7 @@ void main() {
         ),
       );
 
-  test('creates exactly the tables of version 1', () {
+  test('creates exactly the tables of version 2', () {
     expect(
       {for (final table in db.allTables) table.actualTableName},
       {
@@ -103,6 +103,8 @@ void main() {
         'bookmarks',
         'categories',
         'book_categories',
+        'extensions',
+        'extension_preferences',
       },
     );
   });

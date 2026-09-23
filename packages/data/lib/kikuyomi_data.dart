@@ -11,6 +11,8 @@ export 'src/backup/drift_backup_store.dart';
 export 'src/database/converters.dart';
 export 'src/database/database.dart';
 export 'src/database/tables.dart';
+export 'src/extensions/extension_preferences.dart';
+export 'src/extensions/installed_extensions.dart';
 export 'src/library/book_overview.dart';
 export 'src/library/bookmarks.dart';
 export 'src/library/continue_listening.dart';

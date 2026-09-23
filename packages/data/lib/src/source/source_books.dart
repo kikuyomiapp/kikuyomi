@@ -91,6 +91,14 @@ Future<void> registerSource(
   );
 }
 
+/// Every source the app has ever registered, by name.
+///
+/// Including those whose extension is no longer installed. §3.9: a library book from a removed
+/// extension's source "points to a stub source until the extension returns or the books are
+/// migrated", so the row outlives the extension and the app has to be able to read it to say so.
+Future<List<SourceRow>> readRegisteredSources(KikuyomiDatabase db) =>
+    (db.select(db.sources)..orderBy([(s) => OrderingTerm.asc(s.name)])).get();
+
 /// Writes what [details] and [chapters] say about a book of source [sourceId], and returns its id.
 ///
 /// The book is matched by its §4.4 identity, `(source_id, key)`. A book already known is refreshed
