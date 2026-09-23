@@ -42,6 +42,8 @@ dependencies:
     path: ../../../third_party/flutter_qjs
   # The ScriptEngine interface, and the QuickJS engine behind it. The engine's own checks cannot run
   # under `flutter test`, because a plugin's native library is not built there, so they run here.
+  kikuyomi_source_api:
+    path: ../../../packages/source_api
   kikuyomi_source_runtime:
     path: ../../../packages/source_runtime
   kikuyomi_platform_adapters:

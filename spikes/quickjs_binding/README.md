@@ -387,10 +387,29 @@ the binding's own probes.
 - **19, cancellation from another isolate**, which is the case that matters: while a script runs,
   the isolate that started it is inside QuickJS and reaches none of its own messages.
 
-On Windows all nineteen pass. Probe 14 stops at 1003 ms after about 130,000 host calls, where the
+## The extension protocol: probes 20 to 22
+
+Everything above the engine is unit tested against a fake one, but the prelude (§3.5) is
+JavaScript, and only QuickJS can say whether it runs. These three load a small extension through
+`ExtensionRuntime`, with the real prelude and the real `html`, `crypto`, `log` and `storage`
+bridges, and call it through `JsSourceAdapter`.
+
+- **20, the whole prelude.** One `getPopular` that logs, builds a `URL` and reads its
+  `searchParams`, parses HTML and reads an element's text and `absUrl`, hashes with SHA-256, writes
+  and reads `storage`, round-trips text through `TextEncoder` and `TextDecoder`, uses `atob` and
+  `btoa`, awaits a `setTimeout`, and reads `host.apiVersion` — and whose result is decoded into the
+  contract's types.
+- **21, a refused selector.** `:has()` throws inside the extension, which catches it and reads the
+  message, as an author would.
+- **22, an error's kind.** An error thrown with the SDK's shape arrives as `NotFoundException`,
+  which is the whole reason nothing is thrown across the boundary.
+
+## Results
+
+On Windows all twenty-two pass. Probe 14 stops at 1003 ms after about 130,000 host calls, where the
 same loop under the old deadline (probe 10, still in the run) reaches its own 4000 ms bound.
 Probe 19 is cancelled 449 ms after the call starts, the cancellation having been sent at 501 ms
-from another isolate.
+from another isolate. Probe 20 runs the whole prelude in 103 ms.
 
 Two findings from writing them, both now fixed in the code rather than here:
 

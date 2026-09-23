@@ -15,6 +15,9 @@
 //     the deadline, the memory limit and a cancellation. These cannot run under `flutter test`,
 //     because a plugin's native library is not built there, so they run here. Probe 14 is the one
 //     the fork's per-call deadline was written for.
+//  4. Does the extension protocol run? Probes 20 to 22 load a small extension through
+//     `ExtensionRuntime`, with the real prelude and the real bridges, and call it through
+//     `JsSourceAdapter`. The prelude is JavaScript, and only QuickJS can say whether it runs.
 //
 // This is a console probe wearing a Flutter app as a costume, because the plugin's native library
 // is only present in a built Flutter application. It runs every probe at start, unattended, and
@@ -42,6 +45,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:kikuyomi_platform_adapters/kikuyomi_platform_adapters.dart';
+import 'package:kikuyomi_source_api/kikuyomi_source_api.dart';
 import 'package:kikuyomi_source_runtime/kikuyomi_source_runtime.dart';
 
 int _passed = 0;
@@ -903,6 +907,162 @@ Future<void> _runEngineProbes() async {
   });
 }
 
+// ---------------------------------------------------------------------------------------------
+// Probes 20 to 22: the extension protocol on the real engine. Everything above the engine is unit
+// tested against a fake one, but the prelude is JavaScript and only QuickJS can say whether it
+// runs. These load a small extension through `ExtensionRuntime` with the real prelude and the real
+// bridges, and call it through `JsSourceAdapter`, which is how the app will.
+
+/// An extension that touches every part of the prelude on its way to one page of results.
+const _protocolExtension = r'''
+const extension = {
+  sources: {
+    probe: {
+      async getPopular(page) {
+        kikuyomi.log.info('looking at page ' + page);
+        const url = new URL('/book/12?q=whale#top', 'https://example.org/index.html');
+        const document = await kikuyomi.html.parse(
+          '<ul id="results"><li class="card"><a href="/book/12">  Moby-Dick\n</a></li></ul>',
+          'https://example.org/'
+        );
+        const link = document.selectFirst('ul#results > li.card > a');
+        const hash = await kikuyomi.crypto.hash('sha256', 'abc');
+        await kikuyomi.storage.set('last', String(page));
+        const stored = await kikuyomi.storage.get('last');
+        const text = new TextDecoder().decode(new TextEncoder().encode('héllo'));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return {
+          items: [
+            {
+              key: link.absUrl('href'),
+              title: [
+                link.text(),
+                text,
+                btoa('ok'),
+                atob('b2s='),
+                hash.slice(0, 8),
+                url.searchParams.get('q'),
+                url.pathname,
+                stored,
+                kikuyomi.host.apiVersion,
+              ].join('|'),
+            },
+          ],
+          hasNextPage: page < 2,
+        };
+      },
+      async search(query, page) {
+        try {
+          const document = await kikuyomi.html.parse('<p>x</p>', null);
+          document.select('li:has(> a)');
+          return { items: [{ key: 'k', title: 'it did not refuse' }], hasNextPage: false };
+        } catch (error) {
+          return { items: [{ key: 'k', title: error.message }], hasNextPage: false };
+        }
+      },
+      getChapters(bookKey) {
+        const error = new Error('that book is gone');
+        error.kind = 'NotFound';
+        throw error;
+      },
+    },
+  },
+};
+module.exports = extension;
+''';
+
+Future<void> _runProtocolProbes() async {
+  final console = InMemoryExtensionLog();
+
+  Future<T> withSource<T>(Future<T> Function(JsSourceAdapter source) body) async {
+    final engine = const QuickJsScriptEngineFactory().create(
+      const ScriptRuntimeLimits(callTimeout: Duration(seconds: 10)),
+    );
+    final runtime = await ExtensionRuntime.load(
+      engine: engine,
+      bundle: ExtensionBundle(
+        extensionId: 'org.example.probe',
+        code: _protocolExtension,
+        domains: DomainAllowlist(['example.org']),
+      ),
+      host: const HostFacts(appVersion: '0.1.0'),
+      bridges: [
+        HtmlBridge(),
+        const CryptoBridge(),
+        LogBridge(extensionId: 'org.example.probe', sink: console),
+        StorageBridge(
+          extensionId: 'org.example.probe',
+          store: InMemoryExtensionStore(),
+        ),
+      ],
+    );
+    try {
+      return await body(
+        await JsSourceAdapter.open(runtime: runtime, sourceKey: 'probe'),
+      );
+    } finally {
+      await runtime.dispose();
+    }
+  }
+
+  // 20. The prelude, the protocol and the adapter together: an extension that uses the log, the
+  //     html bridge, the crypto bridge, storage, URL, TextEncoder, TextDecoder, atob, btoa and a
+  //     timer, and whose result is decoded into the contract's types.
+  await _probe('protocol-extension-end-to-end', () async {
+    return withSource((source) async {
+      final page = await source.getPopular(1);
+      if (page.items.length != 1) {
+        throw StateError('expected one book, got ${page.items.length}');
+      }
+      final book = page.items.single;
+      const expected =
+          'Moby-Dick|héllo|b2s=|ok|ba7816bf|whale|/book/12|1|1.0';
+      if (book.title != expected) {
+        throw StateError('expected "$expected", got "${book.title}"');
+      }
+      if (book.key != 'https://example.org/book/12') {
+        throw StateError('absUrl gave ${book.key}');
+      }
+      if (!page.hasNextPage) throw StateError('expected another page');
+      if (!console.messages.any((m) => m.text == 'looking at page 1')) {
+        throw StateError('the log bridge was not reached');
+      }
+      return 'the whole prelude ran: ${book.title}';
+    });
+  });
+
+  // 21. The selectors Phase 0 found `package:html` silently wrong about. The contract says they
+  //     throw; an extension catches the error and reads its message.
+  await _probe('protocol-refused-selector', () async {
+    return withSource((source) async {
+      final page = await source.search(
+        SearchQuery(text: 'whale', filters: FilterValues(const {})),
+        1,
+      );
+      final message = page.items.single.title;
+      if (!message.contains('is not supported')) {
+        throw StateError('expected a refusal, got "$message"');
+      }
+      return 'refused, and the extension could read why: $message';
+    });
+  });
+
+  // 22. An error thrown with the SDK's shape arrives as its own kind, which is the whole reason
+  //     nothing is thrown across the boundary.
+  await _probe('protocol-error-kind', () async {
+    return withSource((source) async {
+      try {
+        await source.getChapters('b1');
+      } on NotFoundException catch (error) {
+        return 'kept its kind: ${_oneLine(error)}';
+      } on SourceException catch (error) {
+        throw StateError('expected NotFound, got ${error.kind}: $error');
+      }
+      throw StateError('expected the call to fail');
+    });
+  });
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _emit('QJS_PROBE INFO probe=spike-a-qjs-probe');
@@ -921,6 +1081,7 @@ Future<void> main() async {
 
   await _runAll();
   await _runEngineProbes();
+  await _runProtocolProbes();
 
   _emit('QJS_PROBE DONE passed=$_passed failed=$_failed');
 
