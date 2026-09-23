@@ -20,12 +20,14 @@ on:
     paths:
       - "third_party/flutter_qjs/**"
       - "spikes/quickjs_binding/**"
-      # The probe now drives Kikuyomi's own ScriptEngine as well as the binding, so a change to the
-      # interface, to the engine behind it, or to the contract they read their limits from is a
-      # change to what this workflow proves.
+      # The probe now drives Kikuyomi's own ScriptEngine and the extension protocol as well as the
+      # binding, so a change to the interface, to the engine behind it, to the contract they read
+      # their limits from, or to anything else the probe builds against is a change to what this
+      # workflow proves.
       - "packages/source_runtime/**"
       - "packages/platform_adapters/**"
       - "packages/source_api/**"
+      - "packages/networking/**"
       - ".github/workflows/android-emulator.yml"
   workflow_dispatch:
 
