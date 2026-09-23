@@ -71,10 +71,13 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  # The LibriVox extension and the LibriVox answers recorded for it. main.js is a copy of
+  # app/assets/extensions/librivox/main.js, because a Flutter package can only bundle assets inside
+  # itself; a test in the app fails if the two ever differ. The probe runs the extension on the real
+  # engine against these recorded answers and never touches the network.
+  assets:
+    - assets/librivox/
+    - assets/librivox/fixtures/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

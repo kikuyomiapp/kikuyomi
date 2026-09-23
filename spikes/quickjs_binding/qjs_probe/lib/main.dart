@@ -18,6 +18,11 @@
 //  4. Does the extension protocol run? Probes 20 to 22 load a small extension through
 //     `ExtensionRuntime`, with the real prelude and the real bridges, and call it through
 //     `JsSourceAdapter`. The prelude is JavaScript, and only QuickJS can say whether it runs.
+//  5. Does the LibriVox extension the app ships work? Probes 23 to 31 run the real
+//     app/assets/extensions/librivox/main.js on the real engine against LibriVox answers recorded
+//     into assets/librivox/fixtures. Never against the live site: a probe that reached the network
+//     would fail for reasons that have nothing to do with the code, and would ask a volunteer-run
+//     site for something on every CI run. A URL with no fixture fails the probe.
 //
 // This is a console probe wearing a Flutter app as a costume, because the plugin's native library
 // is only present in a built Flutter application. It runs every probe at start, unattended, and
@@ -37,11 +42,13 @@
 // found as `verdict=...`; they fail only when the numbers fit no explanation.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:kikuyomi_platform_adapters/kikuyomi_platform_adapters.dart';
@@ -1063,6 +1070,366 @@ Future<void> _runProtocolProbes() async {
   });
 }
 
+// ---------------------------------------------------------------------------------------------
+// Probes 23 to 31: the LibriVox extension the app ships, on the real engine.
+//
+// The extension is JavaScript, so nothing under `flutter test` can run it: the engine's native
+// library only exists inside a built Flutter application. So it runs here, against answers recorded
+// from librivox.org into assets/librivox/fixtures and served by a bridge that refuses anything it
+// has no fixture for. The point of each probe is what the app would get: the contract's own types,
+// decoded by `PlainDataDecoder` with the extension's declared domains, exactly as the app decodes
+// them.
+
+/// The LibriVox answers recorded for the requests the extension makes.
+///
+/// Matched on the parts of the URL the extension builds: a listing, with or without a title or an
+/// author, or one book by id. Anything else has no fixture, and the bridge says so rather than
+/// reaching the network.
+final class _LibriVoxFixtures implements HostBridge {
+  _LibriVoxFixtures(this._bodies);
+
+  static Future<_LibriVoxFixtures> load() async {
+    const names = [
+      'popular-page-1',
+      'search-title-whale',
+      'search-author-whale',
+      'search-author-melville',
+      'book-9638',
+      'no-results',
+    ];
+    final bodies = <String, String>{};
+    for (final name in names) {
+      bodies[name] = await rootBundle.loadString(
+        'assets/librivox/fixtures/$name.json',
+      );
+    }
+    return _LibriVoxFixtures(bodies);
+  }
+
+  final Map<String, String> _bodies;
+
+  /// Every URL asked for, so a probe can say how many requests one call cost.
+  final asked = <String>[];
+
+  @override
+  String get module => 'http';
+
+  @override
+  Future<Object?> call(String method, List<Object?> arguments) async {
+    if (method != 'fetch') {
+      throw HostCallException('there is no http.$method');
+    }
+    final request = arguments.objectAt(0, 'a request');
+    final url = '${request['url']}';
+    asked.add(url);
+    final name = _fixtureFor(url);
+    if (name == null) {
+      // Not a Network error on purpose: this is the probe refusing, and it should not look like
+      // anything the extension could have caused.
+      throw HostCallException('the probe has no fixture for $url');
+    }
+    return {
+      'status': 200,
+      'url': url,
+      'headers': const {'content-type': 'application/json'},
+      'body': jsonDecode(_bodies[name]!),
+    };
+  }
+
+  static String? _fixtureFor(String url) {
+    if (!url.startsWith('https://librivox.org/api/feed/audiobooks/')) {
+      return null;
+    }
+    if (url.contains('id=9638')) return 'book-9638';
+    if (url.contains('id=')) return 'no-results';
+    // %5E is the caret LibriVox needs for a prefix match.
+    if (url.contains('title=%5Ewhale')) return 'search-title-whale';
+    if (url.contains('author=%5Ewhale')) return 'search-author-whale';
+    if (url.contains('title=%5Emelville')) return 'no-results';
+    if (url.contains('author=%5Emelville')) return 'search-author-melville';
+    if (url.contains('title=') || url.contains('author=')) return 'no-results';
+    if (url.contains('offset=0')) return 'popular-page-1';
+    return null;
+  }
+}
+
+Future<void> _runLibriVoxProbes() async {
+  final String code;
+  try {
+    code = await rootBundle.loadString('assets/librivox/main.js');
+  } catch (e) {
+    _report('librivox-asset', false, 'could not read the extension: $e');
+    return;
+  }
+  final console = InMemoryExtensionLog();
+
+  Future<T> withSource<T>(
+    Future<T> Function(JsSourceAdapter source, _LibriVoxFixtures http) body,
+  ) async {
+    final http = await _LibriVoxFixtures.load();
+    final runtime = await ExtensionRuntime.load(
+      engine: const QuickJsScriptEngineFactory().create(
+        const ScriptRuntimeLimits(callTimeout: Duration(seconds: 10)),
+      ),
+      bundle: ExtensionBundle(
+        extensionId: 'org.kikuyomi.librivox',
+        code: code,
+        // The manifest's own domains. A URL outside them fails the call, which is the promise the
+        // permissions screen makes.
+        domains: DomainAllowlist([
+          'librivox.org',
+          '*.librivox.org',
+          'archive.org',
+          '*.archive.org',
+        ]),
+      ),
+      host: const HostFacts(appVersion: '1.0.0'),
+      bridges: [
+        HtmlBridge(),
+        const CryptoBridge(),
+        LogBridge(extensionId: 'org.kikuyomi.librivox', sink: console),
+        StorageBridge(
+          extensionId: 'org.kikuyomi.librivox',
+          store: InMemoryExtensionStore(),
+        ),
+        http,
+      ],
+    );
+    try {
+      return await body(
+        await JsSourceAdapter.open(runtime: runtime, sourceKey: 'librivox'),
+        http,
+      );
+    } finally {
+      await runtime.dispose();
+    }
+  }
+
+  // 23. The extension loads, exports the source the manifest names, and declares exactly the
+  //     optional methods it has.
+  await _probe('librivox-loads', () async {
+    return withSource((source, http) async {
+      if (source.capabilities.length != 1 ||
+          !source.capabilities.contains(SourceCapability.filters)) {
+        throw StateError('capabilities are ${source.capabilities}');
+      }
+      return 'loaded, and declares ${source.capabilities}';
+    });
+  });
+
+  // 24. One page of the catalogue, decoded into the contract's BookSummary: the key is the book's
+  //     LibriVox id, the cover comes out of the Archive item named in url_zip_file, and a page
+  //     shorter than the page size is the last one.
+  await _probe('librivox-popular', () async {
+    return withSource((source, http) async {
+      final page = await source.getPopular(1);
+      if (page.items.length != 3) {
+        throw StateError('expected three books, got ${page.items.length}');
+      }
+      final first = page.items.first;
+      if (first.key != '47' || first.title != 'Count of Monte Cristo') {
+        throw StateError('read $first');
+      }
+      if (first.authors.join() != 'Alexandre Dumas') {
+        throw StateError('authors are ${first.authors}');
+      }
+      if (first.durationMs != 178995000) {
+        throw StateError('duration is ${first.durationMs}');
+      }
+      if ('${first.coverUrl}' !=
+          'https://archive.org/services/img/count_monte_cristo_0711_librivox') {
+        throw StateError('cover is ${first.coverUrl}');
+      }
+      if (page.hasNextPage) throw StateError('expected the last page');
+      if (http.asked.length != 1) {
+        throw StateError('one page cost ${http.asked.length} requests');
+      }
+      return 'three books, covers and all: ${first.title}';
+    });
+  });
+
+  // 25. Search with no filter set asks by title and by author and puts the two together, because
+  //     LibriVox will not do both at once and a listener typing a word may mean either.
+  await _probe('librivox-search-title-and-author', () async {
+    return withSource((source, http) async {
+      final page = await source.search(const SearchQuery(text: 'whale'), 1);
+      final keys = page.items.map((book) => book.key).toList();
+      if (keys.join(',') != '11346,16760') {
+        throw StateError('found $keys');
+      }
+      if (http.asked.length != 2) {
+        throw StateError('expected two requests, made ${http.asked.length}');
+      }
+      return 'title first, then author: $keys';
+    });
+  });
+
+  // 26. The other way round: a name no title starts with, which only the author search finds.
+  await _probe('librivox-search-by-author-only', () async {
+    return withSource((source, http) async {
+      final page = await source.search(const SearchQuery(text: 'melville'), 1);
+      final titles = page.items.map((book) => book.title).toList();
+      if (titles.length != 3 || !titles.contains('Moby Dick, or the Whale')) {
+        throw StateError('found $titles');
+      }
+      return 'the author search carried it: $titles';
+    });
+  });
+
+  // 27. A search narrowed by the source's own filter asks once, of that field alone.
+  await _probe('librivox-search-one-field', () async {
+    return withSource((source, http) async {
+      final filters = await source.getFilters();
+      final field = filters.whereType<SelectFilter>().single;
+      if (field.key != 'field' || field.options.length != 4) {
+        throw StateError('the filter is $field');
+      }
+      final page = await source.search(
+        SearchQuery(
+          text: 'whale',
+          filters: FilterValues({field.key: const SelectValue('title')}),
+        ),
+        1,
+      );
+      if (page.items.single.key != '11346') {
+        throw StateError('found ${page.items}');
+      }
+      if (http.asked.length != 1 || !http.asked.single.contains('title=')) {
+        throw StateError('asked ${http.asked}');
+      }
+      return 'one request, titles only: ${page.items.single.title}';
+    });
+  });
+
+  // 28. A book's details: the HTML summary unwound into plain text with its paragraphs kept, the
+  //     readers gathered from its sections, the language name mapped to a BCP 47 tag, and a status
+  //     of complete, because every catalogued LibriVox project is finished.
+  await _probe('librivox-book-details', () async {
+    return withSource((source, http) async {
+      final book = await source.getBookDetails('9638');
+      if (!book.title.startsWith('Yellowstone National Park')) {
+        throw StateError('title is ${book.title}');
+      }
+      if (book.authors.join() != 'Various') {
+        throw StateError('authors are ${book.authors}');
+      }
+      if (book.narrators.isEmpty || book.narrators.first != 'David Wales') {
+        throw StateError('narrators are ${book.narrators}');
+      }
+      final description = book.description ?? '';
+      if (description.contains('<') || description.contains('&nbsp;')) {
+        throw StateError('the summary still holds markup: $description');
+      }
+      if (book.language != 'en') {
+        throw StateError('language is ${book.language}');
+      }
+      if (book.publishedDate != '1868') {
+        throw StateError('published is ${book.publishedDate}');
+      }
+      if (book.publisher != 'LibriVox') {
+        throw StateError('publisher is ${book.publisher}');
+      }
+      if (book.status != BookStatus.complete) {
+        throw StateError('status is ${book.status}');
+      }
+      if (book.genres.isEmpty) throw StateError('no genres');
+      if ('${book.webUrl}' !=
+          'https://librivox.org/yellowstone-national-park-six-early-pieces-by-various/') {
+        throw StateError('web url is ${book.webUrl}');
+      }
+      if (book.totalDurationMs != 18909000) {
+        throw StateError('total is ${book.totalDurationMs}');
+      }
+      return 'read ${book.title}, ${book.narrators.length} readers, '
+          '${description.length} characters of summary';
+    });
+  });
+
+  // 29. Its chapters are LibriVox's sections, in order, keyed by the section id. The extension
+  //     memoises the one document that holds both, so details and chapters together cost one
+  //     request rather than two.
+  await _probe('librivox-chapters', () async {
+    return withSource((source, http) async {
+      await source.getBookDetails('9638');
+      final chapters = await source.getChapters('9638');
+      if (chapters.length != 9) {
+        throw StateError('expected nine sections, got ${chapters.length}');
+      }
+      if (chapters.first.key != '332498') {
+        throw StateError('first key is ${chapters.first.key}');
+      }
+      if (chapters.first.durationMs != 1279000) {
+        throw StateError('first duration is ${chapters.first.durationMs}');
+      }
+      final keys = chapters.map((chapter) => chapter.key).toSet();
+      if (keys.length != chapters.length) {
+        throw StateError('two chapters share a key');
+      }
+      if (http.asked.length != 1) {
+        throw StateError(
+          'details and chapters cost ${http.asked.length} requests',
+        );
+      }
+      return 'nine sections, one request: ${chapters.first.title}';
+    });
+  });
+
+  // 30. Resolving a chapter gives the file on the Internet Archive, its format and its length, with
+  //     the file keyed by its own name so two chapters cut from one file would share it.
+  await _probe('librivox-resolve-media', () async {
+    return withSource((source, http) async {
+      final resolution = await source.resolveMedia(
+        const ChapterRef(bookKey: '9638', chapterKey: '332499'),
+        const ResolveContext(
+          purpose: ResolvePurpose.stream,
+          network: NetworkType.unknown,
+        ),
+      );
+      final segment = resolution.segments.single;
+      if ('${segment.request.url}' !=
+          'https://www.archive.org/download/yellowstone6pieces_1502_librivox/'
+              'yellowstone6pieces_02_various_64kb.mp3') {
+        throw StateError('url is ${segment.request.url}');
+      }
+      if (segment.fileKey != 'yellowstone6pieces_02_various_64kb.mp3') {
+        throw StateError('file key is ${segment.fileKey}');
+      }
+      if (segment.format != MediaFormat.mp3) {
+        throw StateError('format is ${segment.format}');
+      }
+      if (segment.durationMs != 3183000) {
+        throw StateError('duration is ${segment.durationMs}');
+      }
+      if (segment.range != null) {
+        throw StateError('a whole file should have no range');
+      }
+      if (resolution.expiresAt != null) {
+        throw StateError('the Archive URLs do not expire');
+      }
+      return 'resolved to ${segment.fileKey}';
+    });
+  });
+
+  // 31. A search that matches nothing comes back from LibriVox as an error object with status 200.
+  //     That is an empty page, not a failure; asked for one book by id, the same answer means the
+  //     book is gone, which is NotFound.
+  await _probe('librivox-nothing-found', () async {
+    return withSource((source, http) async {
+      final page = await source.search(const SearchQuery(text: 'zzzz'), 1);
+      if (page.items.isNotEmpty || page.hasNextPage) {
+        throw StateError('expected an empty page, got $page');
+      }
+      try {
+        await source.getBookDetails('1');
+        throw StateError('expected the book to be missing');
+      } on NotFoundException catch (error) {
+        return 'an empty search is empty, and a missing book is NotFound: '
+            '${_oneLine(error)}';
+      }
+    });
+  });
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   _emit('QJS_PROBE INFO probe=spike-a-qjs-probe');
@@ -1082,6 +1449,7 @@ Future<void> main() async {
   await _runAll();
   await _runEngineProbes();
   await _runProtocolProbes();
+  await _runLibriVoxProbes();
 
   _emit('QJS_PROBE DONE passed=$_passed failed=$_failed');
 

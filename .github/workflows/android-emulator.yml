@@ -28,6 +28,11 @@ on:
       - "packages/platform_adapters/**"
       - "packages/source_api/**"
       - "packages/networking/**"
+      # The probe also runs the LibriVox extension the app ships, on the real engine, against
+      # recorded answers. `flutter test` cannot: it does not build the engine's native library. So
+      # a change to the extension is a change to what this workflow proves, and the probe keeps a
+      # copy of main.js that an app test holds equal to this one.
+      - "app/assets/extensions/**"
       - ".github/workflows/android-emulator.yml"
   workflow_dispatch:
 

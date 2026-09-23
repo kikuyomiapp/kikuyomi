@@ -404,12 +404,45 @@ bridges, and call it through `JsSourceAdapter`.
 - **22, an error's kind.** An error thrown with the SDK's shape arrives as `NotFoundException`,
   which is the whole reason nothing is thrown across the boundary.
 
+## The LibriVox extension: probes 23 to 31
+
+The extension the app ships (`app/assets/extensions/librivox/main.js`) is JavaScript, so nothing
+under `flutter test` can run it either. These run the real file on the real engine against LibriVox
+answers recorded into `qjs_probe/assets/librivox/fixtures/`, served by a bridge that refuses any URL
+it has no fixture for. Never against the live site: a probe that reached the network would fail for
+reasons that have nothing to do with the code, and would ask a volunteer-run site for something on
+every CI run.
+
+`qjs_probe/assets/librivox/main.js` is a copy, because a Flutter package can only bundle assets
+inside itself. `app/test/librivox_extension_test.dart` fails if the two ever differ, so a stale copy
+cannot quietly prove nothing.
+
+- **23, it loads**, exports the source its manifest names, and declares exactly the optional methods
+  it has, which is `filters` and nothing else.
+- **24, one page of the catalogue**, decoded into `BookSummary`: the key is the book's LibriVox id,
+  the cover comes out of the Internet Archive item named in `url_zip_file`, and a page shorter than
+  the page size is the last one.
+- **25, search with no filter set** asks by title and by author and puts the two together, because
+  the API will not do both at once.
+- **26, the same, the other way round**: a name no title starts with, which only the author search
+  finds.
+- **27, search narrowed by the source's own filter** asks once, of that field alone.
+- **28, a book's details**: the HTML summary unwound into plain text with its paragraphs kept, the
+  readers gathered from its sections, `English` mapped to `en`, and a status of `complete`.
+- **29, its chapters**, keyed by section id, and details and chapters together costing one request
+  rather than two, because the extension memoises the one document that holds both.
+- **30, resolving a chapter** to the file on the Archive, with its format, its length and a file key
+  that is the file's own name.
+- **31, nothing found.** LibriVox answers a search that matches nothing with an error object and
+  status 200. That is an empty page; asked for one book by id, the same answer is `NotFound`.
+
 ## Results
 
-On Windows all twenty-two pass. Probe 14 stops at 1003 ms after about 130,000 host calls, where the
+On Windows all thirty-one pass. Probe 14 stops at 1003 ms after about 130,000 host calls, where the
 same loop under the old deadline (probe 10, still in the run) reaches its own 4000 ms bound.
 Probe 19 is cancelled 449 ms after the call starts, the cancellation having been sent at 501 ms
-from another isolate. Probe 20 runs the whole prelude in 103 ms.
+from another isolate. Probe 20 runs the whole prelude in 103 ms. The nine LibriVox probes take 3 to
+7 ms each, which is what a source call costs once the answer is already in hand.
 
 Two findings from writing them, both now fixed in the code rather than here:
 

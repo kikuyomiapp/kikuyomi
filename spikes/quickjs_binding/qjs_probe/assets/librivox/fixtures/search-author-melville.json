@@ -1,0 +1,49 @@
+{
+ "books": [
+  {
+   "id": "452",
+   "title": "Typee",
+   "url_zip_file": "https://archive.org/compress/typee_librivox/formats=64KBPS MP3&file=/typee_librivox.zip",
+   "totaltimesecs": 42161,
+   "authors": [
+    {
+     "id": "329",
+     "first_name": "Herman",
+     "last_name": "Melville",
+     "dob": "1819",
+     "dod": "1891"
+    }
+   ]
+  },
+  {
+   "id": "753",
+   "title": "Moby Dick, or the Whale",
+   "url_zip_file": "https://archive.org/compress/moby_dick_librivox/formats=64KBPS MP3&file=/moby_dick_librivox.zip",
+   "totaltimesecs": 88670,
+   "authors": [
+    {
+     "id": "329",
+     "first_name": "Herman",
+     "last_name": "Melville",
+     "dob": "1819",
+     "dod": "1891"
+    }
+   ]
+  },
+  {
+   "id": "1222",
+   "title": "Bartleby the Scrivener, A Story of Wall Street.",
+   "url_zip_file": "https://archive.org/compress/bartleby_scrivener_1107_librivox/formats=64KBPS MP3&file=/bartleby_scrivener_1107_librivox.zip",
+   "totaltimesecs": 5405,
+   "authors": [
+    {
+     "id": "329",
+     "first_name": "Herman",
+     "last_name": "Melville",
+     "dob": "1819",
+     "dod": "1891"
+    }
+   ]
+  }
+ ]
+}

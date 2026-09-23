@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kikuyomi/src/sources/bundled_extensions.dart';
@@ -72,6 +74,26 @@ void main() {
     expect(
       source.idWithin(manifest.id),
       isNot(source.idWithin('org.example.other')),
+    );
+  });
+
+  test('the probe runs the same code the app ships', () {
+    // The probe is a Flutter package of its own, and a package can only bundle assets inside
+    // itself, so its copy of main.js is a copy. This is what stops the two drifting apart: the
+    // probe is the only thing that runs the extension on the real engine, and a stale copy would
+    // prove nothing about what the app ships.
+    final shipped = File('assets/extensions/librivox/main.js');
+    final probe = File(
+      '../spikes/quickjs_binding/qjs_probe/assets/librivox/main.js',
+    );
+
+    expect(probe.existsSync(), isTrue, reason: '${probe.path} is missing');
+    expect(
+      probe.readAsBytesSync(),
+      shipped.readAsBytesSync(),
+      reason:
+          'copy app/assets/extensions/librivox/main.js over '
+          'spikes/quickjs_binding/qjs_probe/assets/librivox/main.js',
     );
   });
 

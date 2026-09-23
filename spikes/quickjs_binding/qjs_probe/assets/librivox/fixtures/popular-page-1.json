@@ -1,0 +1,49 @@
+{
+ "books": [
+  {
+   "id": "47",
+   "title": "Count of Monte Cristo",
+   "url_zip_file": "https://archive.org/compress/count_monte_cristo_0711_librivox/formats=64KBPS MP3&file=/count_monte_cristo_0711_librivox.zip",
+   "totaltimesecs": 178995,
+   "authors": [
+    {
+     "id": "431",
+     "first_name": "Alexandre",
+     "last_name": "Dumas",
+     "dob": "1802",
+     "dod": "1870"
+    }
+   ]
+  },
+  {
+   "id": "52",
+   "title": "Letters of Two Brides",
+   "url_zip_file": "https://archive.org/compress/letters_brides_0709_librivox/formats=64KBPS MP3&file=/letters_brides_0709_librivox.zip",
+   "totaltimesecs": 32960,
+   "authors": [
+    {
+     "id": "86",
+     "first_name": "Honoré de",
+     "last_name": "Balzac",
+     "dob": "1799",
+     "dod": "1850"
+    }
+   ]
+  },
+  {
+   "id": "53",
+   "title": "Bleak House",
+   "url_zip_file": "https://archive.org/compress/bleak_house_cl_librivox/formats=64KBPS MP3&file=/bleak_house_cl_librivox.zip",
+   "totaltimesecs": 156619,
+   "authors": [
+    {
+     "id": "91",
+     "first_name": "Charles",
+     "last_name": "Dickens",
+     "dob": "1812",
+     "dod": "1870"
+    }
+   ]
+  }
+ ]
+}

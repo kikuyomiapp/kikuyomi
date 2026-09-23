@@ -1,0 +1,19 @@
+{
+ "books": [
+  {
+   "id": "11346",
+   "title": "Whale",
+   "url_zip_file": "https://archive.org/compress/the_whale_1610.poem_librivox/formats=64KBPS MP3&file=/the_whale_1610.poem_librivox.zip",
+   "totaltimesecs": 1079,
+   "authors": [
+    {
+     "id": "53",
+     "first_name": "Ellis Parker",
+     "last_name": "Butler",
+     "dob": "1869",
+     "dod": "1937"
+    }
+   ]
+  }
+ ]
+}

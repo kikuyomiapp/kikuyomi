@@ -1,0 +1,19 @@
+{
+ "books": [
+  {
+   "id": "16760",
+   "title": "Women of the French Revolution",
+   "url_zip_file": "https://archive.org/compress/womenoffrenchrevolution_2106_librivox/formats=64KBPS MP3&file=/womenoffrenchrevolution_2106_librivox.zip",
+   "totaltimesecs": 28269,
+   "authors": [
+    {
+     "id": "16168",
+     "first_name": "Winifred",
+     "last_name": "Stephens Whale",
+     "dob": "1870",
+     "dod": "1944"
+    }
+   ]
+  }
+ ]
+}
