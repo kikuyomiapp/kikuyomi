@@ -39,7 +39,7 @@ import 'stream_audio_cache.dart';
 /// Each item's duration is reported once the player knows it (§4.5), from a ready player only; see
 /// [_reportDuration] for why.
 final class JustAudioEngine implements PlaybackEngine {
-  JustAudioEngine({this.cache}) {
+  JustAudioEngine({this.cache, this.userAgent}) {
     _subscriptions
       ..add(_player.positionStream.listen(_onPosition))
       ..add(_player.currentIndexStream.listen(_onIndex))
@@ -59,6 +59,10 @@ final class JustAudioEngine implements PlaybackEngine {
   /// straight from where they are, exactly as before: copying them into a cache would be copying
   /// the device's own storage onto itself.
   final StreamAudioCache? cache;
+
+  /// How the app names itself when it fetches a stream's bytes itself, which it does for every file
+  /// it caches. §2.7 decides it in one place; this is where that reaches the audio.
+  final String? userAgent;
 
   /// How long a seek into another item may wait for that item to become ready.
   static const _itemReadyTimeout = Duration(seconds: 10);
@@ -172,6 +176,7 @@ final class JustAudioEngine implements PlaybackEngine {
         fileId: item.fileId,
         cache: store,
         resolve: () async => known ?? await entry.resolve(),
+        userAgent: userAgent,
       );
     }
     final media = known ?? await entry.resolve();

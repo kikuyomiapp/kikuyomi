@@ -57,8 +57,9 @@ final class AppServices {
     final audioFocus = await AudioFocus.configure();
     // §2.7's one NetworkService, which owns the cookie jars and the rate limiters, and decides the
     // User-Agent no extension may change.
+    final userAgent = 'Kikuyomi/${_plainVersion()}';
     final network = net.NetworkService(
-      policy: net.NetworkPolicy(userAgent: 'Kikuyomi/${_plainVersion()}'),
+      policy: net.NetworkPolicy(userAgent: userAgent),
     );
     final console = InMemoryExtensionLog();
     final sources = await SourceRegistry.start(
@@ -87,7 +88,7 @@ final class AppServices {
     final streamCache = StreamAudioCache(locations.streamCache);
     unawaited(streamCache.prune());
     final coordinator = PlaybackCoordinator(
-      engine: JustAudioEngine(cache: streamCache),
+      engine: JustAudioEngine(cache: streamCache, userAgent: userAgent),
       // One resolver for the whole library: files on the device go to the local one, and a book
       // that streams is resolved through its source, just in time (§6.3).
       resolver: SourceMediaResolver(

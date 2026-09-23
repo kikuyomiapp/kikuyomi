@@ -35,12 +35,21 @@ final class CachedAudioSource extends ja.StreamAudioSource {
     required this.fileId,
     required this.cache,
     required Future<ResolvedMedia> Function() resolve,
+    this.userAgent,
   }) : _resolve = resolve;
 
   /// The library's id for this file, which is what the cache file is named after.
   final int fileId;
 
   final StreamAudioCache cache;
+
+  /// How the app names itself to the site it fetches from, or null to say nothing.
+  ///
+  /// The bytes of a plain `AudioSource.uri` are fetched by the device's own player, which names
+  /// itself; these are fetched by Dart, which would otherwise send `Dart/3.x (dart:io)`. §2.7 has
+  /// the app decide its User-Agent in one place and lets no extension change it, and a
+  /// volunteer-run site being asked for a book deserves to know who is asking.
+  final String? userAgent;
 
   final Future<ResolvedMedia> Function() _resolve;
 
@@ -66,12 +75,20 @@ final class CachedAudioSource extends ja.StreamAudioSource {
   ///
   /// It is never attached to the player: this wrapper is what the player holds, and what it asks
   /// for is passed straight through. That is deliberate — `LockCachingAudioSource` needs a player
-  /// only to register with the proxy, and this wrapper has already done that for both of them.
+  /// only to register with the proxy, and this wrapper has already done that for both of them. The
+  /// one other thing it would read from a player is the User-Agent, which is passed as a header
+  /// here instead, so nothing is lost by leaving it detached.
   Future<ja.LockCachingAudioSource> _open() async {
     final media = await _resolve();
+    // The source's own headers come first, and the User-Agent is put in beside them rather than
+    // over them: a site that needs a particular one is answering the extension, not the app.
+    final headers = {
+      if (userAgent != null) 'user-agent': userAgent!,
+      ...media.headers,
+    };
     return ja.LockCachingAudioSource(
       media.uri,
-      headers: media.headers.isEmpty ? null : media.headers,
+      headers: headers.isEmpty ? null : headers,
       cacheFile: await cache.fileFor(fileId: fileId, uri: media.uri),
     );
   }
