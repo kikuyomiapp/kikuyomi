@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import 'book_details_screen.dart';
 import 'browse_screen.dart';
+import 'extension_console_screen.dart';
+import 'extensions_screen.dart';
 import 'library_screen.dart';
 import 'player_screen.dart';
 import 'restore_screen.dart';
@@ -87,6 +89,10 @@ class SetupRoute extends GoRouteData with $SetupRoute {
           path: 'source',
           routes: [TypedGoRoute<SourceBookRoute>(path: 'book')],
         ),
+        TypedGoRoute<ExtensionsRoute>(
+          path: 'extensions',
+          routes: [TypedGoRoute<ExtensionConsoleRoute>(path: 'console')],
+        ),
       ],
     ),
   ],
@@ -160,6 +166,33 @@ class SourceBookRoute extends GoRouteData with $SourceBookRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) =>
       SourceBookScreen(sourceId: sourceId, bookKey: bookKey);
+}
+
+/// Extensions: what is installed, and installing or removing one (§3.9).
+///
+/// Under Browse, because an extension is where a source comes from. Mihon puts it in the same place,
+/// for the same reason.
+class ExtensionsRoute extends GoRouteData with $ExtensionsRoute {
+  const ExtensionsRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const ExtensionsScreen();
+}
+
+/// The extension console (§3.11), for every extension or for one.
+///
+/// The extension is a query parameter rather than part of the path: it is a reversed domain name, so it
+/// holds the dots a path segment would otherwise have to be read around, and the console with no
+/// extension named is the same screen showing everything.
+class ExtensionConsoleRoute extends GoRouteData with $ExtensionConsoleRoute {
+  const ExtensionConsoleRoute({this.extensionId});
+
+  final String? extensionId;
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      ExtensionConsoleScreen(extensionId: extensionId);
 }
 
 /// Settings, from the home's app bar. There is no More tab yet, so it sits above the home.
