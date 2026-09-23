@@ -20,6 +20,10 @@ dependencies:
   drift: ^2.35.0
   kikuyomi_domain:
     path: ../domain
+  # The extension contract, so that a source's results can be mapped onto the §4.4 merges. Pure
+  # Dart, like this package; nothing here runs an extension.
+  kikuyomi_source_api:
+    path: ../source_api
 
 dev_dependencies:
   kikuyomi_test_support:

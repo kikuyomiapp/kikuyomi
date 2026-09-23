@@ -18,6 +18,8 @@ environment:
 dependencies:
   kikuyomi_domain:
     path: ../domain
+  kikuyomi_source_api:
+    path: ../source_api
 
 dev_dependencies:
   test: ^1.25.0

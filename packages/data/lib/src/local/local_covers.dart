@@ -75,8 +75,11 @@ const _extensions = {
   'image/bmp': 'bmp',
 };
 
-/// Records the cover found in book [bookId]'s files: keeps [image] in [covers] and names it on the
-/// book, or, when [image] is null, records that the book has none.
+/// Records the cover of book [bookId]: keeps [image] in [covers] and names it on the book, or, when
+/// [image] is null, records that the book has none.
+///
+/// The same for a cover read out of a local book's files and one fetched from a source's `coverUrl`:
+/// where the image came from is the caller's business, and what happens to it is the same.
 ///
 /// Either way `cover_updated_at` is set. That is what marks a book's cover as looked for, so a book
 /// whose files carry no cover is not read again for one at every start. The file is written before
@@ -90,7 +93,7 @@ const _extensions = {
 ///
 /// Does nothing for a book that does not exist. Throws a [FileSystemException] when the image cannot
 /// be written, leaving the book's cover still to be looked for.
-Future<void> keepLocalCover(
+Future<void> keepBookCover(
   KikuyomiDatabase db,
   int bookId,
   CoverImage? image, {
@@ -212,7 +215,7 @@ typedef LocalCoverReader = Future<CoverImage?> Function(
   Directory? folder,
 );
 
-/// Looks for [book]'s cover with [read] and records what it finds, as [keepLocalCover] does, so that
+/// Looks for [book]'s cover with [read] and records what it finds, as [keepBookCover] does, so that
 /// a book with no cover is not looked for again.
 ///
 /// A book whose file is missing or cannot be read is skipped quietly and left to be looked for
@@ -236,7 +239,7 @@ Future<void> lookForLocalCover(
           ? null
           : Directory(resolveLocalPath(folderPath, mediaRoot: mediaRoot)),
     );
-    await keepLocalCover(db, book.bookId, image, covers: covers, clock: clock);
+    await keepBookCover(db, book.bookId, image, covers: covers, clock: clock);
   } on FileSystemException {
     // Left for another time.
   }

@@ -15,6 +15,8 @@ final class StoredChapter {
     required this.title,
     required this.sourceIndex,
     this.durationMs,
+    this.publishedAt,
+    this.group,
     this.removedFromSource = false,
     this.hasProgress = false,
     this.hasBookmarks = false,
@@ -28,6 +30,13 @@ final class StoredChapter {
   final String title;
   final int sourceIndex;
   final int? durationMs;
+
+  /// `chapter.published_at`: when the source released the chapter, for serials.
+  final DateTime? publishedAt;
+
+  /// `chapter.group_name`: a part or volume heading, such as "Part One".
+  final String? group;
+
   final bool removedFromSource;
   final bool hasProgress;
   final bool hasBookmarks;
@@ -38,18 +47,31 @@ final class StoredChapter {
 }
 
 /// A chapter as the source reports it now.
+///
+/// Every field of §4.3's `chapter` row that a source provides is here: the two that the contract's
+/// `ChapterInfo` carries beyond a title and a duration — `publishedAt`, for serials that release
+/// chapters over time, and `group`, a part or volume heading — have columns of their own, so a
+/// refresh that changes only a heading is still a change.
 final class IncomingChapter {
   const IncomingChapter({
     required this.key,
     required this.title,
     required this.sourceIndex,
     this.durationMs,
+    this.publishedAt,
+    this.group,
   });
 
   final String key;
   final String title;
   final int sourceIndex;
   final int? durationMs;
+
+  /// When the source released the chapter. In UTC.
+  final DateTime? publishedAt;
+
+  /// A part or volume heading, such as "Part One".
+  final String? group;
 }
 
 /// One thing to do to reconcile stored chapters with incoming ones.
@@ -112,7 +134,7 @@ final class RemoveChapter extends ChapterChange {
 ///
 /// - Chapters match by key. New keys are inserted.
 /// - Keys that disappear are soft-deleted, and marked non-purgeable if they carry user data.
-/// - Changed ordering, titles or durations update the stored row.
+/// - Changed ordering, titles, durations, release times or group headings update the stored row.
 /// - When a key changes but the title and index match and the durations are within
 ///   [durationToleranceMs], the chapter is treated as renamed and keeps its identity.
 ///
@@ -122,6 +144,10 @@ final class RemoveChapter extends ChapterChange {
 ///   untitled chapters would otherwise pair on index alone.
 /// - A duration unknown on either side does not rule out a rename. Title and index matching is
 ///   already strong evidence, and many sources report no duration until a file is probed.
+/// - A release time or a group heading the source stops reporting does not erase the stored one,
+///   exactly as a duration does not: sources drop fields through flakiness more often than on
+///   purpose. Neither takes part in rename matching, because a heading is shared by every chapter
+///   of a part and a release time is often absent, so neither tells two chapters apart.
 /// - A rename must be one-to-one. If an incoming chapter could be several stored ones, or a stored
 ///   chapter several incoming ones, nothing is renamed and the ordinary insert and remove apply.
 ///   Losing a rename loses progress visibly; a wrong rename attaches it silently to the wrong
@@ -169,7 +195,10 @@ List<ChapterChange> planChapterSync({
         existing.title != chapter.title ||
         existing.sourceIndex != chapter.sourceIndex ||
         (chapter.durationMs != null &&
-            chapter.durationMs != existing.durationMs);
+            chapter.durationMs != existing.durationMs) ||
+        (chapter.publishedAt != null &&
+            chapter.publishedAt != existing.publishedAt) ||
+        (chapter.group != null && chapter.group != existing.group);
     if (changed) {
       updates[chapter] = UpdateChapter(
         id: existing.id,

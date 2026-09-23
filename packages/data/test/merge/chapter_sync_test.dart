@@ -7,6 +7,8 @@ StoredChapter stored(
   String? title,
   int? index,
   int? durationMs,
+  DateTime? publishedAt,
+  String? group,
   bool removed = false,
   bool progress = false,
   bool bookmarks = false,
@@ -17,6 +19,8 @@ StoredChapter stored(
   title: title ?? 'Chapter $id',
   sourceIndex: index ?? id,
   durationMs: durationMs,
+  publishedAt: publishedAt,
+  group: group,
   removedFromSource: removed,
   hasProgress: progress,
   hasBookmarks: bookmarks,
@@ -28,11 +32,15 @@ IncomingChapter incoming(
   required String title,
   required int index,
   int? durationMs,
+  DateTime? publishedAt,
+  String? group,
 }) => IncomingChapter(
   key: key,
   title: title,
   sourceIndex: index,
   durationMs: durationMs,
+  publishedAt: publishedAt,
+  group: group,
 );
 
 void main() {
@@ -326,5 +334,59 @@ void main() {
       ),
       throwsArgumentError,
     );
+  });
+
+  group('a release time and a group heading', () {
+    final released = DateTime.utc(2026, 3, 4);
+
+    test('a chapter given a heading for the first time is updated', () {
+      final plan = planChapterSync(
+        stored: [stored(1, 'a')],
+        incoming: [
+          incoming('a', title: 'Chapter 1', index: 1, group: 'Part One'),
+        ],
+      );
+
+      expect(plan.single, isA<UpdateChapter>());
+      expect((plan.single as UpdateChapter).chapter.group, 'Part One');
+    });
+
+    test('a chapter whose release time changed is updated', () {
+      final plan = planChapterSync(
+        stored: [stored(1, 'a', publishedAt: DateTime.utc(2026))],
+        incoming: [
+          incoming('a', title: 'Chapter 1', index: 1, publishedAt: released),
+        ],
+      );
+
+      expect((plan.single as UpdateChapter).chapter.publishedAt, released);
+    });
+
+    test('a source that stops reporting either changes nothing', () {
+      // The rule a duration already follows: sources drop fields through flakiness far more often
+      // than on purpose, and a refresh that forgets a heading is worse than a stale one.
+      final plan = planChapterSync(
+        stored: [stored(1, 'a', publishedAt: released, group: 'Part One')],
+        incoming: [incoming('a', title: 'Chapter 1', index: 1)],
+      );
+
+      expect(plan, isEmpty);
+    });
+
+    test('a heading does not make two chapters look like a rename', () {
+      // Every chapter of a part shares its heading, so it tells none of them apart. Title and index
+      // still decide, as they did before either field existed.
+      final plan = planChapterSync(
+        stored: [
+          stored(1, 'old', title: 'Chapter 1', index: 1, group: 'Part One'),
+        ],
+        incoming: [
+          incoming('new', title: 'Chapter 1', index: 1, group: 'Part Two'),
+        ],
+      );
+
+      expect(plan.single, isA<RenameChapter>());
+      expect((plan.single as RenameChapter).chapter.group, 'Part Two');
+    });
   });
 }

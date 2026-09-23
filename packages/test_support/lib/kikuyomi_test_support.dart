@@ -6,5 +6,6 @@
 library;
 
 export 'src/fake_clock.dart';
+export 'src/fake_content_source.dart';
 export 'src/fake_user_folders.dart';
 export 'src/in_memory_settings_store.dart';

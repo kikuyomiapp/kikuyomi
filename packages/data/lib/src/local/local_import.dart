@@ -110,7 +110,7 @@ final class LocalFolderImport {
 /// if it had been taken out, so an import can safely be repeated.
 ///
 /// Given [covers], the book's [LocalBookImport.cover] is then kept there, or its lack recorded, as
-/// [keepLocalCover] does. That happens once the book is saved, since a cover is named after the
+/// [keepBookCover] does. That happens once the book is saved, since a cover is named after the
 /// book's id, and for a book already known only while its cover has never been looked for, which is
 /// how adding again a book from before covers were kept brings its cover. Without [covers] the cover
 /// is left for [lookForLocalCover] to find later. A cover that cannot be written never fails the
@@ -218,7 +218,7 @@ Future<void> _keepCover(
 }) async {
   if (covers == null) return;
   try {
-    await keepLocalCover(db, bookId, image, covers: covers, clock: clock);
+    await keepBookCover(db, bookId, image, covers: covers, clock: clock);
   } on FileSystemException {
     // The book is in the library, and a cover is not worth failing that for. It is still to be looked
     // for, so a later look can try again.
