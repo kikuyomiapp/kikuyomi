@@ -37,6 +37,17 @@ final class LocalMediaResolver implements MediaResolver {
   /// What relative paths are relative to.
   final Directory mediaRoot;
 
+  /// Every file this resolver answers for is on the device, so nothing it can resolve costs
+  /// anything to resolve. One that is missing is not in hand, and says so when it is played.
+  @override
+  Future<ResolvedMedia?> resolveIfOnHand(int fileId) async {
+    try {
+      return await resolve(fileId);
+    } on MediaUnavailableException {
+      return null;
+    }
+  }
+
   @override
   Future<ResolvedMedia> resolve(int fileId, {bool refresh = false}) async {
     final row = await (_db.select(

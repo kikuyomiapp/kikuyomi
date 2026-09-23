@@ -70,6 +70,7 @@ final class PlaybackCoordinator {
     required Clock clock,
     SmartRewind? smartRewind,
     SleepTimer? sleepTimer,
+    this.onTiming,
     this.previousChapterThreshold = const Duration(seconds: 3),
     this.seekLandingTolerance = const Duration(milliseconds: 500),
     this.durationRefinementThreshold = const Duration(seconds: 1),
@@ -84,6 +85,13 @@ final class PlaybackCoordinator {
           unawaited(_serial(() => _onEvent(event)).catchError(_onUnexpected)),
     );
   }
+
+  /// Where the time each slow step takes is reported, or null to measure nothing.
+  ///
+  /// The steps are `open.resolve`, `open.load` and `open` for opening a book, `reload` for §6.3's
+  /// recovery, and `seek` for moving about in one. The app passes a sink that writes to the console
+  /// in a debug build, which is how a listener saying "pressing play is slow" becomes a number.
+  final TimingSink? onTiming;
 
   /// "Previous chapter" restarts the current chapter when playback is further into it than this,
   /// and goes to the previous chapter otherwise. The usual convention in media players.
@@ -136,17 +144,23 @@ final class PlaybackCoordinator {
     _sleepTimer.takeResumeRewind();
 
     final timeline = request.timeline;
+    final watch = onTiming == null ? null : (Stopwatch()..start());
     try {
-      final items = await _resolve(timeline, refresh: false);
       final saved = request.resumeFrom;
       final start = saved == null
           ? ChapterPosition(chapterId: timeline.chapterIds.first, offsetMs: 0)
           : _smartRewind.resumeFrom(saved, request.pausedFor);
       final startAt = timeline.queuePositionOfChapter(start);
+      final items = await _resolve(timeline, refresh: false, startAt: startAt);
+      final resolvedAt = watch?.elapsed;
 
       await _engine.load(items, startAt: startAt);
       await _engine.setSpeed(request.speed);
       await _engine.setVolume(1.0);
+      if (watch != null && resolvedAt != null) {
+        onTiming!('open.resolve', resolvedAt);
+        onTiming!('open.load', watch.elapsed - resolvedAt);
+      }
 
       final session = _Session(
         bookId: request.bookId,
@@ -164,10 +178,14 @@ final class PlaybackCoordinator {
       session.tracker.onLoaded(startAt);
       _session = session;
       _publish();
+      // Deliberately not awaited, and started only once the book is open: the point of leaving
+      // files unresolved was to let playback begin, so finishing the job must not delay it.
+      unawaited(_resolveTheRest(session, items));
     } catch (error) {
       _session = null;
       _emit(PlayerFailed(bookId: request.bookId, error: error));
     }
+    if (watch != null) onTiming!('open', watch.elapsed);
   });
 
   Future<void> play() => _serial(() async {
@@ -477,7 +495,16 @@ final class PlaybackCoordinator {
     final timeline = session.timeline;
     final from = session.globalMs;
     final destination = timeline.queuePositionAt(globalMs);
+    final watch = onTiming == null ? null : (Stopwatch()..start());
     await _engine.seek(destination);
+    if (watch != null) {
+      onTiming!(
+        destination.itemIndex == session.position.itemIndex
+            ? 'seek'
+            : 'seek.item',
+        watch.elapsed,
+      );
+    }
     session.position = destination;
     session.landing = destination;
     await _saveProgress(session, session.tracker.onSeek(destination));
@@ -589,15 +616,27 @@ final class PlaybackCoordinator {
     return after.navigationEntryAt(after.globalOf(start)).endMs;
   }
 
-  /// Re-resolves every file and reloads at the current position. Returns whether it worked.
+  /// Resolves the file being played again and reloads at the current position. Returns whether it
+  /// worked.
+  ///
+  /// §6.3's one transparent recovery. It re-resolves what failed — the item the engine is on — and
+  /// offers the rest as [_resolve] always does, so a book of a hundred chapters is not resolved
+  /// from end to end because one URL expired.
   Future<bool> _reload(_Session session, {required bool refresh}) async {
+    final watch = onTiming == null ? null : (Stopwatch()..start());
     try {
-      final items = await _resolve(session.timeline, refresh: refresh);
+      final items = await _resolve(
+        session.timeline,
+        refresh: refresh,
+        startAt: session.position,
+      );
       session.landing = session.position;
       await _engine.load(items, startAt: session.position);
       await _engine.setSpeed(session.speed);
       await _engine.setVolume(session.volume);
       if (session.playing) await _engine.play();
+      if (watch != null) onTiming!('reload', watch.elapsed);
+      unawaited(_resolveTheRest(session, items));
       return true;
     } catch (error) {
       await _fail(session, error);
@@ -671,21 +710,64 @@ final class PlaybackCoordinator {
     _session = null;
   }
 
+  /// The queue made playable, with the item at [startAt] resolved and the rest left to the engine.
+  ///
+  /// The file the listener is about to hear is resolved here, so that a source that refuses is a
+  /// failure the player shows before it claims to have opened the book, and so that §6.3's
+  /// re-resolve after a stream error really re-resolves what failed. Every other file is offered
+  /// as it stands: [MediaResolver.resolveIfOnHand] answers for the ones that cost nothing — which
+  /// for a local book is all of them, so nothing about local playback changes — and the ones it
+  /// does not answer for are handed over unresolved, to be resolved when the engine opens them.
+  ///
+  /// A file used by several items is resolved once, and the items share the answer.
   Future<List<EngineItem>> _resolve(
     Timeline timeline, {
     required bool refresh,
+    required QueuePosition startAt,
   }) async {
+    final queue = timeline.queue;
+    final start = startAt.itemIndex.clamp(0, queue.length - 1);
     final resolved = <int, ResolvedMedia>{};
-    return [
-      for (final item in timeline.queue)
+    resolved[queue[start].fileId] = await _resolver.resolve(
+      queue[start].fileId,
+      refresh: refresh,
+    );
+    final asked = <int>{queue[start].fileId};
+    final items = <EngineItem>[];
+    for (final item in queue) {
+      if (asked.add(item.fileId)) {
+        final onHand = await _resolver.resolveIfOnHand(item.fileId);
+        if (onHand != null) resolved[item.fileId] = onHand;
+      }
+      items.add(
         EngineItem(
           item: item,
-          media: resolved[item.fileId] ??= await _resolver.resolve(
-            item.fileId,
-            refresh: refresh,
-          ),
+          media: resolved[item.fileId],
+          resolve: () => _resolver.resolve(item.fileId, refresh: refresh),
         ),
-    ];
+      );
+    }
+    return items;
+  }
+
+  /// Resolves, one at a time and after playback has started, the files the load left unresolved.
+  ///
+  /// Nothing waits for this: it is what makes jumping to a chapter halfway through a streamed book
+  /// as quick as playing the next one, because by the time anybody jumps the resolver is already
+  /// holding the answer. It stops as soon as the book it was started for is no longer the open one,
+  /// and a file that will not resolve is left for the engine to fail over when it is really played.
+  Future<void> _resolveTheRest(_Session session, List<EngineItem> items) async {
+    final done = <int>{};
+    for (final item in items) {
+      if (!identical(_session, session)) return;
+      if (item.media != null || !done.add(item.item.fileId)) continue;
+      try {
+        await item.resolve();
+      } catch (_) {
+        // Resolving ahead is a convenience. A file that cannot be resolved now will be reported
+        // when the listener asks for it, by the same path as any other stream error.
+      }
+    }
   }
 
   /// Saves [position], recording its chapter as listened when the position has reached the chapter's

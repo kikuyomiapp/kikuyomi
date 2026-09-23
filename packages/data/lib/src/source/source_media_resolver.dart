@@ -42,6 +42,7 @@ final class SourceMediaResolver implements MediaResolver {
     required this.onDevice,
     required this.clock,
     this.network = api.NetworkType.unknown,
+    this.onTiming,
   });
 
   final KikuyomiDatabase _db;
@@ -61,30 +62,61 @@ final class SourceMediaResolver implements MediaResolver {
   /// guessing "wifi" would quietly cost someone their data.
   final api.NetworkType network;
 
+  /// Where the time each resolution spends is reported, or null to measure nothing.
+  final TimingSink? onTiming;
+
   /// What a source last said, by file id. Kept only in memory: §4.3 treats these URLs as ephemeral,
   /// and a token written to disk outlives its usefulness and is a secret nobody asked to keep.
   final _resolved = <int, ResolvedMedia>{};
+
+  /// The resolution of each file being worked on, so that two callers asking for one file at the
+  /// same time cost the source one call rather than two.
+  ///
+  /// A book is resolved from two directions at once: the engine asks for the file it is about to
+  /// play, and the background pass walks the rest. Without this they would race on the same file
+  /// and each write its own copy of the layout.
+  final _inFlight = <int, Future<ResolvedMedia>>{};
 
   /// Forgets everything resolved, as closing a book or disabling a source should.
   void clearCache() => _resolved.clear();
 
   @override
-  Future<ResolvedMedia> resolve(int fileId, {bool refresh = false}) async {
-    final file = await (_db.select(
-      _db.mediaFiles,
-    )..where((f) => f.id.equals(fileId))).getSingleOrNull();
-    if (file == null) {
+  Future<ResolvedMedia?> resolveIfOnHand(int fileId) async {
+    final rows = await _rowsFor(fileId);
+    if (rows == null) return null;
+    final (:file, :book) = rows;
+    final isLocal = book.sourceId == localSourceId;
+    if (isLocal || file.localPath != null) {
+      try {
+        return await onDevice.resolve(fileId);
+      } on MediaUnavailableException {
+        // A local book's file is gone, or a download has been cleared. Either way there is nothing
+        // in hand; the source may still have it, which resolving it properly will find out.
+        if (isLocal) return null;
+      }
+    }
+    final cached = _resolved[fileId];
+    return cached != null && !_hasExpired(cached) ? cached : null;
+  }
+
+  @override
+  Future<ResolvedMedia> resolve(int fileId, {bool refresh = false}) {
+    final running = refresh ? null : _inFlight[fileId];
+    if (running != null) return running;
+    final work = _resolveNow(fileId, refresh: refresh);
+    _inFlight[fileId] = work;
+    return work.whenComplete(() {
+      if (identical(_inFlight[fileId], work)) _inFlight.remove(fileId);
+    });
+  }
+
+  Future<ResolvedMedia> _resolveNow(int fileId, {required bool refresh}) async {
+    final watch = onTiming == null ? null : (Stopwatch()..start());
+    final rows = await _rowsFor(fileId);
+    if (rows == null) {
       throw MediaUnavailableException('no media file with id $fileId');
     }
-
-    final book = await (_db.select(
-      _db.books,
-    )..where((b) => b.id.equals(file.bookId))).getSingleOrNull();
-    if (book == null) {
-      throw MediaUnavailableException(
-        'file "${file.fileKey}" belongs to no book',
-      );
-    }
+    final (:file, :book) = rows;
 
     final isLocal = book.sourceId == localSourceId;
     if (isLocal || file.localPath != null) {
@@ -108,21 +140,114 @@ final class SourceMediaResolver implements MediaResolver {
     }
 
     final source = await openSource(book.sourceId);
+    final askedAt = watch?.elapsed;
     final resolution = await source.resolveMedia(
       api.ChapterRef(bookKey: book.key, chapterKey: chapter.key),
       api.ResolveContext(purpose: api.ResolvePurpose.stream, network: network),
     );
+    final answeredAt = watch?.elapsed;
 
-    final media = await _db.transaction(
+    final media = await _apply(
+      book: book,
+      chapterId: chapter.id,
+      fileId: fileId,
+      resolution: resolution,
+    );
+    _resolved[fileId] = media;
+    if (watch != null && askedAt != null && answeredAt != null) {
+      onTiming!('resolve.source', answeredAt - askedAt);
+      onTiming!('resolve.store', watch.elapsed - answeredAt);
+      onTiming!('resolve', watch.elapsed);
+    }
+    return media;
+  }
+
+  /// Writes what [resolution] says, unless the book already says it.
+  ///
+  /// A chapter whose layout has been stored once is resolved again at every open, because the URLs
+  /// are not stored and only the source has them. What comes back is then the layout that is
+  /// already there, and writing it again would cost a transaction and a round of change
+  /// notifications for nothing. Only a layout that differs is written.
+  ///
+  /// A file's format and size are left as they were on that path. They were written when the layout
+  /// was, and neither changes for a file that is still the same file.
+  Future<ResolvedMedia> _apply({
+    required BookRow book,
+    required int chapterId,
+    required int fileId,
+    required api.MediaResolution resolution,
+  }) async {
+    final stored = await _storedLayout(chapterId);
+    if (_sameLayout(stored, resolution)) {
+      return _mediaFor(
+        resolution: resolution,
+        book: book,
+        idByKey: {for (final row in stored) row.fileKey: row.fileId},
+        fileId: fileId,
+      );
+    }
+    return _db.transaction(
       () => _applyResolution(
         book: book,
-        chapterId: chapter.id,
+        chapterId: chapterId,
         fileId: fileId,
         resolution: resolution,
       ),
     );
-    _resolved[fileId] = media;
-    return media;
+  }
+
+  /// The file row and the book row behind [fileId], or null when either is missing.
+  Future<({MediaFileRow file, BookRow book})?> _rowsFor(int fileId) async {
+    final file = await (_db.select(
+      _db.mediaFiles,
+    )..where((f) => f.id.equals(fileId))).getSingleOrNull();
+    if (file == null) return null;
+    final book = await (_db.select(
+      _db.books,
+    )..where((b) => b.id.equals(file.bookId))).getSingleOrNull();
+    return book == null ? null : (file: file, book: book);
+  }
+
+  /// The layout stored for [chapterId], in order.
+  Future<List<({int fileId, String fileKey, int startMs, int? endMs})>>
+  _storedLayout(int chapterId) async {
+    final rows =
+        await (_db.select(_db.chapterSegments).join([
+                innerJoin(
+                  _db.mediaFiles,
+                  _db.mediaFiles.id.equalsExp(_db.chapterSegments.mediaFileId),
+                ),
+              ])
+              ..where(_db.chapterSegments.chapterId.equals(chapterId))
+              ..orderBy([OrderingTerm.asc(_db.chapterSegments.ordinal)]))
+            .get();
+    return [
+      for (final row in rows)
+        (
+          fileId: row.readTable(_db.mediaFiles).id,
+          fileKey: row.readTable(_db.mediaFiles).fileKey,
+          startMs: row.readTable(_db.chapterSegments).startMs,
+          endMs: row.readTable(_db.chapterSegments).endMs,
+        ),
+    ];
+  }
+
+  static bool _sameLayout(
+    List<({int fileId, String fileKey, int startMs, int? endMs})> stored,
+    api.MediaResolution resolution,
+  ) {
+    if (stored.isEmpty || stored.length != resolution.segments.length) {
+      return false;
+    }
+    for (final (index, segment) in resolution.segments.indexed) {
+      final row = stored[index];
+      if (row.fileKey != segment.fileKey ||
+          row.startMs != (segment.range?.startMs ?? 0) ||
+          row.endMs != segment.range?.endMs) {
+        return false;
+      }
+    }
+    return true;
   }
 
   bool _hasExpired(ResolvedMedia media) {
@@ -259,8 +384,25 @@ final class SourceMediaResolver implements MediaResolver {
     }
     await _dropUnusedEstimates(book.id);
 
-    // The file the player asked for, if it still exists; otherwise the first of the new layout,
-    // which is where the chapter starts.
+    return _mediaFor(
+      resolution: resolution,
+      book: book,
+      idByKey: idByKey,
+      fileId: fileId,
+    );
+  }
+
+  /// Where the file the player asked for is, out of what [resolution] gave.
+  ///
+  /// The file the player asked for, if the layout still holds it; otherwise the first segment,
+  /// which is where the chapter starts.
+  static ResolvedMedia _mediaFor({
+    required api.MediaResolution resolution,
+    required BookRow book,
+    required Map<String, int> idByKey,
+    required int fileId,
+  }) {
+    final first = resolution.segments.first;
     final target = idByKey.values.contains(fileId)
         ? fileId
         : idByKey[first.fileKey]!;

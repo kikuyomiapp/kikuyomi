@@ -29,4 +29,20 @@ abstract interface class MediaResolver {
   /// [refresh] bypasses any cached resolution. The coordinator sets it when retrying after a stream
   /// error, which is usually an expired URL.
   Future<ResolvedMedia> resolve(int fileId, {bool refresh = false});
+
+  /// The resolution for [fileId] if it is already in hand, and null when getting it would mean
+  /// asking a source.
+  ///
+  /// This is the first two steps of the order above without the third: a file on the device, or a
+  /// resolution that has not expired. It exists so that opening a book can make playable everything
+  /// that costs nothing — which for a local book is every file it has — and leave the rest to be
+  /// resolved when the engine first asks for its bytes. Never throws: a file that cannot be
+  /// resolved at all is simply not in hand, and says so when it is played.
+  Future<ResolvedMedia?> resolveIfOnHand(int fileId);
 }
+
+/// Where a step's duration is reported, for finding out what a slow screen is waiting on.
+///
+/// The app passes one that writes to the console in a debug build and nothing at all in a release
+/// one, so a measurement costs a shipped app nothing but the null check.
+typedef TimingSink = void Function(String step, Duration took);

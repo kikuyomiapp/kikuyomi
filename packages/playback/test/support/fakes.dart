@@ -59,15 +59,30 @@ final class FakeEngine implements PlaybackEngine {
 }
 
 /// Resolves every file to a local path, or fails for the files a test names.
+///
+/// By default every file is on the device, as a local book's is, so [resolveIfOnHand] answers for
+/// all of them. A test that wants a streamed book names its files in [streamed]: those are resolved
+/// only when they are really asked for, which is what the coordinator leaves to the engine.
 final class FakeResolver implements MediaResolver {
   final requests = <({int fileId, bool refresh})>[];
   final failing = <int>{};
+  final streamed = <int>{};
 
   @override
   Future<ResolvedMedia> resolve(int fileId, {bool refresh = false}) async {
     requests.add((fileId: fileId, refresh: refresh));
     if (failing.contains(fileId)) throw StateError('cannot resolve $fileId');
     return ResolvedMedia(uri: Uri.file('/books/$fileId.m4a'));
+  }
+
+  @override
+  Future<ResolvedMedia?> resolveIfOnHand(int fileId) async {
+    if (streamed.contains(fileId)) return null;
+    try {
+      return await resolve(fileId);
+    } on StateError {
+      return null;
+    }
   }
 }
 

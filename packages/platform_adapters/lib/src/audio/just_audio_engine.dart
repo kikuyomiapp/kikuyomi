@@ -83,8 +83,9 @@ final class JustAudioEngine implements PlaybackEngine {
     _reportedDurations.clear();
     _loading = true;
     try {
+      final sources = [for (final item in items) await _source(item)];
       await _player.setAudioSources(
-        [for (final item in items) _source(item)],
+        sources,
         initialIndex: startAt.itemIndex,
         initialPosition: Duration(milliseconds: startAt.offsetMs),
       );
@@ -142,8 +143,13 @@ final class JustAudioEngine implements PlaybackEngine {
     await _player.dispose();
   }
 
-  ja.AudioSource _source(EngineItem entry) {
-    final media = entry.media;
+  /// What the player is given for one queue item.
+  ///
+  /// An item the coordinator left unresolved is resolved here, as the queue is built, which for a
+  /// streamed book is every file but the one about to be played. A stretch cut out of a file is
+  /// wrapped in a clipping source, which `just_audio` builds only over a plain URL.
+  Future<ja.AudioSource> _source(EngineItem entry) async {
+    final media = entry.media ?? await entry.resolve();
     final source = ja.AudioSource.uri(
       media.uri,
       headers: media.headers.isEmpty ? null : media.headers,

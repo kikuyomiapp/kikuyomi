@@ -177,7 +177,7 @@ void main() {
       'resolves every file and loads at the start, without playing',
       () async {
         await openBook();
-        expect(engine.loaded.map((e) => e.media.uri.path), [
+        expect(engine.loaded.map((e) => e.media?.uri.path), [
           '/books/1.m4a',
           '/books/2.m4a',
         ]);
@@ -203,9 +203,62 @@ void main() {
     );
 
     test('reports a file that cannot be resolved', () async {
-      resolver.failing.add(2);
+      resolver.failing.add(1);
       await openBook();
       expect(coordinator.state, isA<PlayerFailed>());
+    });
+
+    test(
+      'a streamed book resolves the file it starts on, and no other',
+      () async {
+        // SourceAPI 1.0's "before a chapter is resolved": the layout is known, the URLs are not,
+        // and fetching them all before the engine is loaded is a call to the source per chapter
+        // before a note is heard. Only the file being played is resolved; the rest are handed over
+        // as they are, for the engine to ask about when it opens them.
+        resolver.streamed.addAll({1, 2});
+
+        await openBook(resumeFrom: at(2, 0));
+
+        expect(resolver.requests.first.fileId, 2);
+        expect(engine.loaded.map((e) => e.media?.uri.path), [
+          null,
+          '/books/2.m4a',
+        ]);
+        expect(coordinator.state, isA<PlayerReady>());
+      },
+    );
+
+    test('a streamed book resolves the rest in the background', () async {
+      resolver.streamed.addAll({1, 2});
+
+      await openBook();
+      await pumpEventQueue();
+
+      expect(resolver.requests.map((r) => r.fileId), [1, 2]);
+    });
+
+    test(
+      'a file it does not start on failing does not stop it opening',
+      () async {
+        resolver.streamed.addAll({1, 2});
+        resolver.failing.add(2);
+
+        await openBook();
+        await pumpEventQueue();
+
+        expect(coordinator.state, isA<PlayerReady>());
+      },
+    );
+
+    test('a local book still has every file resolved up front', () async {
+      // Nothing about local playback changes: every file is on the device, so every file is in
+      // hand, and the engine is handed a queue with nothing left to work out.
+      await openBook();
+
+      expect(engine.loaded.map((e) => e.media?.uri.path), [
+        '/books/1.m4a',
+        '/books/2.m4a',
+      ]);
     });
 
     test('opening another book saves the first before leaving it', () async {
@@ -909,7 +962,14 @@ void main() {
 
         await emit(EngineFailed(StateError('403')));
 
-        expect(resolver.requests, everyElement((r) => r.refresh == true));
+        // The file that failed is asked for again, and only it: a book of a hundred chapters is
+        // not resolved from end to end because one URL expired.
+        expect(resolver.requests.first, (fileId: 2, refresh: true));
+        expect(
+          resolver.requests.where((r) => r.refresh),
+          hasLength(1),
+          reason: 'only what failed is re-resolved',
+        );
         expect(engine.calls, ['load', 'play']);
         expect(engine.loadedAt, q(1, 5 * s));
         expect(ready().playing, isTrue);

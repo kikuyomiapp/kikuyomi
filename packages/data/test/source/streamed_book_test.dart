@@ -4,6 +4,7 @@
 // own, is that everything Phase 1 built keeps working on it: the Timeline, progress, listened state,
 // bookmarks, Continue Listening and a book's details screen. Nothing here knows it is streaming.
 
+import 'package:drift/drift.dart' show TableUpdate, TableUpdateQuery;
 import 'package:drift/native.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
@@ -197,6 +198,104 @@ void main() {
       ]);
     },
   );
+
+  group('resolving the same book again', () {
+    late FakeContentSource source;
+    late SourceMediaResolver resolver;
+
+    setUp(() {
+      source = FakeContentSource(
+        media: {
+          's1': fileNamed('yellowstone_01.mp3'),
+          's2': fileNamed('yellowstone_02.mp3'),
+        },
+      );
+      resolver = SourceMediaResolver(
+        db,
+        openSource: (_) async => source,
+        onDevice: _NothingOnDevice(),
+        clock: clock,
+      );
+    });
+
+    test('writes nothing when the layout is already what it says', () async {
+      final bookId = await aStreamedBook();
+      final fileId = (await loadStoredPlayback(
+        db,
+        bookId,
+      )).timeline.queue.first.fileId;
+      await resolver.resolve(fileId);
+      final written = await db.select(db.chapterSegments).get();
+
+      // A resolver with nothing in hand, as a second run of the app has: the URLs are gone, so the
+      // source is asked again, and what it says is what the book already holds.
+      final second = SourceMediaResolver(
+        db,
+        openSource: (_) async => source,
+        onDevice: _NothingOnDevice(),
+        clock: clock,
+      );
+      final changed = <TableUpdate>{};
+      final watching = db
+          .tableUpdates(const TableUpdateQuery.any())
+          .listen(changed.addAll);
+      addTearDown(watching.cancel);
+
+      final media = await second.resolve(fileId);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        '${media.uri}',
+        'https://archive.org/download/yellowstone/yellowstone_01.mp3',
+      );
+      expect(changed, isEmpty, reason: 'the book already says all of this');
+      expect(
+        (await db.select(db.chapterSegments).get()).map(
+          (s) => (s.chapterId, s.mediaFileId, s.startMs, s.endMs),
+        ),
+        written.map((s) => (s.chapterId, s.mediaFileId, s.startMs, s.endMs)),
+      );
+    });
+
+    test('a resolution already in hand is not asked for again', () async {
+      final bookId = await aStreamedBook();
+      final fileId = (await loadStoredPlayback(
+        db,
+        bookId,
+      )).timeline.queue.first.fileId;
+
+      expect(
+        await resolver.resolveIfOnHand(fileId),
+        isNull,
+        reason: 'nothing has been resolved yet, and nothing is on the device',
+      );
+      await resolver.resolve(fileId);
+      final onHand = await resolver.resolveIfOnHand(fileId);
+
+      expect(onHand, isNotNull);
+      expect(source.calls.where((call) => call.startsWith('resolveMedia')), [
+        'resolveMedia(s1)',
+      ]);
+    });
+
+    test('two callers asking at once cost the source one call', () async {
+      final bookId = await aStreamedBook();
+      final fileId = (await loadStoredPlayback(
+        db,
+        bookId,
+      )).timeline.queue.first.fileId;
+
+      final both = await Future.wait([
+        resolver.resolve(fileId),
+        resolver.resolve(fileId),
+      ]);
+
+      expect(both.first.uri, both.last.uri);
+      expect(source.calls.where((call) => call.startsWith('resolveMedia')), [
+        'resolveMedia(s1)',
+      ]);
+    });
+  });
 }
 
 /// A device with nothing on it: a streamed book has no local file to find.
@@ -204,4 +303,7 @@ final class _NothingOnDevice implements MediaResolver {
   @override
   Future<ResolvedMedia> resolve(int fileId, {bool refresh = false}) async =>
       throw const MediaUnavailableException('nothing is downloaded');
+
+  @override
+  Future<ResolvedMedia?> resolveIfOnHand(int fileId) async => null;
 }
