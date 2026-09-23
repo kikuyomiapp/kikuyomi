@@ -5,6 +5,9 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
+import 'cached_audio_source.dart';
+import 'stream_audio_cache.dart';
+
 /// The [PlaybackEngine] over `just_audio` (§6.2, ADR-0006): ExoPlayer on Android, AVPlayer on iOS,
 /// and mpv through `just_audio_media_kit` on Windows.
 ///
@@ -36,7 +39,7 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 /// Each item's duration is reported once the player knows it (§4.5), from a ready player only; see
 /// [_reportDuration] for why.
 final class JustAudioEngine implements PlaybackEngine {
-  JustAudioEngine() {
+  JustAudioEngine({this.cache}) {
     _subscriptions
       ..add(_player.positionStream.listen(_onPosition))
       ..add(_player.currentIndexStream.listen(_onIndex))
@@ -49,6 +52,13 @@ final class JustAudioEngine implements PlaybackEngine {
   /// Run once, before the first engine is created. Enables the mpv backend on the platforms where
   /// `just_audio` has no native player of its own, which includes Windows.
   static void initialize() => JustAudioMediaKit.ensureInitialized();
+
+  /// Where a streamed file's bytes are kept, or null to fetch them again every time.
+  ///
+  /// Only a file that comes over the network goes through it. A local book's files are played
+  /// straight from where they are, exactly as before: copying them into a cache would be copying
+  /// the device's own storage onto itself.
+  final StreamAudioCache? cache;
 
   /// How long a seek into another item may wait for that item to become ready.
   static const _itemReadyTimeout = Duration(seconds: 10);
@@ -145,23 +155,40 @@ final class JustAudioEngine implements PlaybackEngine {
 
   /// What the player is given for one queue item.
   ///
-  /// An item the coordinator left unresolved is resolved here, as the queue is built, which for a
-  /// streamed book is every file but the one about to be played. A stretch cut out of a file is
-  /// wrapped in a clipping source, which `just_audio` builds only over a plain URL.
+  /// A whole file fetched over the network goes through [CachedAudioSource]: it is resolved when
+  /// the player first asks for its bytes, and what it fetches is kept. A file on the device is
+  /// played where it is. Either way a stretch cut out of a file is wrapped in a clipping source,
+  /// which `just_audio` builds only over a plain URL, so a clipped item is resolved here and
+  /// fetched again each time it is played. No source seen so far cuts a chapter out of a streamed
+  /// file; the ones that do are the M4B and folder books already on the device, which need no
+  /// cache.
   Future<ja.AudioSource> _source(EngineItem entry) async {
-    final media = entry.media ?? await entry.resolve();
+    final item = entry.item;
+    final whole = item.startsAtFileStart && item.endsAtFileEnd;
+    final known = entry.media;
+    final store = cache;
+    if (whole && store != null && (known == null || _isRemote(known.uri))) {
+      return CachedAudioSource(
+        fileId: item.fileId,
+        cache: store,
+        resolve: () async => known ?? await entry.resolve(),
+      );
+    }
+    final media = known ?? await entry.resolve();
     final source = ja.AudioSource.uri(
       media.uri,
       headers: media.headers.isEmpty ? null : media.headers,
     );
-    final item = entry.item;
-    if (item.startsAtFileStart && item.endsAtFileEnd) return source;
+    if (whole) return source;
     return ja.ClippingAudioSource(
       child: source,
       start: Duration(milliseconds: item.clipStartMs),
       end: item.endsAtFileEnd ? null : Duration(milliseconds: item.clipEndMs),
     );
   }
+
+  static bool _isRemote(Uri uri) =>
+      uri.scheme == 'http' || uri.scheme == 'https';
 
   void _onPosition(Duration position) {
     final index = _player.currentIndex;

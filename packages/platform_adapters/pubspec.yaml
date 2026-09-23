@@ -30,6 +30,10 @@ dependencies:
     path: ../source_runtime
   just_audio: ^0.10.6
   just_audio_media_kit: ^2.1.0
+  # Names a cached stream's file after where its bytes came from, so that a reused file id can
+  # never serve one book's audio for another's. Dart team, BSD-3-Clause, pure Dart: Android,
+  # Windows and iOS alike. Already the app's.
+  crypto: ^3.0.6
   media_kit_libs_windows_audio: ^1.0.9
   path_provider: ^2.1.6
   audio_session: ^0.2.4

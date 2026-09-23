@@ -38,6 +38,7 @@ final class AppServices {
     required this.playable,
     required this.sources,
     required this.extensionConsole,
+    required this.streamCache,
   }) : covers = CoverFiles(locations.covers),
        _importFolder = ImportFolder(mediaRoot: locations.mediaRoot);
 
@@ -81,8 +82,12 @@ final class AppServices {
         ),
       ),
     );
+    // What a streamed book's bytes are kept in, so that a skip, a chapter played again and the
+    // book opened tomorrow are reads from this device. Pruned once at start, off the critical path.
+    final streamCache = StreamAudioCache(locations.streamCache);
+    unawaited(streamCache.prune());
     final coordinator = PlaybackCoordinator(
-      engine: JustAudioEngine(),
+      engine: JustAudioEngine(cache: streamCache),
       // One resolver for the whole library: files on the device go to the local one, and a book
       // that streams is resolved through its source, just in time (§6.3).
       resolver: SourceMediaResolver(
@@ -90,9 +95,11 @@ final class AppServices {
         openSource: sources.open,
         onDevice: LocalMediaResolver(database, mediaRoot: locations.mediaRoot),
         clock: clock,
+        onTiming: _timings,
       ),
       store: DriftPlaybackStore(database, deviceId: deviceId, clock: clock),
       clock: clock,
+      onTiming: _timings,
     );
     // §5.1: automatic backups to the folder the user chose, which outlives an Android uninstall and
     // an iOS re-sign.
@@ -139,6 +146,7 @@ final class AppServices {
       playable: EngineFormats.forThisDevice(),
       sources: sources,
       extensionConsole: console,
+      streamCache: streamCache,
     );
   }
 
@@ -169,6 +177,11 @@ final class AppServices {
 
   /// What extensions have written to the in-app console (§3.5). There is no screen for it yet.
   final InMemoryExtensionLog extensionConsole;
+
+  /// The bytes of streamed books kept on this device, so that moving about in one is instant. Not
+  /// a download (§5.2): it is bounded, it is emptied when it grows past its bound, and
+  /// [StreamAudioCache.clear] throws all of it away.
+  final StreamAudioCache streamCache;
 
   final ImportFolder _importFolder;
 
@@ -452,7 +465,9 @@ final class AppServices {
 
   /// Opens a book in the player, resuming where it was left with smart rewind applied.
   Future<void> openBook(int bookId) async {
+    final watch = _timings == null ? null : (Stopwatch()..start());
     final stored = await loadStoredPlayback(database, bookId);
+    if (watch != null) _timings?.call('openBook.timeline', watch.elapsed);
     final lastPlayedAt = stored.lastPlayedAt;
     await coordinator.open(
       PlaybackRequest(
@@ -638,6 +653,27 @@ Future<void> _backfillListened(
     );
   }
 }
+
+/// Whether the console is told how long each step of opening and playing a book took.
+///
+/// On in a debug build, which is what `flutter run` produces, so that a listener saying "pressing
+/// play is slow" becomes numbers without anyone having to rebuild. A release build measures
+/// nothing at all: the sink is null, and the stopwatches are never made.
+/// Turn it off in a debug build with `--dart-define=kikuyomi.timings=false`.
+const _reportTimings =
+    kDebugMode && bool.fromEnvironment('kikuyomi.timings', defaultValue: true);
+
+/// Where [PlaybackCoordinator] and [SourceMediaResolver] report what each step cost.
+///
+/// One line per step, so that the console shows what a slow "press play" was really waiting on:
+///
+///     kikuyomi timing resolve.source 1843 ms
+///     kikuyomi timing open.resolve 1871 ms
+///     kikuyomi timing open.load 402 ms
+const TimingSink? _timings = _reportTimings ? _printTiming : null;
+
+void _printTiming(String step, Duration took) =>
+    debugPrint('kikuyomi timing $step ${took.inMilliseconds} ms');
 
 String _join(String directory, String name) =>
     '$directory${Platform.pathSeparator}$name';

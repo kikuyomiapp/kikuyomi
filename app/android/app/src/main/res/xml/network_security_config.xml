@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Streamed audio is fetched and cached by the app and handed to ExoPlayer through the local HTTP
+  server just_audio runs on this device (§6.3). That server speaks plain HTTP on the loopback
+  address, which Android forbids by default, so it is excepted here and nothing else is: the audio
+  itself is still fetched over HTTPS, by Dart, from the domains the source declared.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
