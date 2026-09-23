@@ -543,7 +543,10 @@ const kikuyomiPrelude = r'''
     if (value === null || value === undefined) return 'the extension threw ' + StringFrom(value);
     if (typeof value !== 'object') return StringFrom(value);
     var out = {};
-    var keys = ['kind', 'message', 'name', 'url', 'retryAfterMs'];
+    // `stack` is here for the errors an extension did not mean to throw. A TypeError reaching the
+    // host as "TypeError: not a function" and nothing else leaves an author with no line to look at,
+    // and the stack is the only thing that says where. The host keeps a few frames of it.
+    var keys = ['kind', 'message', 'name', 'url', 'retryAfterMs', 'stack'];
     for (var i = 0; i < keys.length; i++) {
       var field = readField(value, keys[i]);
       var type = typeof field;
