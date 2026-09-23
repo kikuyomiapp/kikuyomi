@@ -255,6 +255,19 @@ function fileKeyOf(url) {
   return name || url;
 }
 
+/**
+ * The Archive address of [url], with the `www.` LibriVox writes into `listen_url` taken off.
+ *
+ * `www.archive.org/download/...` redirects to `archive.org/download/...`, which redirects again to
+ * the node the file is really on. The player walks that chain for every range of the file it asks
+ * for, so the extra hop is paid for on every seek, not once. Measured on a slow connection it was
+ * about three seconds of the four-and-a-bit spent before a single byte arrived. Both hosts are
+ * declared in the manifest, and only the host changes: the path, and so the file, is the same one.
+ */
+function directUrl(url) {
+  return url.replace(/^https:\/\/www\.archive\.org\//, 'https://archive.org/');
+}
+
 /** What the file's extension says it is, in the contract's vocabulary. LibriVox serves MP3. */
 function formatOf(url) {
   var name = fileKeyOf(url).toLowerCase();
@@ -579,10 +592,11 @@ var librivox = {
       throw sourceError('NotFound', 'book ' + textOf(chapter && chapter.bookKey) +
         ' has no section ' + wanted);
     }
-    var url = textOf(section.listen_url);
-    if (!url) {
+    var listen = textOf(section.listen_url);
+    if (!listen) {
       throw sourceError('NotFound', 'section ' + wanted + ' has no audio at the Archive yet');
     }
+    var url = directUrl(listen);
     // One section is one file on the Internet Archive, played whole, so there is no range. The
     // Archive serves these files from a fixed address with no token and no expiry, so there is no
     // `expiresAt` either: the app may keep this resolution for as long as it likes.

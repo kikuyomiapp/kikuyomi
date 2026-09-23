@@ -404,7 +404,7 @@ bridges, and call it through `JsSourceAdapter`.
 - **22, an error's kind.** An error thrown with the SDK's shape arrives as `NotFoundException`,
   which is the whole reason nothing is thrown across the boundary.
 
-## The LibriVox extension: probes 23 to 32
+## The LibriVox extension: probes 23 to 34
 
 The extension the app ships (`app/assets/extensions/librivox/main.js`) is JavaScript, so nothing
 under `flutter test` can run it either. These run the real file on the real engine against LibriVox
@@ -430,7 +430,7 @@ cannot quietly prove nothing.
 - **28, a book's details**: the HTML summary unwound into plain text with its paragraphs kept, the
   readers gathered from its sections, `English` mapped to `en`, and a status of `complete`.
 - **29, its chapters**, keyed by section id, and details and chapters together costing one request
-  rather than two, because the extension memoises the one document that holds both.
+  rather than two, because the extension keeps the one document that holds both.
 - **30, resolving a chapter** to the file on the Archive, with its format, its length and a file key
   that is the file's own name.
 - **31, the same extension in a worker isolate**, which is the path the app really takes (§3.6),
@@ -440,10 +440,19 @@ cannot quietly prove nothing.
   native library and the plain-data crossing all work where the app puts them.
 - **32, nothing found.** LibriVox answers a search that matches nothing with an error object and
   status 200. That is an empty page; asked for one book by id, the same answer is `NotFound`.
+- **33, the whole of one book costs one request.** Its details, its chapters and the audio of
+  every one of its sections all read the same extended document, and the extension keeps the
+  fetch rather than its result, so calls that overlap join the one already on its way. This is
+  what made pressing play on a streamed book slow: one request per chapter, each waiting for the
+  last.
+- **34, the audio address has no hop in front of it that can be taken off.** LibriVox writes
+  `www.archive.org` into every `listen_url`, and that host redirects to `archive.org` before the
+  redirect to the node the file is really on. A player asks for a file in ranges, so that hop is
+  paid on every seek rather than once; both hosts are declared in the manifest.
 
 ## Results
 
-On Windows all thirty-two pass. Probe 14 stops at 1003 ms after about 130,000 host calls, where the
+On Windows all thirty-four pass. Probe 14 stops at 1003 ms after about 130,000 host calls, where the
 same loop under the old deadline (probe 10, still in the run) reaches its own 4000 ms bound.
 Probe 19 is cancelled 449 ms after the call starts, the cancellation having been sent at 501 ms
 from another isolate. Probe 20 runs the whole prelude in 103 ms. The nine in-isolate LibriVox probes take 3 to

@@ -18,7 +18,7 @@
 //  4. Does the extension protocol run? Probes 20 to 22 load a small extension through
 //     `ExtensionRuntime`, with the real prelude and the real bridges, and call it through
 //     `JsSourceAdapter`. The prelude is JavaScript, and only QuickJS can say whether it runs.
-//  5. Does the LibriVox extension the app ships work? Probes 23 to 33 run the real
+//  5. Does the LibriVox extension the app ships work? Probes 23 to 34 run the real
 //     app/assets/extensions/librivox/main.js on the real engine against LibriVox answers recorded
 //     into assets/librivox/fixtures. Never against the live site: a probe that reached the network
 //     would fail for reasons that have nothing to do with the code, and would ask a volunteer-run
@@ -837,10 +837,7 @@ Future<void> _runEngineProbes() async {
       await engine.evaluate(_probeExtension, name: 'probe-extension.js');
       final failure = _expect<ScriptThrewException>(
         await _failure(
-          () => engine.call('__probe_invoke', [
-            'boom',
-            <Object?>[],
-          ]),
+          () => engine.call('__probe_invoke', ['boom', <Object?>[]]),
         ),
       );
       if (!failure.message.contains('the source is unhappy')) {
@@ -898,7 +895,9 @@ Future<void> _runEngineProbes() async {
         // Let the isolate start before this one disappears into QuickJS.
         await Future<void>.delayed(const Duration(milliseconds: 50));
         final watch = Stopwatch()..start();
-        final outcome = await _failure(() => engine.call('__probe_forever', []));
+        final outcome = await _failure(
+          () => engine.call('__probe_forever', []),
+        );
         watch.stop();
         final sent = (await stopping).difference(started).inMilliseconds;
         final failure = _expect<ScriptCancelledException>(outcome);
@@ -981,7 +980,9 @@ module.exports = extension;
 Future<void> _runProtocolProbes() async {
   final console = InMemoryExtensionLog();
 
-  Future<T> withSource<T>(Future<T> Function(JsSourceAdapter source) body) async {
+  Future<T> withSource<T>(
+    Future<T> Function(JsSourceAdapter source) body,
+  ) async {
     final engine = const QuickJsScriptEngineFactory().create(
       const ScriptRuntimeLimits(callTimeout: Duration(seconds: 10)),
     );
@@ -1022,8 +1023,7 @@ Future<void> _runProtocolProbes() async {
         throw StateError('expected one book, got ${page.items.length}');
       }
       final book = page.items.single;
-      const expected =
-          'Moby-Dick|héllo|b2s=|ok|ba7816bf|whale|/book/12|1|1.0';
+      const expected = 'Moby-Dick|héllo|b2s=|ok|ba7816bf|whale|/book/12|1|1.0';
       if (book.title != expected) {
         throw StateError('expected "$expected", got "${book.title}"');
       }
@@ -1071,7 +1071,7 @@ Future<void> _runProtocolProbes() async {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Probes 23 to 33: the LibriVox extension the app ships, on the real engine.
+// Probes 23 to 34: the LibriVox extension the app ships, on the real engine.
 //
 // The extension is JavaScript, so nothing under `flutter test` can run it: the engine's native
 // library only exists inside a built Flutter application. So it runs here, against answers recorded
@@ -1386,8 +1386,9 @@ Future<void> _runLibriVoxProbes() async {
         ),
       );
       final segment = resolution.segments.single;
+      // Without the `www.` LibriVox writes into listen_url; probe 34 is why.
       if ('${segment.request.url}' !=
-          'https://www.archive.org/download/yellowstone6pieces_1502_librivox/'
+          'https://archive.org/download/yellowstone6pieces_1502_librivox/'
               'yellowstone6pieces_02_various_64kb.mp3') {
         throw StateError('url is ${segment.request.url}');
       }
@@ -1503,10 +1504,13 @@ Future<void> _runLibriVoxProbes() async {
           ),
       ]);
       if (resolutions.length != chapters.length) {
-        throw StateError('resolved ${resolutions.length} of ${chapters.length}');
+        throw StateError(
+          'resolved ${resolutions.length} of ${chapters.length}',
+        );
       }
       final keys = {
-        for (final resolution in resolutions) resolution.segments.single.fileKey,
+        for (final resolution in resolutions)
+          resolution.segments.single.fileKey,
       };
       if (keys.length != chapters.length) {
         throw StateError('$keys is not one file per section');
@@ -1519,6 +1523,35 @@ Future<void> _runLibriVoxProbes() async {
       }
       return 'details, ${chapters.length} chapters and ${chapters.length} '
           'resolutions, one request';
+    });
+  });
+
+  // 34. The audio address the extension hands over is the one with the fewest hops in front of it.
+  //     LibriVox writes `www.archive.org` into every `listen_url`, and that host redirects to
+  //     `archive.org`, which redirects again to the node the file is really on. A player asks for
+  //     a file in ranges, so that extra hop is paid on every seek rather than once. Both hosts are
+  //     declared in the manifest; only the host changes.
+  await _probe('librivox-audio-url-has-no-extra-hop', () async {
+    return withSource((source, http) async {
+      final chapters = await source.getChapters('9638');
+      final resolution = await source.resolveMedia(
+        ChapterRef(bookKey: '9638', chapterKey: chapters.first.key),
+        const ResolveContext(
+          purpose: ResolvePurpose.stream,
+          network: NetworkType.unknown,
+        ),
+      );
+      final url = resolution.segments.single.request.url;
+      if (url.host != 'archive.org') {
+        throw StateError('audio is served from ${url.host}, not archive.org');
+      }
+      if (!url.path.endsWith('yellowstone6pieces_01_various_64kb.mp3')) {
+        throw StateError('$url is not the file of the first section');
+      }
+      if (http.asked.isEmpty) {
+        throw StateError('nothing was fetched');
+      }
+      return 'the www LibriVox writes into listen_url is gone: $url';
     });
   });
 }
