@@ -19,6 +19,7 @@ import 'package:kikuyomi_source_api/kikuyomi_source_api.dart';
 
 import '../bridges/host_bridge.dart';
 import '../engine/script_engine.dart';
+import 'js_source_adapter.dart';
 import 'prelude.dart';
 
 /// One extension's code, as the manager unpacked it, and what it is allowed to reach.
@@ -63,7 +64,7 @@ abstract interface class CallScopedBridge {
 }
 
 /// One extension, loaded in one runtime.
-final class ExtensionRuntime {
+final class ExtensionRuntime implements ExtensionCalls {
   ExtensionRuntime._({
     required ScriptEngine engine,
     required ExtensionBundle bundle,
@@ -158,6 +159,7 @@ $code
   var _disposed = false;
 
   /// The manifest's `id` of the extension in this runtime.
+  @override
   String get extensionId => _bundle.extensionId;
 
   /// The source keys the extension really declares, which the manager checks against the manifest.
@@ -171,6 +173,7 @@ $code
 
   /// Whether `sources[sourceKey]` has [method], for the optional methods a screen reads as
   /// capabilities before it offers a Latest tab or a filter button.
+  @override
   Future<bool> hasMethod(String sourceKey, String method) async {
     final answer = await _call('__kikuyomiRuntime.hasMethod', [
       sourceKey,
@@ -185,6 +188,7 @@ $code
   /// that is [JsSourceAdapter]'s work, with the decoder that holds it to the contract's rules.
   ///
   /// Throws a [SourceException]: the kind the extension threw, or the kind the failure amounts to.
+  @override
   Future<Object?> invoke(
     String sourceKey,
     String method,

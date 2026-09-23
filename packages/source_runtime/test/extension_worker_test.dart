@@ -186,4 +186,28 @@ void main() {
     // Disposing twice is not a failure: a pool evicting a worker should not have to check.
     await worker.dispose();
   });
+
+  test(
+    'a source adapter over a worker decodes what crossed the isolate',
+    () async {
+      final worker = await _worker();
+      addTearDown(worker.dispose);
+
+      // The same adapter the in-isolate runtime uses: a worker is an ExtensionCalls, so the rules a
+      // result is held to are written once and the confined path cannot drift from the other.
+      final source = await JsSourceAdapter.open(
+        runtime: worker,
+        sourceKey: 'scripted',
+      );
+      final page = await source.getPopular(2);
+
+      expect(source.capabilities, isEmpty);
+      expect(page.items.single.key, 'b2');
+      expect(
+        page.items.single.coverUrl,
+        Uri.parse('https://example.org/typee.jpg'),
+      );
+      expect(page.hasNextPage, isFalse);
+    },
+  );
 }

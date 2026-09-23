@@ -31,12 +31,17 @@ import '../bridges/host_bridge.dart';
 import '../bridges/html_bridge.dart';
 import '../engine/script_engine.dart';
 import '../extension/extension_runtime.dart';
+import '../extension/js_source_adapter.dart';
 
 /// The modules a worker forwards to the isolate that started it, in the order they are looked up.
 const proxiedHostModules = ['http', 'storage', 'log'];
 
 /// One extension, running in an isolate of its own.
-final class ExtensionWorker {
+///
+/// It is an [ExtensionCalls], so `JsSourceAdapter` sits over a worker exactly as it sits over an
+/// [ExtensionRuntime] called in this isolate: the app gets the confined runtime §3.6 asks for, and
+/// the contract is enforced by the same decoder either way.
+final class ExtensionWorker implements ExtensionCalls {
   ExtensionWorker._(
     this._isolate,
     this._toWorker,
@@ -144,12 +149,18 @@ final class ExtensionWorker {
   var _disposed = false;
 
   /// The extension in this worker.
+  @override
   String get extensionId => _id;
+
+  /// The decoder every result of this extension is read with, built from its own domains.
+  @override
+  PlainDataDecoder get decoder => _decoder;
 
   /// The source keys it exports.
   List<String> get sourceKeys => _sourceKeys;
 
   /// Whether a source has an optional method.
+  @override
   Future<bool> hasMethod(String sourceKey, String method) async =>
       await _send(_HasMethod(sourceKey, method)) == true;
 

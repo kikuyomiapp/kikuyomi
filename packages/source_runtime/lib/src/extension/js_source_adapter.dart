@@ -13,12 +13,38 @@ library;
 
 import 'package:kikuyomi_source_api/kikuyomi_source_api.dart';
 
-import 'extension_runtime.dart';
+/// What the adapter needs of the thing holding an extension's code.
+///
+/// Both shapes of §3.6 satisfy it: an [ExtensionRuntime] called in this isolate, which is what a
+/// test and the probe use, and an `ExtensionWorker` that owns one in an isolate of its own, which
+/// is what the app uses. The adapter is the same either way, so the rules the contract is enforced
+/// by are written once and neither path can drift from the other.
+abstract interface class ExtensionCalls {
+  /// The manifest's `id` of the extension, for messages.
+  String get extensionId;
+
+  /// The decoder every result of this extension is read with, built from its own domains.
+  PlainDataDecoder get decoder;
+
+  /// Whether `sources[sourceKey]` has [method], for the optional methods a screen reads as
+  /// capabilities before it offers a Latest tab or a filter button.
+  Future<bool> hasMethod(String sourceKey, String method);
+
+  /// Calls `sources[sourceKey][method](...arguments)` and gives back its result as plain data.
+  ///
+  /// Throws a [SourceException]: the kind the extension threw, or the kind the failure amounts to.
+  Future<Object?> invoke(
+    String sourceKey,
+    String method,
+    List<Object?> arguments, {
+    Duration? deadline,
+  });
+}
 
 /// One source of one extension.
 final class JsSourceAdapter implements ContentSource {
   JsSourceAdapter({
-    required ExtensionRuntime runtime,
+    required ExtensionCalls runtime,
     required this.sourceKey,
     required this.capabilities,
   }) : _runtime = runtime;
@@ -30,7 +56,7 @@ final class JsSourceAdapter implements ContentSource {
   /// will be called: a manifest that claims `latest` for a source without `getLatest` would
   /// otherwise fail a listener's tap rather than never offering the tab.
   static Future<JsSourceAdapter> open({
-    required ExtensionRuntime runtime,
+    required ExtensionCalls runtime,
     required String sourceKey,
   }) async {
     final capabilities = <SourceCapability>{};
@@ -50,7 +76,7 @@ final class JsSourceAdapter implements ContentSource {
     );
   }
 
-  final ExtensionRuntime _runtime;
+  final ExtensionCalls _runtime;
 
   /// The manifest's key for this source, under which the extension exports it.
   final String sourceKey;

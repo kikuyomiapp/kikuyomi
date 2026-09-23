@@ -216,16 +216,24 @@ final class ScriptedEngineFactory implements ScriptEngineFactory {
 
 /// An engine that answers the protocol from a script written here.
 ///
-/// `echo` gives back what it was called with, `rateLimited` and `challenge` fail with those kinds,
-/// `slow` is stopped by the watchdog, and `fetch` calls the host function the runtime installed,
-/// which is how a test sees a bridge crossing back out of the worker.
+/// `echo` gives back what it was called with, `getPopular` answers one page of the contract's own
+/// shape, `rateLimited` and `challenge` fail with those kinds, `slow` is stopped by the watchdog,
+/// and `fetch` calls the host function the runtime installed, which is how a test sees a bridge
+/// crossing back out of the worker.
 final class ScriptedEngine implements ScriptEngine {
   ScriptedEngine(this.limits);
 
   @override
   final ScriptRuntimeLimits limits;
 
-  static const methods = {'echo', 'rateLimited', 'challenge', 'slow', 'fetch'};
+  static const methods = {
+    'echo',
+    'getPopular',
+    'rateLimited',
+    'challenge',
+    'slow',
+    'fetch',
+  };
 
   final _hostFunctions = <String, HostCall>{};
 
@@ -264,6 +272,20 @@ final class ScriptedEngine implements ScriptEngine {
             return {
               'ok': true,
               'value': {'method': method, 'arguments': args},
+            };
+          case 'getPopular':
+            return {
+              'ok': true,
+              'value': {
+                'items': [
+                  {
+                    'key': 'b${args.isEmpty ? 0 : args.first}',
+                    'title': 'Typee',
+                    'coverUrl': 'https://example.org/typee.jpg',
+                  },
+                ],
+                'hasNextPage': false,
+              },
             };
           case 'rateLimited':
             return {
