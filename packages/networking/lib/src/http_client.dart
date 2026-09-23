@@ -100,6 +100,7 @@ final class NetworkPolicy {
     this.maxBodyBytes = 10 * 1024 * 1024,
     this.maxRedirects = 5,
     this.minimumInterval = const Duration(milliseconds: 250),
+    this.burstPerHost = 4,
     this.maxConcurrentPerHost = 4,
   });
 
@@ -117,8 +118,12 @@ final class NetworkPolicy {
 
   final int maxRedirects;
 
-  /// The least time between two requests to one host, per extension.
+  /// The sustained time between two requests to one host, per extension.
   final Duration minimumInterval;
+
+  /// How many requests one extension may send to a host it has left alone before [minimumInterval]
+  /// starts to hold it back. See [RateLimiter.burst].
+  final int burstPerHost;
 
   /// How many requests to one host one extension may have in flight.
   final int maxConcurrentPerHost;
@@ -133,6 +138,11 @@ typedef UrlCheck = void Function(Uri url);
 
 /// The app's one transport, and the maker of each extension's view of it.
 final class NetworkService {
+  /// The one transport is deliberately made once and kept for the life of the app. Dart's IO client
+  /// pools its connections per origin and every request here asks for a persistent one, so a second
+  /// request to a host it has already spoken to reuses the open TLS connection. A client made per
+  /// request would pay for a new handshake every time, which on a mobile connection costs more than
+  /// the answer does.
   NetworkService({required this.policy, http.Client? transport})
     : _transport = transport ?? http.Client();
 
@@ -185,6 +195,7 @@ final class SourceHttpClient {
       request.url.host.toLowerCase(),
       () => RateLimiter(
         minimumInterval: policy.minimumInterval,
+        burst: policy.burstPerHost,
         maxConcurrent: policy.maxConcurrentPerHost,
       ),
     );

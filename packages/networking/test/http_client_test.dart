@@ -312,26 +312,37 @@ void main() {
       );
     });
 
-    test('requests to one host are spaced out', () async {
-      final server = await TestServer.start((request) {
-        request.response.write('ok');
-      });
-      addTearDown(server.stop);
-      final client = _service(
-        const NetworkPolicy(
-          userAgent: 'Kikuyomi/1.0 (test)',
-          minimumInterval: Duration(milliseconds: 200),
-        ),
-      ).clientFor('org.example.a');
+    test(
+      'requests to one host are spaced out once the burst is spent',
+      () async {
+        final server = await TestServer.start((request) {
+          request.response.write('ok');
+        });
+        addTearDown(server.stop);
+        final client = _service(
+          const NetworkPolicy(
+            userAgent: 'Kikuyomi/1.0 (test)',
+            minimumInterval: Duration(milliseconds: 200),
+            burstPerHost: 2,
+          ),
+        ).clientFor('org.example.a');
 
-      final watch = Stopwatch()..start();
-      await client.send(NetworkRequest(url: server.url('/1')));
-      await client.send(NetworkRequest(url: server.url('/2')));
-      await client.send(NetworkRequest(url: server.url('/3')));
-      watch.stop();
+        // The burst goes straight out; only what follows it waits.
+        final burst = Stopwatch()..start();
+        await client.send(NetworkRequest(url: server.url('/1')));
+        await client.send(NetworkRequest(url: server.url('/2')));
+        burst.stop();
+        expect(burst.elapsedMilliseconds, lessThan(200));
 
-      // Two gaps of 200 ms between three requests, whatever the server's own speed.
-      expect(watch.elapsedMilliseconds, greaterThanOrEqualTo(400));
-    });
+        final after = Stopwatch()..start();
+        await client.send(NetworkRequest(url: server.url('/3')));
+        await client.send(NetworkRequest(url: server.url('/4')));
+        after.stop();
+
+        // Two gaps of 200 ms, whatever the server's own speed. A millisecond of slack, because the
+        // limiter's own clock and the stopwatch are not the same clock.
+        expect(after.elapsedMilliseconds, greaterThanOrEqualTo(398));
+      },
+    );
   });
 }
