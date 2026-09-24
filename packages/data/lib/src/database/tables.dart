@@ -168,8 +168,18 @@ class MediaFiles extends Table {
   TextColumn get embeddedMarkers =>
       text().map(const MarkerListConverter()).nullable()();
 
-  /// Non-null once the file has been downloaded.
+  /// Where the file is, once it is on this device at all.
+  ///
+  /// Absolute for a file that stays where the user keeps it, and otherwise relative — to the app's
+  /// downloads folder when [downloadedAt] is set, and to the media root when it is not. The two are
+  /// different folders, so the pair of columns has to be read together; `LocalMediaResolver` is the
+  /// one place that does it.
   TextColumn get localPath => text().nullable()();
+
+  /// When the download queue put this file here, and nothing else ever sets it (§5.2).
+  ///
+  /// So it is also what says that [localPath] is relative to the downloads folder rather than to the
+  /// media root. An imported file is on the device without ever having been downloaded.
   DateTimeColumn get downloadedAt => dateTime().nullable()();
 
   @override

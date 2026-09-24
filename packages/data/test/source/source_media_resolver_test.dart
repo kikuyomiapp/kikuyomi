@@ -70,7 +70,11 @@ void main() {
       SourceMediaResolver(
         db,
         openSource: (_) async => source,
-        onDevice: LocalMediaResolver(db, mediaRoot: mediaRoot),
+        onDevice: LocalMediaResolver(
+          db,
+          mediaRoot: mediaRoot,
+          downloadRoot: mediaRoot,
+        ),
         clock: clock,
       );
 

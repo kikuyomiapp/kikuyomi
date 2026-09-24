@@ -119,7 +119,11 @@ final class AppServices {
     final resolver = SourceMediaResolver(
       database,
       openSource: sources.open,
-      onDevice: LocalMediaResolver(database, mediaRoot: locations.mediaRoot),
+      onDevice: LocalMediaResolver(
+        database,
+        mediaRoot: locations.mediaRoot,
+        downloadRoot: locations.downloads,
+      ),
       clock: clock,
       onTiming: _timings,
     );

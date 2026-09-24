@@ -449,6 +449,12 @@ The queue is wired and has fetched real files on Windows, from a book's details 
 is listed under [`downloads`](#downloads) and in schema version 3's `download_task` table; what is
 left, in order:
 
+0. **Playing a downloaded book with the network off** — the exit criterion, now believed reachable and
+   not yet confirmed on any device. A downloaded file was unplayable until recently: the queue records
+   a path relative to the downloads folder and `LocalMediaResolver` read every relative path as
+   relative to the media root, which is a different folder and, on iOS, a different branch entirely.
+   `downloaded_at` now says which root a path belongs to. Verified against the real rows and files of
+   a part-downloaded book, where all four resolved to nothing before and to the right file after.
 1. **The screens** (§5.6): what is downloading, per-book and per-chapter sizes, delete, and the
    automatic policies. A book's details screen has a button and one line of progress, which is enough
    to ask for a download and not enough to manage one.
@@ -467,7 +473,8 @@ left, in order:
    than as a stream. `MediaResolver` has no `purpose`, so a download currently resolves as if it were
    about to be played, which is right for LibriVox and will not be for every source.
 
-The exit criterion is the roadmap's: a full book downloaded and finished with no network.
+The exit criterion is the roadmap's: a full book downloaded and finished with no network. Everything it
+needs is now built; nothing has confirmed it.
 
 ### Step B — the repository door
 
