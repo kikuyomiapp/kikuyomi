@@ -207,13 +207,24 @@ which is the half that can be tested without a device.
 - §5.2's **scheduler policy**, as a pure function from the startable tasks, the limits and the state
   of the device to a decision per task. The global cap, the per-source cap, the network policy and
   the free-space floor, with every held task carrying the reason it is waiting.
+- The **driver**: one `pump` lets retries that are due rejoin the queue, asks the store what could
+  start, asks the policy what may start, and acts. Transport reports are applied through the state
+  machine, so a completion for a task just cancelled does nothing instead of crashing. It owns no
+  timer — when to pump is the app's decision — and resolution is just in time, reusing a stored
+  address unless it has expired or was the one the site refused.
+- The **transport interface** ADR-0007 draws the line at: start, pause, cancel, and a stream of
+  reports carrying our task ids. Nothing above it is platform-bound.
 
 A grid test sweeps every event against every state and compares the whole set of legal moves with
-§5.3, so a transition added because some later feature found it convenient fails the build.
+§5.3, so a transition added because some later feature found it convenient fails the build. A
+download goes from queued to completed in a test, against a fake store and a fake transport.
 
-**What is missing** is everything that touches the world: the driver that applies the policy, the
-transport adapter over `background_downloader`, the post-processor, the reconciler, and any UI. No
-byte has been downloaded.
+The queue also has its **store** — `DownloadStore` in `domain`, `DriftDownloadStore` in `data`, the
+same division `PlaybackStore` already has.
+
+**What is missing** is everything that touches the world: the transport adapter over
+`background_downloader`, the post-processor, the reconciler, and any UI. **No byte has been
+downloaded**, on any platform.
 
 ### `sync`
 
@@ -410,21 +421,18 @@ Framework is the door — and the folder picker on desktop. See
 The queue exists and nothing fetches anything yet. What is built is listed under
 [`downloads`](#downloads) and in schema version 3's `download_task` table; what is left, in order:
 
-1. **The driver.** The loop that reads the startable tasks, asks the policy what to start, resolves
-   each one just in time (§5.4), hands it to the transport and applies the reports it gets back
-   through the state machine. It needs a store interface — the same shape `PlaybackStore` has, an
-   interface in `domain` with the Drift implementation in `data` — and that is the first real
-   architectural decision left in Phase 3.
-2. **The transport**, over `background_downloader` behind ADR-0007's interface, in
-   `platform_adapters`. The thin, untestable part.
-3. **The post-processor** (§5.2): status, content type, plausible size and a magic-byte check,
+1. **The transport**, over `background_downloader` behind ADR-0007's interface, in
+   `platform_adapters`. The thin, untestable part, and the one that adds a dependency: it must
+   support Android, Windows and iOS, which is why it was chosen. This is the next thing to build,
+   and the first point at which a byte can actually move.
+2. **The post-processor** (§5.2): status, content type, plausible size and a magic-byte check,
    because many sites answer with an HTML error page and a 200; then probe, then move atomically
    into place and write `local_path`.
-4. **The reconciler** (§5.2), matching the transport's live tasks to rows at launch and sweeping
+3. **The reconciler** (§5.2), matching the transport's live tasks to rows at launch and sweeping
    orphans. This is also where a task orphaned by a layout rewrite is repaired — an estimate is
    usually consumed in place, but a resolution that changes a chapter's shape drops it and takes the
    task with it.
-5. **The screens** (§5.6): what is downloading, per-book and per-chapter sizes, delete, and the
+4. **The screens** (§5.6): what is downloading, per-book and per-chapter sizes, delete, and the
    automatic policies.
 
 The exit criterion is the roadmap's: a full book downloaded and finished with no network.
