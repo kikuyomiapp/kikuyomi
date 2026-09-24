@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart' show BookOverview, CoverFiles;
 import 'package:kikuyomi_design_system/kikuyomi_design_system.dart';
 
+import 'downloads/book_downloads.dart';
 import 'format.dart';
 import 'listened_commands.dart';
 
@@ -34,6 +35,9 @@ class BookDetailsView extends StatelessWidget {
     required this.onPlay,
     required this.onRemove,
     required this.listenedCommands,
+    this.downloads = BookDownloads.none,
+    this.onDownload,
+    this.onStopDownloading,
   });
 
   final BookOverview book;
@@ -47,6 +51,42 @@ class BookDetailsView extends StatelessWidget {
 
   /// Marking chapters, and the whole book, listened or not.
   final ListenedCommands listenedCommands;
+
+  /// How far this book's download has got (§5.2).
+  final BookDownloads downloads;
+
+  /// Asks for every file of the book that is not already here. Null where downloading makes no
+  /// sense, as it does not for a book whose files are already on this device.
+  final VoidCallback? onDownload;
+
+  /// Gives up on what is queued or running.
+  final VoidCallback? onStopDownloading;
+
+  /// The button that asks for the book, or says it is already here.
+  ///
+  /// One button rather than three, because at any moment there is exactly one thing worth doing:
+  /// ask for it, stop asking, or nothing at all.
+  Widget _downloadButton() {
+    if (downloads.isComplete) {
+      return OutlinedButton.icon(
+        onPressed: null,
+        icon: const Icon(Icons.download_done),
+        label: const Text('Downloaded'),
+      );
+    }
+    if (downloads.isEmpty) {
+      return OutlinedButton.icon(
+        onPressed: onDownload,
+        icon: const Icon(Icons.download_outlined),
+        label: const Text('Download'),
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: onStopDownloading,
+      icon: const Icon(Icons.stop_circle_outlined),
+      label: const Text('Stop downloading'),
+    );
+  }
 
   /// Wider than this, the content stays at a readable measure in the middle of the window.
   static const _maxContentWidth = 720.0;
@@ -145,6 +185,7 @@ class BookDetailsView extends StatelessWidget {
                     icon: const Icon(Icons.done_all),
                     label: const Text('Mark as finished'),
                   ),
+                if (onDownload != null) _downloadButton(),
                 if (book.inLibrary)
                   OutlinedButton.icon(
                     onPressed: () => _confirmRemoval(context),
@@ -153,6 +194,10 @@ class BookDetailsView extends StatelessWidget {
                   ),
               ],
             ),
+            if (!downloads.isEmpty && !downloads.isComplete) ...[
+              const SizedBox(height: 16),
+              _DownloadProgress(downloads: downloads),
+            ],
             const SizedBox(height: 24),
             Text('Chapters', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
@@ -276,6 +321,40 @@ class _EntryTile extends StatelessWidget {
                 ),
               ],
             ),
+    );
+  }
+}
+
+/// What a book's download is doing, under the buttons.
+///
+/// A bar and a sentence. The sentence carries the reason the queue is waiting, because "waiting for
+/// Wi-Fi" is something a listener can act on and "waiting" is something that makes them wonder
+/// whether the app has stopped.
+class _DownloadProgress extends StatelessWidget {
+  const _DownloadProgress({required this.downloads});
+
+  final BookDownloads downloads;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final progress = downloads.progress;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // A determinate bar where the sizes are known, and a moving one where they are not: a bar
+        // that guesses would jump backwards the moment the guess was corrected.
+        // Determinate where the sizes are known, and a moving bar where they are not: a bar that
+        // guessed would jump backwards the moment the guess was corrected.
+        LinearProgressIndicator(value: progress),
+        const SizedBox(height: 6),
+        Text(
+          describeDownloads(downloads),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

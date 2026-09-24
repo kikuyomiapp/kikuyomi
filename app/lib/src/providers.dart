@@ -5,6 +5,7 @@ import 'package:kikuyomi_data/kikuyomi_data.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
+import 'downloads/book_downloads.dart';
 import 'services.dart';
 import 'setup_gate.dart';
 import 'sources/extension_console.dart';
@@ -174,6 +175,16 @@ final bookOverviewProvider = StreamProvider.autoDispose
     .family<BookOverview?, int>(
       (ref, bookId) =>
           watchBookOverview(ref.watch(servicesProvider).database, bookId),
+    );
+
+/// How far a book's download has got, watched, so a progress bar follows the queue without anything
+/// being refreshed (§2.5). Disposed once no screen shows the book.
+final bookDownloadsProvider = StreamProvider.autoDispose
+    .family<BookDownloads, int>(
+      (ref, bookId) => watchBookDownloads(
+        ref.watch(servicesProvider).database,
+        bookId,
+      ).map(summariseDownloads),
     );
 
 /// A book's bookmarks in playing order, straight from the database, so one added, changed or
