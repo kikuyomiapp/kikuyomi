@@ -17,7 +17,9 @@ that purpose and is kept — see [the probe](#the-probe) below.
 
 **Phase 2**, extensions, began with the contract and is where the work is now.
 
-All fifteen decisions in §9 of the architecture document have ADRs, and all fifteen are Accepted.
+All fifteen decisions in §9 of the architecture document have ADRs, and all fifteen are Accepted. Two
+more decisions have been made since: ADR-0016, the contract, and ADR-0017, installing an extension
+from a folder.
 
 ## The packages
 
@@ -78,6 +80,12 @@ allowance, so work that comes in bursts and then stops is not charged a flat gap
 sources — read as strictly as a result is, with the contract's compatibility check and §3.7's
 source id.
 
+And the package around that manifest (ADR-0017): `ExtensionFiles`, which is wherever a package's bytes
+are — the app's assets, a folder on the device, the app's own copy of an installed one; one reader over
+it that checks the manifest, the `main.js` and, when asked, the SHA-256 the manifest names; and
+`ExtensionInstallFolder`, which keeps the app's copy under `<id>/<versionCode>`, writing it under a
+partial name so a half-finished install never looks finished.
+
 ### `domain`
 
 The Timeline; the `Clock`, `PlaybackStore` and `MediaResolver` interfaces; the `ListeningSession`
@@ -100,7 +108,10 @@ A queue item may arrive unresolved, for the engine to resolve when it first open
 
 ### `data`
 
-Drift schema version 1.
+Drift schema version 2. Version 2 adds the two tables installing an extension needs — `extension` and
+`extension_preference` (§4.3) — and touches nothing version 1 wrote. `sources.extension_id`
+deliberately stays a plain id rather than becoming a foreign key, because §3.9 has a source outlive
+the extension it came from (ADR-0017).
 
 - The §4.4 chapter-sync, book-details and credits merges. Chapter sync carries a chapter's release
   time and group heading as well as its title and duration.
@@ -111,6 +122,8 @@ Drift schema version 1.
   one test of a finished book.
 - Marking chapters and whole books listened or not by hand; a one-time backfill of listened state
   from positions saved before it was recorded; taking a book out of the library.
+- What extensions are installed, their versions and where they came from; and each extension's own
+  `storage`, which was in memory until this table arrived.
 - Keeping a book's cover in the covers folder, including finding the covers of local books added
   before covers were kept, and of source books still waiting for theirs.
 - For books from a source: the credits merge §4.4 implied (authors and narrators into `People` and
@@ -158,7 +171,8 @@ tested without a site or an engine.
   through `audio_service`.
 - `SmtcBridge` — Windows' media keys and volume flyout, through `smtc_windows`.
 - `SystemMediaControls`, which starts whichever of the two the device needs.
-- `StorageLocations`, §5.1's single adapter for storage paths, covers and stream cache included.
+- `StorageLocations`, §5.1's single adapter for storage paths: covers, the stream cache, the folder
+  installed extensions are kept in, and the folder an extension can be copied into.
 - `SharedPreferencesSettingsStore`.
 - `DeviceFolders`, which chooses and keeps folders as directory paths on desktop and as Storage
   Access Framework trees on Android (through `saf_util` and `saf_stream`), and says it cannot yet on
@@ -224,13 +238,34 @@ Books copied into that folder are added at start and whenever the app returns to
 
 The LibriVox extension ships **inside the app**, as an asset in §3.3's package format:
 `app/assets/extensions/librivox/manifest.json` and one ES2020 `main.js` written against
-SourceAPI 1.0. The repository, its signing keys and installing (§3.8, §3.9) come later; until they
-do, the loader that reads the asset is the loader an installed extension will use, and it refuses a
-`main.js` whose SHA-256 does not match the manifest.
+SourceAPI 1.0. Its `main.js` is refused if its SHA-256 does not match the manifest.
+
+**Installing one from a folder** is the door ADR-0017 opened. A folder holding a `manifest.json` and a
+`main.js` is read with the same reader the asset is, both files are copied into the app's own storage
+under `<id>/<versionCode>`, and the install is recorded, so it is still there after a restart. Three
+ways in, all ending in the same install:
+
+- the platform's folder picker — a path on desktop, a Storage Access Framework tree on Android;
+- `--extension <folder>` on the command line, for an edit-and-reload loop on a desktop;
+- a folder copied into the app's own `Extensions` folder, offered where the listener can see that
+  folder, which is iOS.
+
+A folder install does **not** check the manifest's hashes and is recorded as `untrusted`, shown as
+**Unverified**: in a folder an author is working in, a stale hash means the code was edited, not that
+anything is wrong. **Reload** re-reads the folder it came from and stops the extension's runtime, so
+the next use runs the new code. **Remove** takes the code and the row and nothing else — the books,
+their progress, the `source` rows and what the extension had stored all stay, and the source becomes
+§3.9's stub, which says it is not installed when anything opens it.
+
+The **Extensions screen**, reached from Browse, lists what is installed with its version, where it came
+from, whether it was verified and how many failures it has produced, and offers installing, reloading
+and removing. The **console** screen (§3.11) shows what extensions logged and what the app logged about
+them, for every extension or for one, newest first, with one tap to copy it all for a bug report.
 
 A source registry reads the manifests at start, writes a `source` row for each (§4.3) and runs no
 extension code. A source's runtime starts on first use, in a worker isolate of its own, with `http`
-on the app's one `NetworkService`, `storage` in memory and `log` in the extension console.
+on the app's one `NetworkService`, `storage` in the database and `log` in the extension console. An
+install or a removal takes effect without a restart: Browse follows the source list as it changes.
 
 **Browse** lists the sources. A source shows what it calls popular and what a search finds, as a
 grid of covers that pages as the listener scrolls, with the source's own filters. A book at the
@@ -274,7 +309,9 @@ seconds over the network. The connection, not the Archive, is the ceiling for a 
 
 ## What has been run for real
 
-- **Windows**: everything but the LibriVox path and FLAC/Ogg books with real files.
+- **Windows**: everything but the LibriVox path and FLAC/Ogg books with real files. Installing an
+  extension from a folder has not been driven by the running app either — it is covered by tests, and
+  the app builds, but nobody has pressed the button.
 - **iOS**: the CI-built IPA launches on the iPhone. Nothing further; there is no Mac.
 - **Android**: nothing has been run for real, on an emulator or a device, outside the probe in CI.
 - **LibriVox**: browsing, searching, adding a book and streaming one have been driven only by tests
@@ -310,29 +347,24 @@ What is left is an **arm64 device**: the probe has run on x86_64 emulators and o
 `.github/workflows/ci.yml` builds an Android APK, a Windows build and an unsigned iOS IPA on every
 push, and runs the tests in every package that has them.
 
+## Step A, done
+
+All six parts, recorded in ADR-0017: a package read from a real folder as strictly as the asset is;
+schema version 2's `extension` and `extension_preference` tables, with a migration and a migration
+test; an Extensions screen with what is installed, remove, reload and each extension's failures; the
+console surfaced on a screen of its own; installing from a folder through the picker, the
+`--extension` flag and, on iOS, the app's own visible folder; and §3.9's answer for a removed
+extension — the books stay and the source becomes a stub.
+
+The two questions Step A left open were decided in ADR-0017. A folder install does not check the
+manifest's SHA-256 and is marked unverified, because in an author's folder a stale hash means the code
+was edited. And `sources.extension_id` stays a plain id rather than becoming a foreign key, because a
+source has to outlive the extension it came from.
+
+What is **not** done: nobody has driven any of it in the running app. See
+[what has been run for real](#what-has-been-run-for-real).
+
 ## What is next
-
-### Step A — the extensions system, with the folder door
-
-The foundation, and the shortest path to being able to write an extension at all. Everything here is
-needed by Step B too.
-
-1. Read an extension from somewhere that is not the asset bundle: the same strict manifest read and
-   SHA-256 check, over a real folder.
-2. **A schema change**: installed extensions, their versions and where they came from must survive a
-   restart. This is also where the `extension_preference` table lands, closing the loose end below.
-   Migration and migration test, as every schema change gets.
-3. An Extensions screen: what is installed, remove one, and the errors an extension produced.
-4. **Surface the extension console.** The app already collects it (`InMemoryExtensionLog`); there is
-   no screen. Without it an extension author is debugging blind.
-5. Install from a folder, through the picker `DeviceFolders` already provides (desktop paths,
-   Android SAF). A command-line flag on Windows as well, for a fast edit-and-reload loop.
-6. Decide what happens to library books whose source has been removed. Mihon keeps them and shows
-   the source as missing.
-
-A folder-loaded extension should probably **skip the manifest's SHA-256 check** and be marked
-visibly as unverified, because an edited `main.js` beside a stale manifest is an author's normal
-state. Not yet decided.
 
 ### Step B — the repository door
 
@@ -357,7 +389,13 @@ list or recommend any other.
 
 ### Loose ends
 
-- Extension storage is in memory; it needs the `extension_preference` table. Step A closes this.
+- Installing an extension has never been driven by the running app, on any platform: the Extensions
+  screen, the picker, Reload, Remove and the console have been exercised only by tests.
+- An extension is never verified once it is installed from a folder, so `untrusted` is the normal
+  state. When repository installs arrive, `active` will start to mean something (ADR-0017).
+- Nothing rolls back to an earlier installed version, although the versioned directory keeps one.
+- A backup does not carry which extensions a library wants; it waits for the repository door and a
+  backup format version of its own (`backupLeavesOut` names the tables and says why).
 - Browse grid covers bypass the app's HTTP client.
 - Android `minSdk` is 24; ADR-0012 says 26.
 - Android has never been run for real.

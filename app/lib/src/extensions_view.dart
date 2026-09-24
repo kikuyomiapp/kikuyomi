@@ -1,0 +1,312 @@
+import 'package:flutter/material.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
+
+import 'sources/extension_library.dart';
+
+/// What the Extensions screen shows, fed with data rather than reading it, so it can be tested
+/// without a database, an engine or a folder (§2.10).
+///
+/// §3.9 decides most of what is here. An extension is installed, reloaded from where it came from, or
+/// removed — and removing one takes its code and nothing else, which the screen says out loud, because
+/// "will I lose my books?" is the question a listener has at that moment.
+class ExtensionsView extends StatelessWidget {
+  const ExtensionsView({
+    super.key,
+    required this.extensions,
+    required this.problems,
+    required this.canChooseFolder,
+    required this.dropFolderName,
+    required this.busyWith,
+    required this.onInstallFromFolder,
+    required this.onInstallFromDropFolder,
+    required this.onReload,
+    required this.onRemove,
+    required this.onOpenConsole,
+  });
+
+  /// Every extension the app knows about, bundled and installed.
+  final List<ExtensionSummary> extensions;
+
+  /// How many failures the console holds about each extension, by id.
+  final Map<String, int> problems;
+
+  /// Whether this device can show a folder picker (§5.1: not iOS).
+  final bool canChooseFolder;
+
+  /// The name of the folder an extension can be copied into, or null where that folder is not one the
+  /// listener can see.
+  final String? dropFolderName;
+
+  /// The id of the extension being installed, reloaded or removed, or the empty string while a folder
+  /// is being picked. Null when nothing is under way.
+  final String? busyWith;
+
+  final VoidCallback onInstallFromFolder;
+  final VoidCallback onInstallFromDropFolder;
+  final ValueChanged<ExtensionSummary> onReload;
+  final ValueChanged<ExtensionSummary> onRemove;
+
+  /// Opens the console, for every extension or for one.
+  final ValueChanged<String?> onOpenConsole;
+
+  bool get _busy => busyWith != null;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.only(bottom: 24),
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: _InstallCard(
+          canChooseFolder: canChooseFolder,
+          dropFolderName: dropFolderName,
+          busy: _busy,
+          onInstallFromFolder: onInstallFromFolder,
+          onInstallFromDropFolder: onInstallFromDropFolder,
+        ),
+      ),
+      for (final extension in extensions)
+        _ExtensionTile(
+          extension: extension,
+          problems: problems[extension.id] ?? 0,
+          busy: busyWith == extension.id,
+          anyBusy: _busy,
+          onReload: () => onReload(extension),
+          onRemove: () => onRemove(extension),
+          onOpenConsole: () => onOpenConsole(extension.id),
+        ),
+    ],
+  );
+}
+
+/// The ways an extension can get in, and a word about what an extension folder is.
+class _InstallCard extends StatelessWidget {
+  const _InstallCard({
+    required this.canChooseFolder,
+    required this.dropFolderName,
+    required this.busy,
+    required this.onInstallFromFolder,
+    required this.onInstallFromDropFolder,
+  });
+
+  final bool canChooseFolder;
+  final String? dropFolderName;
+  final bool busy;
+  final VoidCallback onInstallFromFolder;
+  final VoidCallback onInstallFromDropFolder;
+
+  @override
+  Widget build(BuildContext context) {
+    final folder = dropFolderName;
+    return Card.outlined(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'An extension is a folder holding a manifest.json and a main.js.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            if (canChooseFolder)
+              FilledButton.icon(
+                onPressed: busy ? null : onInstallFromFolder,
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Install from a folder'),
+              ),
+            if (folder != null) ...[
+              if (canChooseFolder) const SizedBox(height: 12),
+              Text(
+                'Or copy the folder into Kikuyomi’s $folder folder in the '
+                'Files app, then:',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: busy ? null : onInstallFromDropFolder,
+                icon: const Icon(Icons.download_for_offline_outlined),
+                label: Text('Install from $folder'),
+              ),
+            ],
+            if (!canChooseFolder && folder == null)
+              Text(
+                'This device cannot install an extension from a folder yet.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ExtensionTile extends StatelessWidget {
+  const _ExtensionTile({
+    required this.extension,
+    required this.problems,
+    required this.busy,
+    required this.anyBusy,
+    required this.onReload,
+    required this.onRemove,
+    required this.onOpenConsole,
+  });
+
+  final ExtensionSummary extension;
+  final int problems;
+  final bool busy;
+  final bool anyBusy;
+  final VoidCallback onReload;
+  final VoidCallback onRemove;
+  final VoidCallback onOpenConsole;
+
+  @override
+  Widget build(BuildContext context) {
+    final row = extension.row;
+    return ListTile(
+      isThreeLine: true,
+      leading: busy
+          ? const SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(
+              extension.isRunnable
+                  ? Icons.extension_outlined
+                  : Icons.extension_off_outlined,
+            ),
+      title: Text('${row.name}  ${row.version}'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(row.id),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final label in _labels(extension, problems))
+                _Chip(label: label.text, warn: label.warn),
+            ],
+          ),
+        ],
+      ),
+      trailing: _Menu(
+        extension: extension,
+        enabled: !anyBusy,
+        onReload: onReload,
+        onRemove: onRemove,
+        onOpenConsole: onOpenConsole,
+      ),
+      onTap: onOpenConsole,
+    );
+  }
+
+  /// What is worth saying about an extension at a glance, worst first.
+  static List<({String text, bool warn})> _labels(
+    ExtensionSummary extension,
+    int problems,
+  ) => [
+    if (!extension.isRunnable)
+      (text: 'Could not be read', warn: true)
+    else if (extension.row.status == ExtensionStatus.obsolete)
+      (text: 'Too old for this app', warn: true),
+    if (problems > 0)
+      (text: problems == 1 ? '1 problem' : '$problems problems', warn: true),
+    if (extension.isBundled)
+      (text: 'Ships with Kikuyomi', warn: false)
+    else if (extension.isUnverified)
+      (text: 'Unverified', warn: false),
+    if (extension.row.originName case final origin?)
+      (text: origin, warn: false),
+  ];
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({required this.label, required this.warn});
+
+  final String label;
+  final bool warn;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: warn ? colors.errorContainer : colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: warn ? colors.onErrorContainer : colors.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+class _Menu extends StatelessWidget {
+  const _Menu({
+    required this.extension,
+    required this.enabled,
+    required this.onReload,
+    required this.onRemove,
+    required this.onOpenConsole,
+  });
+
+  final ExtensionSummary extension;
+  final bool enabled;
+  final VoidCallback onReload;
+  final VoidCallback onRemove;
+  final VoidCallback onOpenConsole;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<VoidCallback>(
+    enabled: enabled,
+    tooltip: 'More',
+    onSelected: (action) => action(),
+    itemBuilder: (context) => [
+      PopupMenuItem(value: onOpenConsole, child: const Text('What it logged')),
+      if (extension.canReload)
+        PopupMenuItem(
+          value: onReload,
+          child: const Text('Reload from its folder'),
+        ),
+      if (!extension.isBundled)
+        PopupMenuItem(value: onRemove, child: const Text('Remove')),
+    ],
+  );
+}
+
+/// What removing an extension asks first.
+///
+/// §3.9 keeps the listener's data, and a listener about to remove an extension does not know that. The
+/// question says so, so that Remove is not a leap.
+Future<bool> confirmRemoveExtension(
+  BuildContext context,
+  ExtensionSummary extension,
+) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Remove ${extension.row.name}?'),
+        content: const Text(
+          'Its code is deleted. The books you added from it stay in your '
+          'library with their progress, and come back to life if you install '
+          'it again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    ) ??
+    false;

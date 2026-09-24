@@ -605,10 +605,35 @@ final class PlainDataDecoder {
     // Only for something that is not one of the contract's errors, where the name is all there is
     // to say what went wrong: "TypeError: x is not a function".
     if (named && name is String && name.isNotEmpty) {
-      return text.isEmpty ? _readable(name) : '${_readable(name)}: $text';
+      final described = text.isEmpty
+          ? _readable(name)
+          : '${_readable(name)}: $text';
+      return '$described${_where(thrown['stack'])}';
     }
     return text;
   }
+
+  /// Where an error the extension did not mean to throw came from, as the first frames of its stack.
+  ///
+  /// A bare "TypeError: not a function" says nothing an author can act on; the stack says which
+  /// function and which line, which is usually the whole diagnosis. Only for an accidental error: a
+  /// kind the extension threw on purpose carries its author's own sentence, and a stack under it
+  /// would be noise.
+  ///
+  /// A few frames, not all of them, because this ends up in a message that is cut to length, and the
+  /// frames nearest the failure are the ones worth keeping.
+  String _where(Object? stack) {
+    if (stack is! String) return '';
+    final frames = [
+      for (final line in stack.split(RegExp(r'[\r\n]+')))
+        if (line.trim().isNotEmpty) line.trim(),
+    ];
+    if (frames.isEmpty) return '';
+    return ' (${frames.take(_keptFrames).join(' < ')})';
+  }
+
+  /// How many stack frames a message carries.
+  static const _keptFrames = 3;
 
   /// An extension's own message, made safe to show and short enough to log.
   ///

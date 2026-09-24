@@ -10,6 +10,7 @@ export 'src/backup/library_snapshot.dart';
 export 'src/backup/library_store.dart';
 export 'src/backup/restore_plan.dart';
 export 'src/clock.dart';
+export 'src/extensions/installed_extension.dart';
 export 'src/library/book_field.dart';
 export 'src/library/contributor_role.dart';
 export 'src/playback/audio_format.dart';

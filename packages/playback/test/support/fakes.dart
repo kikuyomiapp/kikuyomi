@@ -15,12 +15,24 @@ final class FakeEngine implements PlaybackEngine {
   double volume = 1.0;
   bool playing = false;
 
+  /// Thrown by the next [load] and then forgotten: a player that cannot open one book's audio, as
+  /// a dead URL, a refused host or a format the device will not play produces.
+  ///
+  /// Nothing is recorded as loaded when it throws, which is what the real adapter does — it empties
+  /// its queue and stops the player, so that a failure cannot follow the listener to the next book.
+  Object? nextLoadFailure;
+
   @override
   Future<void> load(
     List<EngineItem> items, {
     QueuePosition startAt = const QueuePosition(itemIndex: 0, offsetMs: 0),
   }) async {
     calls.add('load');
+    final failure = nextLoadFailure;
+    if (failure != null) {
+      nextLoadFailure = null;
+      throw failure;
+    }
     loaded = items;
     loadedAt = startAt;
   }

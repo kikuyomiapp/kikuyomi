@@ -42,12 +42,5 @@ The Local source is promoted to a **first-class feature**, not a fallback. It ma
 genuinely useful with nothing installed and no network, which is also the Phase 1 milestone: usable
 daily on a PC and an Android device before the extension system exists at all.
 
-The official repository is a **commitment with a legal edge**. It contains only public-domain or
-openly licensed catalogues, and that boundary is not a guideline — it is the line that keeps the
-project defensible. The rule is in `CLAUDE.md`: never create extensions, fixtures or sample data
-for unauthorised or copyrighted sources, and the app and its documentation never list or recommend
-third-party repositories. What users add themselves is theirs to answer for; what ships with the
-app is ours.
-
 Maintaining even two extensions means feeling the SDK's rough edges directly and continuously,
 which is the best available defence against shipping a contract nobody else can implement.

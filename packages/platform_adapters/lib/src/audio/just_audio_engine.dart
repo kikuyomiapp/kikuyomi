@@ -103,6 +103,22 @@ final class JustAudioEngine implements PlaybackEngine {
         initialIndex: startAt.itemIndex,
         initialPosition: Duration(milliseconds: startAt.offsetMs),
       );
+    } catch (_) {
+      // A load that failed leaves the player holding a source it could not open, and the backends do
+      // not agree on what happens next: AVFoundation reports the same failure again for the following
+      // load, and the Windows backend accepts it and plays nothing. Either way one unopenable book
+      // would cost the listener every other book in the library, local files included, until the app
+      // was restarted — which is what this catch exists to prevent. The queue is emptied and the
+      // player stopped, so the next load starts from an idle player, and the failure is passed on for
+      // the coordinator to report.
+      _items = const [];
+      _reportedDurations.clear();
+      try {
+        await _player.stop();
+      } catch (_) {
+        // A player that cannot even be stopped has nothing left to reset.
+      }
+      rethrow;
     } finally {
       _loading = false;
     }

@@ -12,6 +12,7 @@ import 'package:kikuyomi_data/kikuyomi_data.dart'
     as data
     show markBookFinished, markBookNotFinished;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
+import 'package:kikuyomi_extension_manager/kikuyomi_extension_manager.dart';
 import 'package:kikuyomi_networking/kikuyomi_networking.dart' as net;
 import 'package:kikuyomi_platform_adapters/kikuyomi_platform_adapters.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
@@ -22,6 +23,9 @@ import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart';
 
 import 'app_version.dart';
 import 'book_files.dart';
+import 'sources/drift_extension_store.dart';
+import 'sources/extension_console.dart';
+import 'sources/extension_library.dart';
 import 'sources/source_registry.dart';
 
 /// The composition root (§2.8): the one place concrete implementations are chosen and wired
@@ -36,8 +40,7 @@ final class AppServices {
     required this.backups,
     required this.backupScheduler,
     required this.playable,
-    required this.sources,
-    required this.extensionConsole,
+    required this.extensions,
     required this.streamCache,
   }) : covers = CoverFiles(locations.covers),
        _importFolder = ImportFolder(mediaRoot: locations.mediaRoot);
@@ -61,27 +64,47 @@ final class AppServices {
     final network = net.NetworkService(
       policy: net.NetworkPolicy(userAgent: userAgent),
     );
-    final console = InMemoryExtensionLog();
+    // Where extensions write, and where the app writes about them. Kept for as long as the app runs,
+    // and shown on the console screen (§3.5, §3.11).
+    final console = ExtensionConsole(clock: clock);
+    final installs = ExtensionInstallFolder(locations.installedExtensions);
     final sources = await SourceRegistry.start(
       database: database,
       network: network,
-      // Per-extension storage is kept only while the app runs, until §4.3's extension_preference
-      // table arrives with the rest of the extension tables in a later schema version. No bundled
-      // extension stores anything yet, so nothing is lost; an extension that did would start each
-      // run with an empty store.
-      store: InMemoryExtensionStore(),
+      // §4.3's extension_preference table, so that what a source keeps — a chosen catalogue, a
+      // token — is still there at the next start. It was in memory until schema version 2.
+      store: DriftExtensionStore(database),
       log: console,
       host: const HostFacts(appVersion: appVersion),
       engineFactory: const QuickJsScriptEngineFactory(),
       appVersion: appVersion,
-      onError: (error, stack) => FlutterError.reportError(
-        FlutterErrorDetails(
-          exception: error,
-          stack: stack,
-          library: 'kikuyomi',
-          context: ErrorDescription('while reading a bundled extension'),
-        ),
+      extensions: await readExtensionsAtStart(
+        database: database,
+        installs: installs,
+        console: console,
+        clock: clock,
       ),
+      onError: (extensionId, error, stack) {
+        console.report(extensionId, error);
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stack,
+            library: 'kikuyomi',
+            context: ErrorDescription('while reading an extension'),
+          ),
+        );
+      },
+    );
+    final extensions = ExtensionLibrary(
+      sources: sources,
+      console: console,
+      database: database,
+      installs: installs,
+      folders: DeviceFolders.forThisDevice(),
+      dropFolder: locations.extensionDrop,
+      clock: clock,
+      canInstallFromDropFolder: locations.importFolderIsVisible,
     );
     // What a streamed book's bytes are kept in, so that a skip, a chapter played again and the
     // book opened tomorrow are reads from this device. Pruned once at start, off the critical path.
@@ -145,8 +168,7 @@ final class AppServices {
       backups: backups,
       backupScheduler: backupScheduler,
       playable: EngineFormats.forThisDevice(),
-      sources: sources,
-      extensionConsole: console,
+      extensions: extensions,
       streamCache: streamCache,
     );
   }
@@ -173,11 +195,15 @@ final class AppServices {
   /// are found.
   final CoverFiles covers;
 
-  /// Every source the app offers, and the extension runtimes behind them (§3.6).
-  final SourceRegistry sources;
+  /// The extensions the app has installed: installing, removing and reloading them (§3.9).
+  final ExtensionLibrary extensions;
 
-  /// What extensions have written to the in-app console (§3.5). There is no screen for it yet.
-  final InMemoryExtensionLog extensionConsole;
+  /// Every source the app offers, and the extension runtimes behind them (§3.6).
+  SourceRegistry get sources => extensions.sources;
+
+  /// What extensions have written to the in-app console, and what the app has written about them
+  /// (§3.5, §3.11).
+  ExtensionConsole get extensionConsole => extensions.console;
 
   /// The bytes of streamed books kept on this device, so that moving about in one is instant. Not
   /// a download (§5.2): it is bounded, it is emptied when it grows past its bound, and

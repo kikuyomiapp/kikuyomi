@@ -173,6 +173,29 @@ void main() {
   }
 
   group('opening a book', () {
+    test('a book that will not load leaves the next one openable', () async {
+      // The engine is left holding a source it could not open, and the next book a listener reaches
+      // for is often a local one that has nothing to do with the one that failed. One unplayable book
+      // must not cost them the rest of the library until the app is restarted.
+      engine.nextLoadFailure = StateError('the player could not open it');
+
+      await openBook(bookId: 7);
+
+      expect(coordinator.state, isA<PlayerFailed>());
+      expect((coordinator.state as PlayerFailed).bookId, 7);
+
+      await openBook(bookId: 8, timeline: oneFileBook());
+
+      expect(coordinator.state, isA<PlayerReady>());
+      expect(
+        engine.loaded,
+        hasLength(1),
+        reason: 'the second book, not the one that failed, is what is loaded',
+      );
+      await coordinator.play();
+      expect(engine.playing, isTrue);
+    });
+
     test(
       'resolves every file and loads at the start, without playing',
       () async {

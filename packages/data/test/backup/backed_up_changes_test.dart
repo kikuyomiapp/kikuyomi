@@ -16,11 +16,19 @@ void main() {
 
   test('covers every table in the database', () {
     // A table added to the schema has to be added to backedUpTables, or be left out of it on purpose
-    // and listed here as such.
+    // and named in backupLeavesOut, which says why.
     expect(
       {for (final table in backedUpTables(db)) table.actualTableName},
-      {for (final table in db.allTables) table.actualTableName},
+      {for (final table in db.allTables) table.actualTableName}
+        ..removeAll(backupLeavesOut),
     );
+  });
+
+  test('what a backup leaves out is a table that exists', () {
+    // So that a table renamed or removed cannot leave a stale excuse behind.
+    expect({
+      for (final table in db.allTables) table.actualTableName,
+    }, containsAll(backupLeavesOut));
   });
 
   test('signals a change to what a backup carries', () async {

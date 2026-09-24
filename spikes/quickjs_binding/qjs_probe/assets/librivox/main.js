@@ -1,7 +1,7 @@
 // The LibriVox source extension, written against SourceAPI 1.0 (docs/source-api-1.0.md).
 //
-// LibriVox is a volunteer project that records public-domain books and puts the recordings in the
-// public domain too, which is why it is the first source this app ships with (§3.10, §7.1). It has
+// LibriVox is a volunteer project that records books and puts the recordings in the public domain
+// too, and it is the first source this app ships with (§3.10). It has
 // a read-only JSON API at librivox.org/api/feed/audiobooks/ and keeps its audio on the Internet
 // Archive, so the manifest declares both hosts.
 //

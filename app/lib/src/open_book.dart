@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'providers.dart';
 import 'routes.dart';
+import 'snack_bars.dart';
 
 /// Opens book [bookId] in the player and shows the player screen.
 ///
@@ -27,8 +28,9 @@ Future<void> openBookInPlayer(
     }
   } catch (error) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not open the book: $error')),
+      tellInSnackBar(
+        ScaffoldMessenger.of(context),
+        'Could not open the book: $error',
       );
     }
   }

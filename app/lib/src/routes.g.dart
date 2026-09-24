@@ -78,6 +78,18 @@ RouteBase get $homeRoute => GoRouteData.$route(
             ),
           ],
         ),
+        GoRouteData.$route(
+          path: 'extensions',
+          hasOverriddenOnExit: false,
+          factory: $ExtensionsRoute._fromState,
+          routes: [
+            GoRouteData.$route(
+              path: 'console',
+              hasOverriddenOnExit: false,
+              factory: $ExtensionConsoleRoute._fromState,
+            ),
+          ],
+        ),
       ],
     ),
   ],
@@ -248,6 +260,57 @@ mixin $SourceBookRoute on GoRouteData {
     queryParams: {
       'source-id': _self.sourceId.toString(),
       'book-key': _self.bookKey,
+    },
+  );
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $ExtensionsRoute on GoRouteData {
+  static ExtensionsRoute _fromState(GoRouterState state) =>
+      const ExtensionsRoute();
+
+  @override
+  String get location => GoRouteData.$location('/browse/extensions');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $ExtensionConsoleRoute on GoRouteData {
+  static ExtensionConsoleRoute _fromState(GoRouterState state) =>
+      ExtensionConsoleRoute(
+        extensionId: state.uri.queryParameters['extension-id'],
+      );
+
+  ExtensionConsoleRoute get _self => this as ExtensionConsoleRoute;
+
+  @override
+  String get location => GoRouteData.$location(
+    '/browse/extensions/console',
+    queryParams: {
+      if (_self.extensionId != null) 'extension-id': _self.extensionId,
     },
   );
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../snack_bars.dart';
 import 'source_problem.dart';
 
 /// What a screen shows instead of a source's books when the source could not answer.
@@ -102,10 +103,10 @@ Future<void> _open(BuildContext context, Uri url) async {
   try {
     final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
     if (!opened) {
-      messenger.showSnackBar(SnackBar(content: Text('Could not open $url')));
+      tellInSnackBar(messenger, 'Could not open $url');
     }
   } catch (error) {
-    messenger.showSnackBar(SnackBar(content: Text('Could not open $url')));
+    tellInSnackBar(messenger, 'Could not open $url');
   }
 }
 

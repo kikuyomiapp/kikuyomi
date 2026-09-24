@@ -29,6 +29,11 @@ final class FakeGateway implements SourceGateway {
   @override
   final List<SourceDescription> sources;
 
+  /// Nothing is installed or removed in a widget test, so the list never changes.
+  @override
+  Stream<List<SourceDescription>> get sourceChanges =>
+      const Stream<List<SourceDescription>>.empty();
+
   /// When set, opening the source fails with it, as an extension that will not load does.
   final Object? openFailure;
 

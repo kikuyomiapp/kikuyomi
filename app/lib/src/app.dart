@@ -11,13 +11,24 @@ import 'book_files.dart';
 import 'providers.dart';
 import 'routes.dart';
 import 'setup_gate.dart';
+import 'snack_bars.dart';
 
 class KikuyomiApp extends ConsumerStatefulWidget {
-  const KikuyomiApp({super.key, this.openOnLaunch});
+  const KikuyomiApp({
+    super.key,
+    this.openOnLaunch,
+    this.installExtensionsFrom = const [],
+  });
 
   /// A book file or folder passed on the command line, to import and open at start. Also how the
   /// app is driven by automated checks, since a file dialog cannot be scripted.
   final String? openOnLaunch;
+
+  /// Folders passed with `--extension`, to install an extension from at start (§3.11).
+  ///
+  /// For an author's edit-and-reload loop on a desktop: rebuild the bundle, start the app, and the
+  /// source runs the new code without anyone tapping through a picker.
+  final List<String> installExtensionsFrom;
 
   @override
   ConsumerState<KikuyomiApp> createState() => _KikuyomiAppState();
@@ -52,6 +63,9 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
         .listen(_reportFailedBackup);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_decideSetup());
+      if (widget.installExtensionsFrom.isNotEmpty) {
+        unawaited(_installExtensions());
+      }
       // Covers for books added before covers were kept wait for the first look in the import
       // folder, whose new books bring their own, so start-up does the one thing at a time.
       unawaited(_lookForNewBooks().then((_) => _lookForMissingCovers()));
@@ -133,6 +147,22 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
         ),
       );
 
+  /// Installs the extensions named with `--extension`, one at a time, and says how each went.
+  ///
+  /// A folder that is not an extension is reported and the rest are still installed: the point of the
+  /// flag is a loop an author runs over and over, and one wrong path should cost one message.
+  Future<void> _installExtensions() async {
+    final library = ref.read(servicesProvider).extensions;
+    for (final folder in widget.installExtensionsFrom) {
+      try {
+        final installed = await library.installFromPath(folder);
+        _tell('Installed ${installed.name} ${installed.row.version}');
+      } catch (error) {
+        _tell('Could not install the extension in $folder: $error');
+      }
+    }
+  }
+
   Future<void> _open(String path) async {
     final services = ref.read(servicesProvider);
     try {
@@ -190,8 +220,7 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   void _tell(String message) {
     final context = _navigator.currentContext;
     if (context != null && context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      tellInSnackBar(ScaffoldMessenger.of(context), message);
     }
   }
 
@@ -201,8 +230,15 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
     return MaterialApp.router(
       title: 'Kikuyomi',
       routerConfig: _router,
-      theme: ThemeData(colorSchemeSeed: seed),
-      darkTheme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.dark),
+      theme: ThemeData(
+        colorSchemeSeed: seed,
+        snackBarTheme: kikuyomiSnackBarTheme,
+      ),
+      darkTheme: ThemeData(
+        colorSchemeSeed: seed,
+        brightness: Brightness.dark,
+        snackBarTheme: kikuyomiSnackBarTheme,
+      ),
     );
   }
 }

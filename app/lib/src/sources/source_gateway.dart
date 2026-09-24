@@ -16,6 +16,10 @@ abstract interface class SourceGateway {
   /// Every source the app offers, from manifests alone (§3.6). Reading it runs no extension code.
   List<SourceDescription> get sources;
 
+  /// The sources again, after every extension installed or removed, so a list of them follows what the
+  /// listener does on the Extensions screen.
+  Stream<List<SourceDescription>> get sourceChanges;
+
   /// The source with [sourceId], as the contract describes one, starting its extension's runtime on
   /// first use.
   ///
@@ -49,6 +53,10 @@ final class AppSourceGateway implements SourceGateway {
 
   @override
   List<SourceDescription> get sources => _services.sources.sources;
+
+  @override
+  Stream<List<SourceDescription>> get sourceChanges =>
+      _services.sources.changes;
 
   @override
   Future<ContentSource> open(int sourceId) => _services.openSource(sourceId);

@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kikuyomi/src/sources/bundled_extensions.dart';
+import 'package:kikuyomi/src/sources/extension_packages.dart';
 import 'package:kikuyomi_extension_manager/kikuyomi_extension_manager.dart';
 import 'package:kikuyomi_source_api/kikuyomi_source_api.dart';
 
@@ -102,7 +102,7 @@ void main() {
     () async {
       await expectLater(
         loadBundledExtension('librivox', bundle: _WrongCodeBundle()),
-        throwsA(isA<BundledExtensionException>()),
+        throwsA(isA<ExtensionPackageException>()),
       );
     },
   );

@@ -15,9 +15,19 @@ class BrowseScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => AppShell(
     tab: AppTab.browse,
-    appBar: AppBar(title: const Text('Browse')),
+    appBar: AppBar(
+      title: const Text('Browse'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.extension_outlined),
+          tooltip: 'Extensions',
+          onPressed: () => const ExtensionsRoute().push<void>(context),
+        ),
+      ],
+    ),
     body: SourcesView(
-      sources: ref.watch(sourceGatewayProvider).sources,
+      // Watched, so a source installed on the Extensions screen is here when the listener comes back.
+      sources: ref.watch(sourceListProvider).value ?? const [],
       onOpen: (source) => source.canBrowse
           ? SourceRoute(sourceId: source.id).push<void>(context)
           : const HomeRoute().go(context),

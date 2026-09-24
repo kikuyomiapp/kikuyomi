@@ -9,6 +9,8 @@ final class StorageLocations {
   const StorageLocations._({
     required this.appData,
     required this.covers,
+    required this.installedExtensions,
+    required this.extensionDrop,
     required this.streamCache,
     required this.mediaRoot,
     required this.pickerHandsOverCopies,
@@ -28,14 +30,22 @@ final class StorageLocations {
     // §5.1 keeps library covers in internal storage on every platform. Application Support is that
     // on iOS too, where Documents would show them in the Files app beside the imported books.
     final covers = Directory('${appData.path}${Platform.pathSeparator}covers');
+    final installedExtensions = Directory(
+      '${appData.path}${Platform.pathSeparator}installed_extensions',
+    );
     if (Platform.isIOS) {
+      final documents = await getApplicationDocumentsDirectory();
       return StorageLocations._(
         appData: appData,
         covers: covers,
+        installedExtensions: installedExtensions,
+        extensionDrop: Directory(
+          '${documents.path}${Platform.pathSeparator}Extensions',
+        ),
         streamCache: streamCache,
         // §5.1 keeps iOS imports in a folder the Files app shows, and Documents is the folder it
         // shows, given UIFileSharingEnabled in Info.plist.
-        mediaRoot: await getApplicationDocumentsDirectory(),
+        mediaRoot: documents,
         pickerHandsOverCopies: true,
         importFolderIsVisible: true,
         canPickFolders: false,
@@ -46,6 +56,10 @@ final class StorageLocations {
     return StorageLocations._(
       appData: appData,
       covers: covers,
+      installedExtensions: installedExtensions,
+      extensionDrop: Directory(
+        '${appData.path}${Platform.pathSeparator}Extensions',
+      ),
       streamCache: streamCache,
       mediaRoot: appData,
       pickerHandsOverCopies: android,
@@ -64,6 +78,22 @@ final class StorageLocations {
   /// Book rows record a cover by its name in this folder, never by an absolute path, since on iOS
   /// the app's container can move when the app is updated or reinstalled.
   final Directory covers;
+
+  /// The app's own copy of every installed extension, one folder per extension and one per version
+  /// (§3.9), inside [appData].
+  ///
+  /// Extensions are code, so they are kept where only the app can write: not in [mediaRoot], where a
+  /// listener drops books, and never in a cache the OS may empty. The folder may not exist yet;
+  /// installing the first extension creates it.
+  final Directory installedExtensions;
+
+  /// The folder an extension can be copied into to install it, inside [mediaRoot].
+  ///
+  /// Only worth offering where [importFolderIsVisible] says the listener can see it, which is iOS:
+  /// there no folder outside the app can be kept, so the Files app is the only door an extension has.
+  /// Elsewhere the folder picker is the way in. It may not exist yet; the Extensions screen creates it
+  /// when it offers it.
+  final Directory extensionDrop;
 
   /// Where the bytes of a streamed book are kept while they are worth keeping.
   ///

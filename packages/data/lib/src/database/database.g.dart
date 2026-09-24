@@ -255,7 +255,15 @@ class SourceRow extends DataClass implements Insertable<SourceRow> {
   /// The stable 64-bit hash §3 describes, not an autoincrement.
   final int id;
 
-  /// Null for a built-in source. Becomes a foreign key when the extension table arrives.
+  /// Null for a built-in source.
+  ///
+  /// Not a foreign key to [Extensions], although that table now exists, and deliberately so. §3.9:
+  /// "Uninstalling removes the code but not the user's data: library books from that source keep
+  /// their metadata, progress, and downloads, and point to a stub source until the extension returns
+  /// or the books are migrated." A source therefore outlives the extension it came from, and holds
+  /// on to its id so that the same extension installed again is recognised as the same one. A
+  /// foreign key would force the opposite: either the uninstall fails, or the link is lost, or the
+  /// books go with it.
   final String? extensionId;
   final String key;
   final String name;
@@ -6494,6 +6502,992 @@ class BookCategoriesCompanion extends UpdateCompanion<BookCategoryRow> {
   }
 }
 
+class $ExtensionsTable extends Extensions
+    with TableInfo<$ExtensionsTable, ExtensionRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExtensionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<String> version = GeneratedColumn<String>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _versionCodeMeta = const VerificationMeta(
+    'versionCode',
+  );
+  @override
+  late final GeneratedColumn<int> versionCode = GeneratedColumn<int>(
+    'version_code',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _apiVersionMeta = const VerificationMeta(
+    'apiVersion',
+  );
+  @override
+  late final GeneratedColumn<String> apiVersion = GeneratedColumn<String>(
+    'api_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<ExtensionStatus, String> status =
+      GeneratedColumn<String>(
+        'status',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<ExtensionStatus>($ExtensionsTable.$converterstatus);
+  @override
+  late final GeneratedColumnWithTypeConverter<ExtensionOrigin, String> origin =
+      GeneratedColumn<String>(
+        'origin',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<ExtensionOrigin>($ExtensionsTable.$converterorigin);
+  static const VerificationMeta _originHandleMeta = const VerificationMeta(
+    'originHandle',
+  );
+  @override
+  late final GeneratedColumn<String> originHandle = GeneratedColumn<String>(
+    'origin_handle',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _originNameMeta = const VerificationMeta(
+    'originName',
+  );
+  @override
+  late final GeneratedColumn<String> originName = GeneratedColumn<String>(
+    'origin_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _installPathMeta = const VerificationMeta(
+    'installPath',
+  );
+  @override
+  late final GeneratedColumn<String> installPath = GeneratedColumn<String>(
+    'install_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _installedAtMeta = const VerificationMeta(
+    'installedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> installedAt = GeneratedColumn<DateTime>(
+    'installed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    version,
+    versionCode,
+    apiVersion,
+    status,
+    origin,
+    originHandle,
+    originName,
+    installPath,
+    installedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'extensions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExtensionRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_versionMeta);
+    }
+    if (data.containsKey('version_code')) {
+      context.handle(
+        _versionCodeMeta,
+        versionCode.isAcceptableOrUnknown(
+          data['version_code']!,
+          _versionCodeMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_versionCodeMeta);
+    }
+    if (data.containsKey('api_version')) {
+      context.handle(
+        _apiVersionMeta,
+        apiVersion.isAcceptableOrUnknown(data['api_version']!, _apiVersionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_apiVersionMeta);
+    }
+    if (data.containsKey('origin_handle')) {
+      context.handle(
+        _originHandleMeta,
+        originHandle.isAcceptableOrUnknown(
+          data['origin_handle']!,
+          _originHandleMeta,
+        ),
+      );
+    }
+    if (data.containsKey('origin_name')) {
+      context.handle(
+        _originNameMeta,
+        originName.isAcceptableOrUnknown(data['origin_name']!, _originNameMeta),
+      );
+    }
+    if (data.containsKey('install_path')) {
+      context.handle(
+        _installPathMeta,
+        installPath.isAcceptableOrUnknown(
+          data['install_path']!,
+          _installPathMeta,
+        ),
+      );
+    }
+    if (data.containsKey('installed_at')) {
+      context.handle(
+        _installedAtMeta,
+        installedAt.isAcceptableOrUnknown(
+          data['installed_at']!,
+          _installedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_installedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExtensionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExtensionRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}version'],
+      )!,
+      versionCode: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version_code'],
+      )!,
+      apiVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}api_version'],
+      )!,
+      status: $ExtensionsTable.$converterstatus.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}status'],
+        )!,
+      ),
+      origin: $ExtensionsTable.$converterorigin.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}origin'],
+        )!,
+      ),
+      originHandle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}origin_handle'],
+      ),
+      originName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}origin_name'],
+      ),
+      installPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}install_path'],
+      ),
+      installedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}installed_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ExtensionsTable createAlias(String alias) {
+    return $ExtensionsTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<ExtensionStatus, String, String> $converterstatus =
+      const EnumNameConverter<ExtensionStatus>(ExtensionStatus.values);
+  static JsonTypeConverter2<ExtensionOrigin, String, String> $converterorigin =
+      const EnumNameConverter<ExtensionOrigin>(ExtensionOrigin.values);
+}
+
+class ExtensionRow extends DataClass implements Insertable<ExtensionRow> {
+  /// The extension's own id, as its manifest gives it: `org.example.librivox`. Never a surrogate,
+  /// because this is the id the manifest, the sources and the stored preferences all use.
+  final String id;
+
+  /// What the listener sees, from the manifest. Kept here so the Extensions screen can be shown
+  /// before any manifest is read again.
+  final String name;
+  final String version;
+
+  /// What orders versions: an update is a higher number, whatever `version` says (§3.3).
+  final int versionCode;
+  final String apiVersion;
+
+  /// Whether it may run, and if not why (§3.8). A folder install is `untrusted`, which is this app
+  /// saying that nothing proved the code is what the author published.
+  final ExtensionStatus status;
+
+  /// Where it came from, which is also how it is read again.
+  final ExtensionOrigin origin;
+
+  /// How to reach that origin again: the handle of the folder it was installed from, as
+  /// `UserFolders.open` takes one. Null for the extension that ships inside the app.
+  final String? originHandle;
+
+  /// What to call the origin to the listener: a folder's path on desktop, its own name on Android.
+  final String? originName;
+
+  /// Where the app's copy of the files is, relative to the folder installed extensions are kept in
+  /// (§3.9's versioned directory). Null for the extension that ships inside the app, whose files are
+  /// assets.
+  ///
+  /// Relative for the reason a cover's path is relative: on iOS the app's container moves when the
+  /// app is updated or reinstalled.
+  final String? installPath;
+  final DateTime installedAt;
+  const ExtensionRow({
+    required this.id,
+    required this.name,
+    required this.version,
+    required this.versionCode,
+    required this.apiVersion,
+    required this.status,
+    required this.origin,
+    this.originHandle,
+    this.originName,
+    this.installPath,
+    required this.installedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['version'] = Variable<String>(version);
+    map['version_code'] = Variable<int>(versionCode);
+    map['api_version'] = Variable<String>(apiVersion);
+    {
+      map['status'] = Variable<String>(
+        $ExtensionsTable.$converterstatus.toSql(status),
+      );
+    }
+    {
+      map['origin'] = Variable<String>(
+        $ExtensionsTable.$converterorigin.toSql(origin),
+      );
+    }
+    if (!nullToAbsent || originHandle != null) {
+      map['origin_handle'] = Variable<String>(originHandle);
+    }
+    if (!nullToAbsent || originName != null) {
+      map['origin_name'] = Variable<String>(originName);
+    }
+    if (!nullToAbsent || installPath != null) {
+      map['install_path'] = Variable<String>(installPath);
+    }
+    map['installed_at'] = Variable<DateTime>(installedAt);
+    return map;
+  }
+
+  ExtensionsCompanion toCompanion(bool nullToAbsent) {
+    return ExtensionsCompanion(
+      id: Value(id),
+      name: Value(name),
+      version: Value(version),
+      versionCode: Value(versionCode),
+      apiVersion: Value(apiVersion),
+      status: Value(status),
+      origin: Value(origin),
+      originHandle: originHandle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originHandle),
+      originName: originName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(originName),
+      installPath: installPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(installPath),
+      installedAt: Value(installedAt),
+    );
+  }
+
+  factory ExtensionRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExtensionRow(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      version: serializer.fromJson<String>(json['version']),
+      versionCode: serializer.fromJson<int>(json['versionCode']),
+      apiVersion: serializer.fromJson<String>(json['apiVersion']),
+      status: $ExtensionsTable.$converterstatus.fromJson(
+        serializer.fromJson<String>(json['status']),
+      ),
+      origin: $ExtensionsTable.$converterorigin.fromJson(
+        serializer.fromJson<String>(json['origin']),
+      ),
+      originHandle: serializer.fromJson<String?>(json['originHandle']),
+      originName: serializer.fromJson<String?>(json['originName']),
+      installPath: serializer.fromJson<String?>(json['installPath']),
+      installedAt: serializer.fromJson<DateTime>(json['installedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'version': serializer.toJson<String>(version),
+      'versionCode': serializer.toJson<int>(versionCode),
+      'apiVersion': serializer.toJson<String>(apiVersion),
+      'status': serializer.toJson<String>(
+        $ExtensionsTable.$converterstatus.toJson(status),
+      ),
+      'origin': serializer.toJson<String>(
+        $ExtensionsTable.$converterorigin.toJson(origin),
+      ),
+      'originHandle': serializer.toJson<String?>(originHandle),
+      'originName': serializer.toJson<String?>(originName),
+      'installPath': serializer.toJson<String?>(installPath),
+      'installedAt': serializer.toJson<DateTime>(installedAt),
+    };
+  }
+
+  ExtensionRow copyWith({
+    String? id,
+    String? name,
+    String? version,
+    int? versionCode,
+    String? apiVersion,
+    ExtensionStatus? status,
+    ExtensionOrigin? origin,
+    Value<String?> originHandle = const Value.absent(),
+    Value<String?> originName = const Value.absent(),
+    Value<String?> installPath = const Value.absent(),
+    DateTime? installedAt,
+  }) => ExtensionRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    version: version ?? this.version,
+    versionCode: versionCode ?? this.versionCode,
+    apiVersion: apiVersion ?? this.apiVersion,
+    status: status ?? this.status,
+    origin: origin ?? this.origin,
+    originHandle: originHandle.present ? originHandle.value : this.originHandle,
+    originName: originName.present ? originName.value : this.originName,
+    installPath: installPath.present ? installPath.value : this.installPath,
+    installedAt: installedAt ?? this.installedAt,
+  );
+  ExtensionRow copyWithCompanion(ExtensionsCompanion data) {
+    return ExtensionRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      version: data.version.present ? data.version.value : this.version,
+      versionCode: data.versionCode.present
+          ? data.versionCode.value
+          : this.versionCode,
+      apiVersion: data.apiVersion.present
+          ? data.apiVersion.value
+          : this.apiVersion,
+      status: data.status.present ? data.status.value : this.status,
+      origin: data.origin.present ? data.origin.value : this.origin,
+      originHandle: data.originHandle.present
+          ? data.originHandle.value
+          : this.originHandle,
+      originName: data.originName.present
+          ? data.originName.value
+          : this.originName,
+      installPath: data.installPath.present
+          ? data.installPath.value
+          : this.installPath,
+      installedAt: data.installedAt.present
+          ? data.installedAt.value
+          : this.installedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExtensionRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('version: $version, ')
+          ..write('versionCode: $versionCode, ')
+          ..write('apiVersion: $apiVersion, ')
+          ..write('status: $status, ')
+          ..write('origin: $origin, ')
+          ..write('originHandle: $originHandle, ')
+          ..write('originName: $originName, ')
+          ..write('installPath: $installPath, ')
+          ..write('installedAt: $installedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    version,
+    versionCode,
+    apiVersion,
+    status,
+    origin,
+    originHandle,
+    originName,
+    installPath,
+    installedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExtensionRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.version == this.version &&
+          other.versionCode == this.versionCode &&
+          other.apiVersion == this.apiVersion &&
+          other.status == this.status &&
+          other.origin == this.origin &&
+          other.originHandle == this.originHandle &&
+          other.originName == this.originName &&
+          other.installPath == this.installPath &&
+          other.installedAt == this.installedAt);
+}
+
+class ExtensionsCompanion extends UpdateCompanion<ExtensionRow> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String> version;
+  final Value<int> versionCode;
+  final Value<String> apiVersion;
+  final Value<ExtensionStatus> status;
+  final Value<ExtensionOrigin> origin;
+  final Value<String?> originHandle;
+  final Value<String?> originName;
+  final Value<String?> installPath;
+  final Value<DateTime> installedAt;
+  final Value<int> rowid;
+  const ExtensionsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.version = const Value.absent(),
+    this.versionCode = const Value.absent(),
+    this.apiVersion = const Value.absent(),
+    this.status = const Value.absent(),
+    this.origin = const Value.absent(),
+    this.originHandle = const Value.absent(),
+    this.originName = const Value.absent(),
+    this.installPath = const Value.absent(),
+    this.installedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ExtensionsCompanion.insert({
+    required String id,
+    required String name,
+    required String version,
+    required int versionCode,
+    required String apiVersion,
+    required ExtensionStatus status,
+    required ExtensionOrigin origin,
+    this.originHandle = const Value.absent(),
+    this.originName = const Value.absent(),
+    this.installPath = const Value.absent(),
+    required DateTime installedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       version = Value(version),
+       versionCode = Value(versionCode),
+       apiVersion = Value(apiVersion),
+       status = Value(status),
+       origin = Value(origin),
+       installedAt = Value(installedAt);
+  static Insertable<ExtensionRow> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? version,
+    Expression<int>? versionCode,
+    Expression<String>? apiVersion,
+    Expression<String>? status,
+    Expression<String>? origin,
+    Expression<String>? originHandle,
+    Expression<String>? originName,
+    Expression<String>? installPath,
+    Expression<DateTime>? installedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (version != null) 'version': version,
+      if (versionCode != null) 'version_code': versionCode,
+      if (apiVersion != null) 'api_version': apiVersion,
+      if (status != null) 'status': status,
+      if (origin != null) 'origin': origin,
+      if (originHandle != null) 'origin_handle': originHandle,
+      if (originName != null) 'origin_name': originName,
+      if (installPath != null) 'install_path': installPath,
+      if (installedAt != null) 'installed_at': installedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ExtensionsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? version,
+    Value<int>? versionCode,
+    Value<String>? apiVersion,
+    Value<ExtensionStatus>? status,
+    Value<ExtensionOrigin>? origin,
+    Value<String?>? originHandle,
+    Value<String?>? originName,
+    Value<String?>? installPath,
+    Value<DateTime>? installedAt,
+    Value<int>? rowid,
+  }) {
+    return ExtensionsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      version: version ?? this.version,
+      versionCode: versionCode ?? this.versionCode,
+      apiVersion: apiVersion ?? this.apiVersion,
+      status: status ?? this.status,
+      origin: origin ?? this.origin,
+      originHandle: originHandle ?? this.originHandle,
+      originName: originName ?? this.originName,
+      installPath: installPath ?? this.installPath,
+      installedAt: installedAt ?? this.installedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<String>(version.value);
+    }
+    if (versionCode.present) {
+      map['version_code'] = Variable<int>(versionCode.value);
+    }
+    if (apiVersion.present) {
+      map['api_version'] = Variable<String>(apiVersion.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(
+        $ExtensionsTable.$converterstatus.toSql(status.value),
+      );
+    }
+    if (origin.present) {
+      map['origin'] = Variable<String>(
+        $ExtensionsTable.$converterorigin.toSql(origin.value),
+      );
+    }
+    if (originHandle.present) {
+      map['origin_handle'] = Variable<String>(originHandle.value);
+    }
+    if (originName.present) {
+      map['origin_name'] = Variable<String>(originName.value);
+    }
+    if (installPath.present) {
+      map['install_path'] = Variable<String>(installPath.value);
+    }
+    if (installedAt.present) {
+      map['installed_at'] = Variable<DateTime>(installedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExtensionsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('version: $version, ')
+          ..write('versionCode: $versionCode, ')
+          ..write('apiVersion: $apiVersion, ')
+          ..write('status: $status, ')
+          ..write('origin: $origin, ')
+          ..write('originHandle: $originHandle, ')
+          ..write('originName: $originName, ')
+          ..write('installPath: $installPath, ')
+          ..write('installedAt: $installedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ExtensionPreferencesTable extends ExtensionPreferences
+    with TableInfo<$ExtensionPreferencesTable, ExtensionPreferenceRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ExtensionPreferencesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _extensionIdMeta = const VerificationMeta(
+    'extensionId',
+  );
+  @override
+  late final GeneratedColumn<String> extensionId = GeneratedColumn<String>(
+    'extension_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [extensionId, key, value];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'extension_preferences';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExtensionPreferenceRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('extension_id')) {
+      context.handle(
+        _extensionIdMeta,
+        extensionId.isAcceptableOrUnknown(
+          data['extension_id']!,
+          _extensionIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_extensionIdMeta);
+    }
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {extensionId, key};
+  @override
+  ExtensionPreferenceRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExtensionPreferenceRow(
+      extensionId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}extension_id'],
+      )!,
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      )!,
+    );
+  }
+
+  @override
+  $ExtensionPreferencesTable createAlias(String alias) {
+    return $ExtensionPreferencesTable(attachedDatabase, alias);
+  }
+}
+
+class ExtensionPreferenceRow extends DataClass
+    implements Insertable<ExtensionPreferenceRow> {
+  final String extensionId;
+  final String key;
+  final String value;
+  const ExtensionPreferenceRow({
+    required this.extensionId,
+    required this.key,
+    required this.value,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['extension_id'] = Variable<String>(extensionId);
+    map['key'] = Variable<String>(key);
+    map['value'] = Variable<String>(value);
+    return map;
+  }
+
+  ExtensionPreferencesCompanion toCompanion(bool nullToAbsent) {
+    return ExtensionPreferencesCompanion(
+      extensionId: Value(extensionId),
+      key: Value(key),
+      value: Value(value),
+    );
+  }
+
+  factory ExtensionPreferenceRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExtensionPreferenceRow(
+      extensionId: serializer.fromJson<String>(json['extensionId']),
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String>(json['value']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'extensionId': serializer.toJson<String>(extensionId),
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String>(value),
+    };
+  }
+
+  ExtensionPreferenceRow copyWith({
+    String? extensionId,
+    String? key,
+    String? value,
+  }) => ExtensionPreferenceRow(
+    extensionId: extensionId ?? this.extensionId,
+    key: key ?? this.key,
+    value: value ?? this.value,
+  );
+  ExtensionPreferenceRow copyWithCompanion(ExtensionPreferencesCompanion data) {
+    return ExtensionPreferenceRow(
+      extensionId: data.extensionId.present
+          ? data.extensionId.value
+          : this.extensionId,
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExtensionPreferenceRow(')
+          ..write('extensionId: $extensionId, ')
+          ..write('key: $key, ')
+          ..write('value: $value')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(extensionId, key, value);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExtensionPreferenceRow &&
+          other.extensionId == this.extensionId &&
+          other.key == this.key &&
+          other.value == this.value);
+}
+
+class ExtensionPreferencesCompanion
+    extends UpdateCompanion<ExtensionPreferenceRow> {
+  final Value<String> extensionId;
+  final Value<String> key;
+  final Value<String> value;
+  final Value<int> rowid;
+  const ExtensionPreferencesCompanion({
+    this.extensionId = const Value.absent(),
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ExtensionPreferencesCompanion.insert({
+    required String extensionId,
+    required String key,
+    required String value,
+    this.rowid = const Value.absent(),
+  }) : extensionId = Value(extensionId),
+       key = Value(key),
+       value = Value(value);
+  static Insertable<ExtensionPreferenceRow> custom({
+    Expression<String>? extensionId,
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (extensionId != null) 'extension_id': extensionId,
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ExtensionPreferencesCompanion copyWith({
+    Value<String>? extensionId,
+    Value<String>? key,
+    Value<String>? value,
+    Value<int>? rowid,
+  }) {
+    return ExtensionPreferencesCompanion(
+      extensionId: extensionId ?? this.extensionId,
+      key: key ?? this.key,
+      value: value ?? this.value,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (extensionId.present) {
+      map['extension_id'] = Variable<String>(extensionId.value);
+    }
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExtensionPreferencesCompanion(')
+          ..write('extensionId: $extensionId, ')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$KikuyomiDatabase extends GeneratedDatabase {
   _$KikuyomiDatabase(QueryExecutor e) : super(e);
   $KikuyomiDatabaseManager get managers => $KikuyomiDatabaseManager(this);
@@ -6512,6 +7506,9 @@ abstract class _$KikuyomiDatabase extends GeneratedDatabase {
   late final $BookmarksTable bookmarks = $BookmarksTable(this);
   late final $CategoriesTable categories = $CategoriesTable(this);
   late final $BookCategoriesTable bookCategories = $BookCategoriesTable(this);
+  late final $ExtensionsTable extensions = $ExtensionsTable(this);
+  late final $ExtensionPreferencesTable extensionPreferences =
+      $ExtensionPreferencesTable(this);
   late final Index booksLibrary = Index(
     'books_library',
     'CREATE INDEX books_library ON books (in_library, date_added)',
@@ -6545,6 +7542,8 @@ abstract class _$KikuyomiDatabase extends GeneratedDatabase {
     bookmarks,
     categories,
     bookCategories,
+    extensions,
+    extensionPreferences,
     booksLibrary,
     chaptersOrder,
     playbackStatesRecent,
@@ -12844,6 +13843,533 @@ typedef $$BookCategoriesTableProcessedTableManager =
       BookCategoryRow,
       PrefetchHooks Function({bool bookId, bool categoryId})
     >;
+typedef $$ExtensionsTableCreateCompanionBuilder = ExtensionsCompanion Function({
+  required String id,
+  required String name,
+  required String version,
+  required int versionCode,
+  required String apiVersion,
+  required ExtensionStatus status,
+  required ExtensionOrigin origin,
+  Value<String?> originHandle,
+  Value<String?> originName,
+  Value<String?> installPath,
+  required DateTime installedAt,
+  Value<int> rowid,
+});
+typedef $$ExtensionsTableUpdateCompanionBuilder = ExtensionsCompanion Function({
+  Value<String> id,
+  Value<String> name,
+  Value<String> version,
+  Value<int> versionCode,
+  Value<String> apiVersion,
+  Value<ExtensionStatus> status,
+  Value<ExtensionOrigin> origin,
+  Value<String?> originHandle,
+  Value<String?> originName,
+  Value<String?> installPath,
+  Value<DateTime> installedAt,
+  Value<int> rowid,
+});
+
+class $$ExtensionsTableFilterComposer
+    extends Composer<_$KikuyomiDatabase, $ExtensionsTable> {
+  $$ExtensionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get versionCode => $composableBuilder(
+    column: $table.versionCode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get apiVersion => $composableBuilder(
+    column: $table.apiVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<ExtensionStatus, ExtensionStatus, String>
+  get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<ExtensionOrigin, ExtensionOrigin, String>
+  get origin => $composableBuilder(
+    column: $table.origin,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<String> get originHandle => $composableBuilder(
+    column: $table.originHandle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get originName => $composableBuilder(
+    column: $table.originName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get installPath => $composableBuilder(
+    column: $table.installPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get installedAt => $composableBuilder(
+    column: $table.installedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ExtensionsTableOrderingComposer
+    extends Composer<_$KikuyomiDatabase, $ExtensionsTable> {
+  $$ExtensionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get versionCode => $composableBuilder(
+    column: $table.versionCode,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get apiVersion => $composableBuilder(
+    column: $table.apiVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get origin => $composableBuilder(
+    column: $table.origin,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get originHandle => $composableBuilder(
+    column: $table.originHandle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get originName => $composableBuilder(
+    column: $table.originName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get installPath => $composableBuilder(
+    column: $table.installPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get installedAt => $composableBuilder(
+    column: $table.installedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ExtensionsTableAnnotationComposer
+    extends Composer<_$KikuyomiDatabase, $ExtensionsTable> {
+  $$ExtensionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<int> get versionCode => $composableBuilder(
+    column: $table.versionCode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get apiVersion => $composableBuilder(
+    column: $table.apiVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<ExtensionStatus, String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<ExtensionOrigin, String> get origin =>
+      $composableBuilder(column: $table.origin, builder: (column) => column);
+
+  GeneratedColumn<String> get originHandle => $composableBuilder(
+    column: $table.originHandle,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get originName => $composableBuilder(
+    column: $table.originName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get installPath => $composableBuilder(
+    column: $table.installPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get installedAt => $composableBuilder(
+    column: $table.installedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$ExtensionsTableTableManager
+    extends
+        RootTableManager<
+          _$KikuyomiDatabase,
+          $ExtensionsTable,
+          ExtensionRow,
+          $$ExtensionsTableFilterComposer,
+          $$ExtensionsTableOrderingComposer,
+          $$ExtensionsTableAnnotationComposer,
+          $$ExtensionsTableCreateCompanionBuilder,
+          $$ExtensionsTableUpdateCompanionBuilder,
+          (
+            ExtensionRow,
+            BaseReferences<_$KikuyomiDatabase, $ExtensionsTable, ExtensionRow>,
+          ),
+          ExtensionRow,
+          PrefetchHooks Function()
+        > {
+  $$ExtensionsTableTableManager(_$KikuyomiDatabase db, $ExtensionsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExtensionsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ExtensionsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ExtensionsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> version = const Value.absent(),
+                Value<int> versionCode = const Value.absent(),
+                Value<String> apiVersion = const Value.absent(),
+                Value<ExtensionStatus> status = const Value.absent(),
+                Value<ExtensionOrigin> origin = const Value.absent(),
+                Value<String?> originHandle = const Value.absent(),
+                Value<String?> originName = const Value.absent(),
+                Value<String?> installPath = const Value.absent(),
+                Value<DateTime> installedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ExtensionsCompanion(
+                id: id,
+                name: name,
+                version: version,
+                versionCode: versionCode,
+                apiVersion: apiVersion,
+                status: status,
+                origin: origin,
+                originHandle: originHandle,
+                originName: originName,
+                installPath: installPath,
+                installedAt: installedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                required String version,
+                required int versionCode,
+                required String apiVersion,
+                required ExtensionStatus status,
+                required ExtensionOrigin origin,
+                Value<String?> originHandle = const Value.absent(),
+                Value<String?> originName = const Value.absent(),
+                Value<String?> installPath = const Value.absent(),
+                required DateTime installedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ExtensionsCompanion.insert(
+                id: id,
+                name: name,
+                version: version,
+                versionCode: versionCode,
+                apiVersion: apiVersion,
+                status: status,
+                origin: origin,
+                originHandle: originHandle,
+                originName: originName,
+                installPath: installPath,
+                installedAt: installedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ExtensionsTable, ExtensionRow>(table),
+                  BaseReferences<
+                    _$KikuyomiDatabase,
+                    $ExtensionsTable,
+                    ExtensionRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ExtensionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$KikuyomiDatabase,
+      $ExtensionsTable,
+      ExtensionRow,
+      $$ExtensionsTableFilterComposer,
+      $$ExtensionsTableOrderingComposer,
+      $$ExtensionsTableAnnotationComposer,
+      $$ExtensionsTableCreateCompanionBuilder,
+      $$ExtensionsTableUpdateCompanionBuilder,
+      (
+        ExtensionRow,
+        BaseReferences<_$KikuyomiDatabase, $ExtensionsTable, ExtensionRow>,
+      ),
+      ExtensionRow,
+      PrefetchHooks Function()
+    >;
+typedef $$ExtensionPreferencesTableCreateCompanionBuilder =
+    ExtensionPreferencesCompanion Function({
+      required String extensionId,
+      required String key,
+      required String value,
+      Value<int> rowid,
+    });
+typedef $$ExtensionPreferencesTableUpdateCompanionBuilder =
+    ExtensionPreferencesCompanion Function({
+      Value<String> extensionId,
+      Value<String> key,
+      Value<String> value,
+      Value<int> rowid,
+    });
+
+class $$ExtensionPreferencesTableFilterComposer
+    extends Composer<_$KikuyomiDatabase, $ExtensionPreferencesTable> {
+  $$ExtensionPreferencesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get extensionId => $composableBuilder(
+    column: $table.extensionId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ExtensionPreferencesTableOrderingComposer
+    extends Composer<_$KikuyomiDatabase, $ExtensionPreferencesTable> {
+  $$ExtensionPreferencesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get extensionId => $composableBuilder(
+    column: $table.extensionId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ExtensionPreferencesTableAnnotationComposer
+    extends Composer<_$KikuyomiDatabase, $ExtensionPreferencesTable> {
+  $$ExtensionPreferencesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get extensionId => $composableBuilder(
+    column: $table.extensionId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+}
+
+class $$ExtensionPreferencesTableTableManager
+    extends
+        RootTableManager<
+          _$KikuyomiDatabase,
+          $ExtensionPreferencesTable,
+          ExtensionPreferenceRow,
+          $$ExtensionPreferencesTableFilterComposer,
+          $$ExtensionPreferencesTableOrderingComposer,
+          $$ExtensionPreferencesTableAnnotationComposer,
+          $$ExtensionPreferencesTableCreateCompanionBuilder,
+          $$ExtensionPreferencesTableUpdateCompanionBuilder,
+          (
+            ExtensionPreferenceRow,
+            BaseReferences<
+              _$KikuyomiDatabase,
+              $ExtensionPreferencesTable,
+              ExtensionPreferenceRow
+            >,
+          ),
+          ExtensionPreferenceRow,
+          PrefetchHooks Function()
+        > {
+  $$ExtensionPreferencesTableTableManager(
+    _$KikuyomiDatabase db,
+    $ExtensionPreferencesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ExtensionPreferencesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ExtensionPreferencesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$ExtensionPreferencesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> extensionId = const Value.absent(),
+                Value<String> key = const Value.absent(),
+                Value<String> value = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ExtensionPreferencesCompanion(
+                extensionId: extensionId,
+                key: key,
+                value: value,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String extensionId,
+                required String key,
+                required String value,
+                Value<int> rowid = const Value.absent(),
+              }) => ExtensionPreferencesCompanion.insert(
+                extensionId: extensionId,
+                key: key,
+                value: value,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<
+                    $ExtensionPreferencesTable,
+                    ExtensionPreferenceRow
+                  >(table),
+                  BaseReferences<
+                    _$KikuyomiDatabase,
+                    $ExtensionPreferencesTable,
+                    ExtensionPreferenceRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ExtensionPreferencesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$KikuyomiDatabase,
+      $ExtensionPreferencesTable,
+      ExtensionPreferenceRow,
+      $$ExtensionPreferencesTableFilterComposer,
+      $$ExtensionPreferencesTableOrderingComposer,
+      $$ExtensionPreferencesTableAnnotationComposer,
+      $$ExtensionPreferencesTableCreateCompanionBuilder,
+      $$ExtensionPreferencesTableUpdateCompanionBuilder,
+      (
+        ExtensionPreferenceRow,
+        BaseReferences<
+          _$KikuyomiDatabase,
+          $ExtensionPreferencesTable,
+          ExtensionPreferenceRow
+        >,
+      ),
+      ExtensionPreferenceRow,
+      PrefetchHooks Function()
+    >;
 
 class $KikuyomiDatabaseManager {
   final _$KikuyomiDatabase _db;
@@ -12872,4 +14398,8 @@ class $KikuyomiDatabaseManager {
       $$CategoriesTableTableManager(_db, _db.categories);
   $$BookCategoriesTableTableManager get bookCategories =>
       $$BookCategoriesTableTableManager(_db, _db.bookCategories);
+  $$ExtensionsTableTableManager get extensions =>
+      $$ExtensionsTableTableManager(_db, _db.extensions);
+  $$ExtensionPreferencesTableTableManager get extensionPreferences =>
+      $$ExtensionPreferencesTableTableManager(_db, _db.extensionPreferences);
 }

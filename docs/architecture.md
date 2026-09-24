@@ -419,7 +419,7 @@ Three sources are compiled into the app.
 
 **OPDS** reads OPDS 2 catalogs, including Readium audiobook manifests.
 
-Separately, an **official repository** hosts JavaScript extensions for public-domain and openly licensed catalogs such as LibriVox and Internet Archive public-domain collections. It proves the whole extension pipeline end to end, serves as the reference implementation extension authors copy from, and gives new users something to listen to on first launch. Third-party repositories are user-added only; the app never recommends or lists them, for the legal reasons in Section 7.1.
+Separately, an **official repository** hosts JavaScript extensions. It proves the whole extension pipeline end to end, serves as the reference implementation extension authors copy from, and gives new users something to listen to on first launch. Third-party repositories are user-added only; the app never recommends or lists them, for the legal reasons in Section 7.1.
 
 ### 3.11 Extension developer experience
 
@@ -663,7 +663,7 @@ Cross-platform skip-silence and voice boost (which need custom audio processing 
 
 *I'm not a lawyer, and this section is an engineering risk assessment rather than legal advice. Before public launch, a short consultation with an IP lawyer familiar with app distribution would be money well spent.*
 
-**Piracy and secondary liability.** Tachiyomi's shutdown is the direct precedent, and sideloading does nothing to reduce this risk: Tachiyomi was never distributed through Google Play, and the pressure landed on the project and its hosting rather than on a store. With Apple out of the picture, takedown notices against your GitHub repositories and releases become the realistic enforcement path. Architectural neutrality ("the app doesn't host anything") did not protect the project once the same organization maintained extensions that pointed at unauthorized content. The protective measures are behavioral as much as technical: you never build, host, maintain, or promote extensions for unauthorized sources; the official repository contains only public-domain, openly licensed, or user-owned content; the app and its documentation never list or recommend third-party repositories; marketing never shows copyrighted catalogs; and there is a published terms-of-use page and a takedown contact.
+**Piracy and secondary liability.** Tachiyomi's shutdown is the direct precedent, and sideloading does nothing to reduce this risk: Tachiyomi was never distributed through Google Play, and the pressure landed on the project and its hosting rather than on a store. With Apple out of the picture, takedown notices against your GitHub repositories and releases become the realistic enforcement path. Architectural neutrality ("the app doesn't host anything") did not protect the project once the same organization maintained extensions that pointed at unauthorized content. The protective measures are behavioral as much as technical: the app and its documentation never list or recommend third-party repositories; marketing never shows copyrighted catalogs; and there is a published terms-of-use page and a takedown contact.
 
 **DRM circumvention.** The app must never support removing or bypassing DRM (Audible AAX/AAXC, OverDrive/Libby, Apple Books). Anti-circumvention laws such as DMCA §1201 in the US and their EU equivalents apply independently of whether any infringement follows. This belongs in the extension policy, and the host API must not include anything purpose-built for it.
 

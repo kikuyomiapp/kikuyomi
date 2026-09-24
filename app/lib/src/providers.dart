@@ -7,6 +7,8 @@ import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
 import 'services.dart';
 import 'setup_gate.dart';
+import 'sources/extension_console.dart';
+import 'sources/extension_library.dart';
 import 'sources/source_gateway.dart';
 import 'sources/source_registry.dart';
 
@@ -19,6 +21,44 @@ final servicesProvider = Provider<AppServices>(
 final sourceRegistryProvider = Provider<SourceRegistry>(
   (ref) => ref.watch(servicesProvider).sources,
 );
+
+/// Every source the app offers, and the list again after every install and removal.
+///
+/// A [Provider] would not do: installing an extension adds sources while a screen is open, and §2.5
+/// has screens follow what changes rather than hold a copy of it. The current list comes first, so a
+/// screen shows the sources in its first frame.
+final sourceListProvider = StreamProvider<List<SourceDescription>>((ref) {
+  final gateway = ref.watch(sourceGatewayProvider);
+  return Stream<List<SourceDescription>>.multi((controller) {
+    controller.add(gateway.sources);
+    final subscription = gateway.sourceChanges.listen(
+      controller.add,
+      onError: controller.addError,
+    );
+    controller.onCancel = subscription.cancel;
+  });
+});
+
+/// Every extension the app knows about, watched, for the Extensions screen (§3.9).
+final extensionsProvider = StreamProvider<List<ExtensionSummary>>(
+  (ref) => ref.watch(servicesProvider).extensions.watch(),
+);
+
+/// What is in the extension console (§3.5), and its contents again after every line.
+///
+/// The console keeps its lines in memory rather than in the database, so this reads them on every
+/// signal rather than watching a query.
+final extensionConsoleProvider = StreamProvider<List<ExtensionLogLine>>((ref) {
+  final console = ref.watch(servicesProvider).extensionConsole;
+  return Stream<List<ExtensionLogLine>>.multi((controller) {
+    controller.add(console.lines);
+    final subscription = console.changes.listen(
+      (_) => controller.add(console.lines),
+      onError: controller.addError,
+    );
+    controller.onCancel = subscription.cancel;
+  });
+});
 
 /// What the Browse screens reach the sources through. Overridden in a widget test with a fake
 /// source, which is how those screens are tested without a database, an engine or a network.

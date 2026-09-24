@@ -36,7 +36,8 @@ independently of the proposal it came from.
 | [0014](0014-apache-2-0-license.md) | Apache-2.0 licence | 12 | Accepted |
 | [0015](0015-name-and-application-id.md) | Name and application ID | 15 | Accepted |
 | [0016](0016-source-api-1-0.md) | SourceAPI 1.0, the extension contract | — | Accepted |
+| [0017](0017-installing-extensions-from-a-folder.md) | Installing extensions from a folder | — | Accepted |
 
 Every decision in §9 of `docs/architecture.md` now has an ADR, and all are Accepted: ADR-0001,
-the last, once its probe passed on Android emulators in CI. ADR-0016 is the first decision made after Phase 0,
-not one of §9's.
+the last, once its probe passed on Android emulators in CI. ADR-0016 and ADR-0017 are decisions made
+after Phase 0, not ones of §9's.

@@ -1,10 +1,12 @@
-/// Schema version 1, following docs/architecture.md §4.3.
+/// The schema, following docs/architecture.md §4.3.
 ///
 /// Version 1 holds what Phase 1 needs: sources, books and their contributors, chapters, the physical
-/// file layout, progress, listening history, bookmarks and categories. Tables that belong to later
-/// phases arrive in later schema versions, each with its own migration: `repository`, `extension`
-/// and `extension_preference` in Phase 2, `download_task` in Phase 3, and `smart_collection` and
-/// the `book_fts` full-text index in Phase 4.
+/// file layout, progress, listening history, bookmarks and categories.
+///
+/// Version 2 adds what installing an extension needs: `extension`, so that what is installed
+/// survives a restart, and `extension_preference`, so that what an extension stores does too.
+/// `repository` follows with the repository door, `download_task` in Phase 3, and
+/// `smart_collection` and the `book_fts` full-text index in Phase 4.
 ///
 /// Row classes are named `…Row`. §4.1 keeps database records, domain entities and extension DTOs as
 /// three separate types, and the suffix keeps a record from being mistaken for an entity.
@@ -21,7 +23,15 @@ class Sources extends Table {
   /// The stable 64-bit hash §3 describes, not an autoincrement.
   IntColumn get id => integer()();
 
-  /// Null for a built-in source. Becomes a foreign key when the extension table arrives.
+  /// Null for a built-in source.
+  ///
+  /// Not a foreign key to [Extensions], although that table now exists, and deliberately so. §3.9:
+  /// "Uninstalling removes the code but not the user's data: library books from that source keep
+  /// their metadata, progress, and downloads, and point to a stub source until the extension returns
+  /// or the books are migrated." A source therefore outlives the extension it came from, and holds
+  /// on to its id so that the same extension installed again is recognised as the same one. A
+  /// foreign key would force the opposite: either the uninstall fails, or the link is lost, or the
+  /// books go with it.
   TextColumn get extensionId => text().nullable()();
   TextColumn get key => text()();
   TextColumn get name => text()();
@@ -263,4 +273,74 @@ class BookCategories extends Table {
 
   @override
   Set<Column<Object>> get primaryKey => {bookId, categoryId};
+}
+
+/// An extension the app has installed (§4.3), or the one that ships inside it.
+///
+/// Version 2's reason for existing: what is installed, which version it is and where it came from
+/// have to survive a restart, since after one the app has only its own storage to go on. No code is
+/// here — the files live in the app's storage, at [Extensions.installPath] — and nothing here runs:
+/// §3.6 starts a runtime on first use, from these rows and the manifest beside the code.
+///
+/// §4.3's column list also has `repository_id`, which waits for the repository door: until then
+/// [Extensions.origin] is where an extension came from, and a repository will be one more kind of
+/// origin rather than a second way of saying it.
+@DataClassName('ExtensionRow')
+class Extensions extends Table {
+  /// The extension's own id, as its manifest gives it: `org.example.librivox`. Never a surrogate,
+  /// because this is the id the manifest, the sources and the stored preferences all use.
+  TextColumn get id => text()();
+
+  /// What the listener sees, from the manifest. Kept here so the Extensions screen can be shown
+  /// before any manifest is read again.
+  TextColumn get name => text()();
+  TextColumn get version => text()();
+
+  /// What orders versions: an update is a higher number, whatever `version` says (§3.3).
+  IntColumn get versionCode => integer()();
+  TextColumn get apiVersion => text()();
+
+  /// Whether it may run, and if not why (§3.8). A folder install is `untrusted`, which is this app
+  /// saying that nothing proved the code is what the author published.
+  TextColumn get status => textEnum<ExtensionStatus>()();
+
+  /// Where it came from, which is also how it is read again.
+  TextColumn get origin => textEnum<ExtensionOrigin>()();
+
+  /// How to reach that origin again: the handle of the folder it was installed from, as
+  /// `UserFolders.open` takes one. Null for the extension that ships inside the app.
+  TextColumn get originHandle => text().nullable()();
+
+  /// What to call the origin to the listener: a folder's path on desktop, its own name on Android.
+  TextColumn get originName => text().nullable()();
+
+  /// Where the app's copy of the files is, relative to the folder installed extensions are kept in
+  /// (§3.9's versioned directory). Null for the extension that ships inside the app, whose files are
+  /// assets.
+  ///
+  /// Relative for the reason a cover's path is relative: on iOS the app's container moves when the
+  /// app is updated or reinstalled.
+  TextColumn get installPath => text().nullable()();
+
+  DateTimeColumn get installedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+/// One extension's stored preferences: the `storage` module of §3.5, and §4.3's
+/// `extension_preference`.
+///
+/// Deliberately not a foreign key to [Extensions]. §3.9: "Uninstalling removes the code but not the
+/// user's data." A source's login, its chosen catalogue, whatever it kept — all of that is the
+/// listener's, and it is here when the extension comes back. Secrets are not: §4.3 sends those to
+/// platform secure storage, and SourceAPI 1.0 says so to extension authors.
+@DataClassName('ExtensionPreferenceRow')
+class ExtensionPreferences extends Table {
+  TextColumn get extensionId => text()();
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {extensionId, key};
 }
