@@ -11,6 +11,7 @@ final class StorageLocations {
     required this.covers,
     required this.installedExtensions,
     required this.extensionDrop,
+    required this.downloads,
     required this.streamCache,
     required this.mediaRoot,
     required this.pickerHandsOverCopies,
@@ -33,6 +34,9 @@ final class StorageLocations {
     final installedExtensions = Directory(
       '${appData.path}${Platform.pathSeparator}installed_extensions',
     );
+    final downloads = Directory(
+      '${appData.path}${Platform.pathSeparator}downloads',
+    );
     if (Platform.isIOS) {
       final documents = await getApplicationDocumentsDirectory();
       return StorageLocations._(
@@ -42,6 +46,7 @@ final class StorageLocations {
         extensionDrop: Directory(
           '${documents.path}${Platform.pathSeparator}Extensions',
         ),
+        downloads: downloads,
         streamCache: streamCache,
         // §5.1 keeps iOS imports in a folder the Files app shows, and Documents is the folder it
         // shows, given UIFileSharingEnabled in Info.plist.
@@ -60,6 +65,7 @@ final class StorageLocations {
       extensionDrop: Directory(
         '${appData.path}${Platform.pathSeparator}Extensions',
       ),
+      downloads: downloads,
       streamCache: streamCache,
       mediaRoot: appData,
       pickerHandsOverCopies: android,
@@ -94,6 +100,14 @@ final class StorageLocations {
   /// Elsewhere the folder picker is the way in. It may not exist yet; the Extensions screen creates it
   /// when it offers it.
   final Directory extensionDrop;
+
+  /// The audiobook files the listener asked to keep (§5.2), inside [appData].
+  ///
+  /// App-private, like the covers, and on the same volume as the folder the transport writes into,
+  /// so a finished download is moved into place with a rename rather than copied (§5.2's atomic
+  /// move). Not the stream cache: nobody asked for those bytes and the OS may take them back,
+  /// whereas these were asked for and must survive until the listener says otherwise.
+  final Directory downloads;
 
   /// Where the bytes of a streamed book are kept while they are worth keeping.
   ///

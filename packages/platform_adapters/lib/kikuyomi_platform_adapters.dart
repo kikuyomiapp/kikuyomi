@@ -11,6 +11,7 @@ export 'src/audio/audio_focus.dart';
 export 'src/audio/audio_service_bridge.dart';
 export 'src/audio/cached_audio_source.dart';
 export 'src/downloads/background_transport.dart';
+export 'src/downloads/device_conditions.dart';
 export 'src/audio/engine_formats.dart';
 export 'src/audio/just_audio_engine.dart';
 export 'src/audio/stream_audio_cache.dart';

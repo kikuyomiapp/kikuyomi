@@ -219,6 +219,19 @@ void main() {
       expect(started(decisions), [1]);
     });
 
+    test('is not applied where the platform cannot measure free space', () {
+      // Null is a real answer, not a missing one: measuring free space takes a platform call that
+      // does not exist everywhere, and a scheduler that refused to run without it would refuse to
+      // run on Windows. The transport still stops when the disk really is full.
+      final decisions = chooseDownloads(
+        candidates: [task(1, bytesTotal: 999999999)],
+        limits: const DownloadLimits(freeSpaceFloorBytes: 1000),
+        conditions: const DownloadConditions(network: NetworkKind.unmetered),
+      );
+
+      expect(started(decisions), [1]);
+    });
+
     test('counts what it has already decided to start in the same pass', () {
       // Two files that each fit but do not both fit. The second must be held, or the pass would
       // authorise more than the disk can take.

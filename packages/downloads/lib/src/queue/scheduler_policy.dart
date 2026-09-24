@@ -45,14 +45,19 @@ final class DownloadLimits {
 final class DownloadConditions {
   const DownloadConditions({
     required this.network,
-    required this.freeSpaceBytes,
+    this.freeSpaceBytes,
     this.runningBySource = const {},
   });
 
   final NetworkKind network;
 
-  /// What is left on the device where downloads go.
-  final int freeSpaceBytes;
+  /// What is left on the device where downloads go, or null when this platform cannot say.
+  ///
+  /// Null is a real answer, not a missing one. Measuring free space takes a platform call that does
+  /// not exist everywhere, and a scheduler that refused to run without it would refuse to run on
+  /// Windows. Where it is unknown the floor is simply not applied, exactly as a file of unknown size
+  /// is let through — and the transport still stops when the disk really is full.
+  final int? freeSpaceBytes;
 
   /// How many files are already in flight, by source. Its total is the global count, so the two caps
   /// cannot disagree about what is running.
@@ -129,7 +134,9 @@ List<DownloadDecision> chooseDownloads({
     // started, and refusing every such task would mean nothing ever downloaded. The floor is checked
     // again by the post-processor, and the transport stops when the disk really is full.
     final needs = task.bytesTotal;
-    if (needs != null && freeSpace - needs < limits.freeSpaceFloorBytes) {
+    if (needs != null &&
+        freeSpace != null &&
+        freeSpace - needs < limits.freeSpaceFloorBytes) {
       decisions.add(HoldDownload(task.taskId, DownloadHold.storage));
       continue;
     }
@@ -137,7 +144,7 @@ List<DownloadDecision> chooseDownloads({
     decisions.add(StartDownload(task.taskId));
     running++;
     bySource[task.sourceId] = (bySource[task.sourceId] ?? 0) + 1;
-    if (needs != null) freeSpace -= needs;
+    if (needs != null && freeSpace != null) freeSpace -= needs;
   }
   return decisions;
 }
@@ -151,7 +158,8 @@ DownloadHold? _wholeQueueHold(
   if (limits.unmeteredOnly && conditions.network == NetworkKind.metered) {
     return DownloadHold.network;
   }
-  if (conditions.freeSpaceBytes <= limits.freeSpaceFloorBytes) {
+  final freeSpace = conditions.freeSpaceBytes;
+  if (freeSpace != null && freeSpace <= limits.freeSpaceFloorBytes) {
     return DownloadHold.storage;
   }
   return null;

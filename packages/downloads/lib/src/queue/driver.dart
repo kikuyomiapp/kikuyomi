@@ -29,7 +29,7 @@ import 'transitions.dart';
 ///
 /// A record rather than an interface: there are two facts, both of which the platform answers, and
 /// neither of which the driver can do anything about.
-typedef DeviceConditions = ({NetworkKind network, int freeSpaceBytes});
+typedef DeviceConditions = ({NetworkKind network, int? freeSpaceBytes});
 
 /// Where a finished file ends up, after §5.2's post-processor has had it.
 ///
