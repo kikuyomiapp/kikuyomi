@@ -190,7 +190,32 @@ tested without a site or an engine.
 `BookCover`, which shows a cover decoded at the size it is shown, or a placeholder — from a file for
 a book in the library, and from a URL, with the headers a site needs, for one being browsed.
 
-### `downloads`, `sync`
+### `downloads`
+
+Phase 3's queue, and only the queue: the half ADR-0007 keeps on our side of the transport line,
+which is the half that can be tested without a device.
+
+- §5.3's **state machine**, as a sealed event set and one `advance` function. Every legal move is
+  named and anything else is refused. It is total — an event that does not apply returns null rather
+  than throwing, because the transport reports progress and completion whenever it gets round to it,
+  possibly after the listener has cancelled. Two deliberate departures from the diagram: pausing
+  works from `waiting` and `queued`, not only `downloading`, and resuming returns to `queued` so the
+  scheduler decides afresh rather than a task with a stale URL walking back in.
+- §5.5's **backoff**: exponential from five seconds, jittered by up to half, never immediate,
+  `Retry-After` honoured as a floor up to an hour, five attempts before a retryable failure becomes
+  permanent.
+- §5.2's **scheduler policy**, as a pure function from the startable tasks, the limits and the state
+  of the device to a decision per task. The global cap, the per-source cap, the network policy and
+  the free-space floor, with every held task carrying the reason it is waiting.
+
+A grid test sweeps every event against every state and compares the whole set of legal moves with
+§5.3, so a transition added because some later feature found it convenient fails the build.
+
+**What is missing** is everything that touches the world: the driver that applies the policy, the
+transport adapter over `background_downloader`, the post-processor, the reconciler, and any UI. No
+byte has been downloaded.
+
+### `sync`
 
 Empty scaffolding.
 
@@ -379,6 +404,30 @@ Framework is the door — and the folder picker on desktop. See
 [what has been run for real](#what-has-been-run-for-real).
 
 ## What is next
+
+### Phase 3 — offline, in progress
+
+The queue exists and nothing fetches anything yet. What is built is listed under
+[`downloads`](#downloads) and in schema version 3's `download_task` table; what is left, in order:
+
+1. **The driver.** The loop that reads the startable tasks, asks the policy what to start, resolves
+   each one just in time (§5.4), hands it to the transport and applies the reports it gets back
+   through the state machine. It needs a store interface — the same shape `PlaybackStore` has, an
+   interface in `domain` with the Drift implementation in `data` — and that is the first real
+   architectural decision left in Phase 3.
+2. **The transport**, over `background_downloader` behind ADR-0007's interface, in
+   `platform_adapters`. The thin, untestable part.
+3. **The post-processor** (§5.2): status, content type, plausible size and a magic-byte check,
+   because many sites answer with an HTML error page and a 200; then probe, then move atomically
+   into place and write `local_path`.
+4. **The reconciler** (§5.2), matching the transport's live tasks to rows at launch and sweeping
+   orphans. This is also where a task orphaned by a layout rewrite is repaired — an estimate is
+   usually consumed in place, but a resolution that changes a chapter's shape drops it and takes the
+   task with it.
+5. **The screens** (§5.6): what is downloading, per-book and per-chapter sizes, delete, and the
+   automatic policies.
+
+The exit criterion is the roadmap's: a full book downloaded and finished with no network.
 
 ### Step B — the repository door
 
