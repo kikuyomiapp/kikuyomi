@@ -195,6 +195,18 @@ interface HtmlElement {
 
 Page scripts never run; this is parsing, not a browser.
 
+**A parsed document lives only for the call that parsed it.** When your `getChapters` returns, every
+document it parsed is let go. Hold one in a variable outside the call and the next call to touch it
+fails with *"that document has been let go; a parsed document lives until the call that parsed it
+ends"*. This is not negotiable and not a bug: a parsed tree is tens of megabytes of the runtime's
+64 MB, and nothing in the contract frees one, so the host frees them all when a call ends.
+
+The consequence for caching: **cache the data you extracted, or the response text — never the
+document**. See "the one optimisation worth making early" in §9.
+
+One call may hold **16 documents** at once. A scraper parses a page, reads it and moves on, so this
+only binds if you are parsing in a loop and keeping every result.
+
 **These selectors throw, they do not return a wrong answer:** `:has()`, `:nth-child()`,
 `:nth-last-child()`, `:nth-of-type()`, `:only-of-type`, `:empty`. The app's HTML parser gets them
 silently wrong, so the contract refuses them outright. Everything else in normal CSS selector use
@@ -812,9 +824,16 @@ book by id.
 ### The one optimisation worth making early
 
 If one request returns a book's details *and* its chapter list *and* the audio URLs — which is common
-— then `getBookDetails`, `getChapters` and every `resolveMedia` for that book all want the same
-document. Cache it in memory, keyed by book, for a few minutes, with a small bound (four books is
-plenty) and least-recently-used eviction. Opening and playing a whole book then costs the site one
+— then `getBookDetails`, `getChapters` and every `resolveMedia` for that book all want the same page.
+Cache it in memory, keyed by book, for a few minutes, with a small bound (four books is plenty) and
+least-recently-used eviction.
+
+**Cache the extracted data, not the parsed document.** A document from `html.parse` is let go when the
+call that parsed it returns, so a cached handle is dead by the time the next call reaches it (§5). Two
+shapes work: parse once and keep the plain objects you pulled out of it — `{ details, chapters }`, the
+audio URL per chapter — which is what the LibriVox extension does with its JSON; or keep the response
+*text* and re-parse it in each call, which costs CPU but no network. The first is better; the second is
+the easy retrofit if you have already written the parsing three times. Opening and playing a whole book then costs the site one
 request instead of one per chapter. Do not let such a cache grow with the catalogue: the runtime lives
 as long as the app does, so an unbounded cache is a leak inside a 64 MB ceiling.
 
@@ -868,7 +887,8 @@ On iOS the only door is the Files app: tap *Install from Extensions* once to cre
 - [ ] Nothing returns `0` for a duration or size to mean "unknown" — leave the field out.
 - [ ] An M4B-style book shares one `fileKey` across chapters with `range`s, rather than pretending to
       be one file per chapter.
-- [ ] Any in-memory cache is bounded.
+- [ ] Any in-memory cache is bounded, and holds extracted data or response text — never a parsed
+      document, which is let go when the call that parsed it returns.
 
 ---
 

@@ -99,6 +99,10 @@ will otherwise get wrong from habit.
   - No `undefined` inside an array, and no `Date`, `Map`, `Set` or class instance in anything returned.
   - No global `fetch`, no `require`, no `import`. Everything goes through `kikuyomi.http`,
     `kikuyomi.html`, `kikuyomi.storage`, `kikuyomi.crypto`, `kikuyomi.log`, `kikuyomi.host`.
+  - Nothing keeps a parsed document past the call that parsed it. `html.parse` hands back a handle the
+    host frees when the call returns, so a cache must hold the **extracted data** or the response
+    **text**, never the document itself. Caching the document is the one mistake that looks correct,
+    passes review, and fails on the second call with "that document has been let go".
   - Selectors avoid `:has()`, `:nth-child()`, `:nth-last-child()`, `:nth-of-type()`, `:only-of-type` and
     `:empty` — the app's parser **throws** on these rather than answering wrongly.
 
