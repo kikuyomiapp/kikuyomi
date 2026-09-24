@@ -21,6 +21,8 @@ final class DownloadSubject {
     required this.taskId,
     required this.mediaFileId,
     required this.bookId,
+    required this.state,
+    this.attempts = 0,
     this.request,
     this.expiresAt,
   });
@@ -34,6 +36,19 @@ final class DownloadSubject {
   /// The book it is part of, for naming the file on disk and for telling the listener whose download
   /// this is.
   final int bookId;
+
+  /// What the task is doing, as the queue last recorded it.
+  ///
+  /// The driver needs it for one decision above all: a task in [DownloadState.needsResolve] must ask
+  /// its source again even if the address it already has looks fresh, because that address is exactly
+  /// the one the site just refused.
+  final DownloadState state;
+
+  /// How many times this file has already failed in a way that might not fail again.
+  ///
+  /// The driver needs it to work out how long the next wait should be, and whether there is a next
+  /// wait at all — five attempts is what turns a retryable failure into a permanent one (§5.5).
+  final int attempts;
 
   /// The address written down last time, if there is one.
   final DownloadRequest? request;

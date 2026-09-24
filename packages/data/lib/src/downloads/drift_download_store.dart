@@ -97,6 +97,8 @@ final class DriftDownloadStore implements DownloadStore {
       taskId: task.id,
       mediaFileId: file.id,
       bookId: file.bookId,
+      state: task.state,
+      attempts: task.attempts,
       request: task.requestSnapshot,
       expiresAt: task.expiresAt,
     );
