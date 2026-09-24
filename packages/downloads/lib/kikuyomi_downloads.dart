@@ -7,4 +7,5 @@
 library;
 
 export 'src/queue/backoff.dart';
+export 'src/queue/scheduler_policy.dart';
 export 'src/queue/transitions.dart';

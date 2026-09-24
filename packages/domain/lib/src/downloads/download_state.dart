@@ -86,3 +86,23 @@ enum DownloadHold {
   /// clears by itself.
   slot,
 }
+
+/// What kind of connection the device has, as the download scheduler cares about it (§5.2).
+///
+/// Produced by the platform and consumed by the scheduler, which is why it lives here rather than in
+/// either. The distinction that matters is not "online" but "may this cost the listener money": a
+/// metered connection is one the network policy can be told to stay off.
+enum NetworkKind {
+  /// Nothing to download over.
+  none,
+
+  /// A connection the listener may be paying for by the byte: cellular, or a Wi-Fi network the
+  /// system reports as metered.
+  metered,
+
+  /// Ordinary Wi-Fi or a wired connection.
+  unmetered;
+
+  /// Whether anything can be fetched over this at all.
+  bool get isUsable => this != none;
+}
