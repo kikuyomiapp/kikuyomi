@@ -24,6 +24,7 @@ part 'database.g.dart';
     BookCategories,
     Extensions,
     ExtensionPreferences,
+    DownloadTasks,
   ],
 )
 class KikuyomiDatabase extends _$KikuyomiDatabase {
@@ -32,7 +33,7 @@ class KikuyomiDatabase extends _$KikuyomiDatabase {
   KikuyomiDatabase(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -48,6 +49,12 @@ class KikuyomiDatabase extends _$KikuyomiDatabase {
       from1To2: (m, schema) async {
         await m.createTable(schema.extensions);
         await m.createTable(schema.extensionPreferences);
+      },
+      // Version 3 adds the download queue, and nothing else. A library written by any earlier
+      // version has nothing to download yet, so there is nothing to move into it.
+      from2To3: (m, schema) async {
+        await m.createTable(schema.downloadTasks);
+        await m.createIndex(schema.downloadTasksPending);
       },
     ),
     beforeOpen: (details) async {

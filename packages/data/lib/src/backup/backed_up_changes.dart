@@ -34,7 +34,16 @@ List<TableInfo<Table, Object?>> backedUpTables(KikuyomiDatabase db) => [
 ///   repository door and a backup format version of its own.
 /// - `extension_preferences` is one extension's own storage, keyed by an extension that may not be
 ///   installed. It follows the extensions.
-const backupLeavesOut = ['extensions', 'extension_preferences'];
+/// - `download_tasks` is what this device has fetched or is fetching. A backup carries no audio, so
+///   restoring a queue would describe files that are not there, and a phone restored from a laptop's
+///   backup would start downloading a library it was never asked to hold. What a listener wants
+///   downloaded is worth keeping one day, and that is a decision about the backup format rather than
+///   a row to copy.
+const backupLeavesOut = [
+  'extensions',
+  'extension_preferences',
+  'download_tasks',
+];
 
 /// A signal after every committed change to what a backup carries: the library, chapters, progress,
 /// listening sessions, bookmarks and categories.

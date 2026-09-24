@@ -186,6 +186,86 @@ void main() {
       'audiobooks',
     );
   });
+
+  test('an upgraded library can queue a download', () async {
+    // The same check one version on: the table is there, its enum-backed columns read back, its
+    // foreign key holds, and — the one that matters — a file cannot be queued twice. §5.2 makes a
+    // task per physical file so a thirty-chapter M4B is fetched once, and the unique key is what
+    // enforces that rather than whoever writes the next enqueue path.
+    final schema = await verifier.schemaAt(1);
+    final db = KikuyomiDatabase(schema.newConnection());
+    addTearDown(db.close);
+    await verifier.migrateAndValidate(db, 3);
+
+    await db
+        .into(db.sources)
+        .insert(
+          const SourcesCompanion(
+            id: Value(7),
+            key: Value('librivox'),
+            name: Value('LibriVox'),
+            lang: Value('multi'),
+          ),
+        );
+    final book = await db
+        .into(db.books)
+        .insert(
+          BooksCompanion.insert(
+            sourceId: 7,
+            key: 'a-book',
+            title: 'A Book',
+            createdAt: _when,
+            updatedAt: _when,
+          ),
+        );
+    final file = await db
+        .into(db.mediaFiles)
+        .insert(MediaFilesCompanion.insert(bookId: book, fileKey: 'whole.m4b'));
+
+    await db
+        .into(db.downloadTasks)
+        .insert(
+          DownloadTasksCompanion.insert(
+            mediaFileId: file,
+            state: DownloadState.waiting,
+            hold: const Value(DownloadHold.network),
+            requestSnapshot: const Value(
+              DownloadRequest(
+                url: 'https://archive.org/download/a-book/whole.m4b',
+                headers: {'referer': 'https://archive.org/'},
+              ),
+            ),
+            createdAt: _when,
+            updatedAt: _when,
+          ),
+        );
+
+    final task = await db.select(db.downloadTasks).getSingle();
+    expect(task.state, DownloadState.waiting);
+    expect(task.hold, DownloadHold.network);
+    expect(task.attempts, 0, reason: 'a fresh task has failed nothing');
+    expect(task.bytesDone, 0);
+    expect(task.requestSnapshot?.headers['referer'], 'https://archive.org/');
+
+    await expectLater(
+      db
+          .into(db.downloadTasks)
+          .insert(
+            DownloadTasksCompanion.insert(
+              mediaFileId: file,
+              state: DownloadState.queued,
+              createdAt: _when,
+              updatedAt: _when,
+            ),
+          ),
+      throwsA(
+        predicate(
+          (Object? e) => e.toString().contains('UNIQUE constraint failed'),
+          'a file already queued cannot be queued again',
+        ),
+      ),
+    );
+  });
 }
 
 final _when = DateTime.utc(2026, 9, 13, 12, 30, 45, 123);

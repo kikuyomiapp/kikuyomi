@@ -64,3 +64,34 @@ final class MarkerListConverter
       {'startMs': marker.startMs, 'title': marker.title},
   ]);
 }
+
+/// The address a download was last told to fetch from, stored as a JSON object (§5.2).
+///
+/// A download task is the one place the app stores a URL. §4.3 keeps them out of the library because
+/// they are ephemeral, and the Timeline never needs one; a task is the stated exception, because the
+/// transport has to be handed an address after the app has been killed and restarted.
+final class DownloadRequestConverter
+    extends TypeConverter<DownloadRequest, String> {
+  const DownloadRequestConverter();
+
+  @override
+  DownloadRequest fromSql(String fromDb) {
+    final data = jsonDecode(fromDb) as Map<String, Object?>;
+    final headers = data['headers'];
+    return DownloadRequest(
+      url: data['url']! as String,
+      headers: headers is Map
+          ? Map.unmodifiable({
+              for (final entry in headers.entries)
+                '${entry.key}': '${entry.value}',
+            })
+          : const {},
+    );
+  }
+
+  @override
+  String toSql(DownloadRequest value) => jsonEncode({
+    'url': value.url,
+    if (value.headers.isNotEmpty) 'headers': value.headers,
+  });
+}
