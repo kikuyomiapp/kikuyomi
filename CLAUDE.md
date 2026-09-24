@@ -19,10 +19,11 @@ not been run on a real device, and what the next two steps are. Read it before p
 update it when the answer changes. This section stays short on purpose: it is re-read on every
 prompt, and an inventory that grows every week belongs in a document, not in a guide.
 
-Two things to know before trusting a green test run. **Android has never been run for real**, on an
-emulator or a device, outside the probe in CI. And **nothing to do with LibriVox has been driven by
-the running app on any platform** — browsing, searching, adding a book and streaming one have been
-exercised only by tests and by the Phase 0 probe.
+One thing to know before trusting a green test run: **Android has never been run for real**, on an
+emulator or a device, outside the probe in CI — and it is where the most untested code now sits,
+since the Storage Access Framework is the install door there. The first real run of the extension
+system, on an iPhone, found three bugs that a green suite and a clean build had both missed, so treat
+"the tests pass" as weaker evidence than it looks.
 
 ## Repository layout
 ```

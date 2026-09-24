@@ -309,13 +309,25 @@ seconds over the network. The connection, not the Archive, is the ceiling for a 
 
 ## What has been run for real
 
-- **Windows**: everything but the LibriVox path and FLAC/Ogg books with real files. Installing an
-  extension from a folder has not been driven by the running app either — it is covered by tests, and
-  the app builds, but nobody has pressed the button.
-- **iOS**: the CI-built IPA launches on the iPhone. Nothing further; there is no Mac.
-- **Android**: nothing has been run for real, on an emulator or a device, outside the probe in CI.
-- **LibriVox**: browsing, searching, adding a book and streaming one have been driven only by tests
-  and by the probe — **never by the running app on any platform**.
+The extension system was first driven on a device on 24 September 2026, and the section below says
+what that established. It is worth recording what those few hours cost, because it is the argument
+for doing it sooner next time: three defects surfaced that a green test run and a clean build had
+both missed — a `TypeError` reaching the app with its stack thrown away, a failed open leaving the
+player unable to start any book including local ones, and this guide's own advice to cache something
+the host frees at the end of a call. All three are fixed. None was visible from inside the tests.
+
+- **Windows**: the library, the player, backups, adding local books, and building and launching the
+  app. Still untried here: the LibriVox path, and FLAC/Ogg books with real files. Whether an
+  extension has been installed from a folder on Windows is not confirmed; assume it has not.
+- **iOS**: a good deal, on an iPhone, through the CI-built canary IPA run under LiveContainer.
+  Installing an extension from the Files-visible `Extensions` folder, the Extensions screen,
+  removing one, installing it again, the extension console, browsing a source, and a book's details
+  and chapters. And **LibriVox: browse, resolve and play** — the first time the streaming path has
+  run anywhere outside a test.
+- **Android**: still nothing, on an emulator or a device, outside the probe in CI. It now carries the
+  most untested new code of any platform: the Storage Access Framework is the install door there,
+  and no real folder has been through it.
+- **LibriVox**: browsing, resolving and streaming work on iOS. Untried on Windows and Android.
 
 ### The probe
 
@@ -361,7 +373,9 @@ manifest's SHA-256 and is marked unverified, because in an author's folder a sta
 was edited. And `sources.extension_id` stays a plain id rather than becoming a foreign key, because a
 source has to outlive the extension it came from.
 
-What is **not** done: nobody has driven any of it in the running app. See
+Most of it has since been driven on an iPhone: installing from a folder, the Extensions screen,
+removing and installing again, and the console. What has not is Android — where the Storage Access
+Framework is the door — and the folder picker on desktop. See
 [what has been run for real](#what-has-been-run-for-real).
 
 ## What is next
@@ -389,8 +403,9 @@ list or recommend any other.
 
 ### Loose ends
 
-- Installing an extension has never been driven by the running app, on any platform: the Extensions
-  screen, the picker, Reload, Remove and the console have been exercised only by tests.
+- The folder **picker** path has never been driven by the running app: installing on iOS goes through
+  the app's own `Extensions` folder, not `UserFolders.choose()`, so the desktop path and Android's
+  Storage Access Framework tree are still exercised only by tests. Reload is untried too.
 - An extension is never verified once it is installed from a folder, so `untrusted` is the normal
   state. When repository installs arrive, `active` will start to mean something (ADR-0017).
 - Nothing rolls back to an earlier installed version, although the versioned directory keeps one.

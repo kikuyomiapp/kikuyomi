@@ -860,10 +860,11 @@ their progress and come back when you install it again.
 On iOS the only door is the Files app: tap *Install from Extensions* once to create Kikuyomi's
 `Extensions` folder, copy your folder into it, then tap it again.
 
-> **A warning worth having.** As of this writing, no one has driven an install through the running app
-> on any platform — it is covered by tests and the app builds, but you may be the first person through
-> the door. If something fails in a way the guide does not explain, suspect the app before your
-> extension, and check the console.
+> **How well trodden this path is.** Installing from a folder, reloading, removing and the console have
+> been driven on an iPhone, and LibriVox browses and streams there. What has *not* been exercised
+> outside tests: the desktop folder picker, Android's Storage Access Framework tree, and Android at
+> all. The first real run found three bugs in the app rather than in the extension, so if something
+> fails in a way this guide does not explain, suspect the app, check the console, and say so.
 
 ---
 
