@@ -36,6 +36,11 @@ dependencies:
   crypto: ^3.0.6
   media_kit_libs_windows_audio: ^1.0.9
   path_provider: ^2.1.6
+  # §5.2's transport, behind ADR-0007's interface: it delegates to WorkManager on Android, a
+  # background URLSession on iOS and an in-process isolate on desktop, which is the one thing no
+  # amount of Dart can do for itself. Android, Windows and iOS all supported, which is why it was
+  # chosen over writing three platform implementations by hand. MIT.
+  background_downloader: ^9.2.0
   audio_session: ^0.2.4
   audio_service: ^0.18.19
   desktop_drop: ^0.8.4
