@@ -12,6 +12,7 @@ export 'src/database/converters.dart';
 export 'src/database/database.dart';
 export 'src/database/tables.dart';
 export 'src/downloads/download_queue.dart';
+export 'src/downloads/drift_download_store.dart';
 export 'src/extensions/extension_preferences.dart';
 export 'src/extensions/installed_extensions.dart';
 export 'src/library/book_overview.dart';
