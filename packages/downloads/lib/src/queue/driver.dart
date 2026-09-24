@@ -12,8 +12,10 @@
 /// crashing.
 ///
 /// Nothing here loops or waits on a timer. When to pump is the app's decision: after enqueueing, when
-/// the network changes, when a task finishes, and periodically while there is work. A driver that
-/// owned a timer would be a driver that could not be tested without one.
+/// the network changes, and periodically while there is work. A driver that owned a timer would be a
+/// driver that could not be tested without one. The one case the driver keeps for itself is a task
+/// finishing, because it is the only thing that knows one has, and waiting out a tick after every
+/// file would make a fifteen-file book take seven minutes of nothing happening.
 library;
 
 import 'dart:async';
@@ -76,11 +78,26 @@ final class DownloadDriver {
   /// §5.5's retry schedule.
   final DownloadBackoff backoff;
 
+  /// How many times running a task may be sent back to its source by a refused address before the
+  /// refusal is treated as a failure (§5.4).
+  static const maxUrlRejections = 2;
+
   StreamSubscription<TransportReport>? _reports;
 
   /// What the driver believes each task's state is, so a report can be judged against §5.3 without a
   /// read. Only tasks it has acted on are here; anything else is looked up.
   final _believed = <int, DownloadState>{};
+
+  /// How many times running a task has had its address refused, since it last got anywhere.
+  ///
+  /// §5.4 charges a stale address no attempt, which is right and, on its own, unbounded: a source
+  /// that hands out an address it then refuses would have the queue asking and being refused as fast
+  /// as the network allows. After [maxUrlRejections] the task is failed instead, so §5.5's backoff
+  /// paces it like anything else that is not working.
+  final _rejections = <int, int>{};
+
+  var _pumping = false;
+  var _pumpAgain = false;
 
   /// Begins listening to the transport. Until this is called, nothing the transport says is acted on.
   void start() {
@@ -91,8 +108,56 @@ final class DownloadDriver {
 
   /// One pass of the queue.
   ///
-  /// Safe to call at any time and from anywhere: a pass that finds nothing to do costs two reads.
+  /// Safe to call at any time and from anywhere: a pass that finds nothing to do costs two reads, and
+  /// a call arriving while a pass is running asks for another rather than running alongside it. That
+  /// second part is what keeps §5.2's caps true — two passes that each read what is running before
+  /// either had started anything would each authorise a full set of downloads — and it is what lets
+  /// the driver ask for a pass from inside one.
   Future<void> pump() async {
+    if (_pumping) {
+      _pumpAgain = true;
+      return;
+    }
+    _pumping = true;
+    try {
+      do {
+        _pumpAgain = false;
+        await _onePass();
+      } while (_pumpAgain);
+    } finally {
+      _pumping = false;
+    }
+  }
+
+  /// Puts right whatever the last run of the app left behind (§5.2).
+  ///
+  /// The table says what was in flight and the transport says what it is still carrying; where they
+  /// disagree, the table is out of date. `resolving` and `processing` both happen inside a single pass
+  /// and so cannot survive a restart, and a `downloading` task the transport has never heard of is one
+  /// whose job died with the process. Each of those goes back into the queue.
+  ///
+  /// This is not housekeeping. A task left in flight counts against §5.2's caps for ever, so two of
+  /// them are enough to stop a source from ever downloading anything again.
+  Future<void> reconcile() async {
+    final inFlight = await _store.readInFlight();
+    if (inFlight.isEmpty) return;
+    final carrying = await _transport.carrying();
+    for (final task in inFlight) {
+      final transportId = task.transportTaskId;
+      if (task.state == DownloadState.downloading &&
+          transportId != null &&
+          carrying.contains(transportId)) {
+        // Still moving. Writing it down is what lets its next report past §5.3, which would otherwise
+        // judge it against a state the driver had never seen.
+        _believed[task.taskId] = DownloadState.downloading;
+        continue;
+      }
+      await _store.saveTransportId(task.taskId, null);
+      await _moveTo(task.taskId, DownloadState.queued);
+    }
+  }
+
+  Future<void> _onePass() async {
     await _releaseRetries();
 
     final candidates = await _store.readStartable(limit: limits.atOnce * 4);
@@ -229,6 +294,8 @@ final class DownloadDriver {
           await _store.saveCompleted(taskId, localPath: finalPath);
           await _store.saveTransportId(taskId, null);
           _believed[taskId] = DownloadState.completed;
+          _rejections.remove(taskId);
+          _slotFreed();
         } catch (error) {
           // A file that arrived but is not what it claimed to be will not become one by being
           // fetched again from the same place, so §5.2's checks fail it for good.
@@ -242,10 +309,27 @@ final class DownloadDriver {
         :final urlRejected,
       ):
         if (urlRejected) {
-          // §5.4: not a failure. The address was perishable, which is the source working as designed,
-          // so nothing counts against the file's attempts.
-          if (!await _canMove(taskId, const DownloadUrlRejected())) return;
-          await _moveTo(taskId, DownloadState.needsResolve);
+          final refusals = (_rejections[taskId] ?? 0) + 1;
+          if (refusals <= maxUrlRejections) {
+            // §5.4: not a failure. The address was perishable, which is the source working as
+            // designed, so nothing counts against the file's attempts.
+            if (!await _canMove(taskId, const DownloadUrlRejected())) return;
+            _rejections[taskId] = refusals;
+            await _moveTo(taskId, DownloadState.needsResolve);
+            _slotFreed();
+            return;
+          }
+          // Asked and refused this many times running, it is no longer a perishable address; it is a
+          // source that will not serve this file. Failing it hands the pacing to §5.5 rather than
+          // letting the queue ask as fast as the network answers.
+          final subject = await _store.readSubject(taskId);
+          if (subject == null) return;
+          _rejections.remove(taskId);
+          await _failed(
+            subject,
+            'the source kept refusing the address it gave ($message)',
+            permanent: false,
+          );
           return;
         }
         final subject = await _store.readSubject(taskId);
@@ -280,7 +364,15 @@ final class DownloadDriver {
         ? DownloadState.failedPermanent
         : DownloadState.failedRetryable;
     await _store.saveTransportId(subject.taskId, null);
+    _slotFreed();
   }
+
+  /// A task has stopped occupying one of §5.2's slots, so the next one need not wait for a tick.
+  ///
+  /// Deliberately not awaited: this is called from inside a pass as often as from a report, and [pump]
+  /// folds a request made during a pass into one more pass after it rather than running a second
+  /// alongside.
+  void _slotFreed() => unawaited(pump());
 
   /// Writes [state] and remembers it, so the next report can be judged without a read.
   Future<void> _moveTo(

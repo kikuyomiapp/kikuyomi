@@ -313,7 +313,7 @@ void main() {
   });
 
   group('what the scheduler may start', () {
-    test('is what waits on the app, not on the world', () async {
+    test('is everything still pending, including what it held', () async {
       final book = await addBook();
       final states = {
         DownloadState.queued: 'a.mp3',
@@ -341,7 +341,14 @@ void main() {
 
       expect(
         {for (final task in startable) task.state},
-        {DownloadState.queued, DownloadState.needsResolve},
+        {
+          DownloadState.queued,
+          DownloadState.needsResolve,
+          // A held task has to be in here. The scheduler is the only thing that can release one, so
+          // leaving it out made `waiting` a state nothing ever left, and a book of more files than the
+          // caps allow stopped downloading after the first pass.
+          DownloadState.waiting,
+        },
       );
     });
 

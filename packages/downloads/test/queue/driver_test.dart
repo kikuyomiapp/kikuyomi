@@ -47,13 +47,25 @@ final class FakeDownloadStore implements DownloadStore {
   Future<List<DownloadCandidate>> readStartable({int limit = 20}) async => [
     for (final task in tasks.values)
       if (task.state == DownloadState.queued ||
-          task.state == DownloadState.needsResolve)
+          task.state == DownloadState.needsResolve ||
+          task.state == DownloadState.waiting)
         DownloadCandidate(
           taskId: task.taskId,
           sourceId: task.sourceId,
           priority: task.priority,
           askedAt: DateTime.utc(2026),
           bytesTotal: task.bytesTotal,
+        ),
+  ];
+
+  @override
+  Future<List<InFlightDownload>> readInFlight() async => [
+    for (final task in tasks.values)
+      if (task.state.holdsASlot)
+        (
+          taskId: task.taskId,
+          state: task.state,
+          transportTaskId: task.transportId,
         ),
   ];
 
@@ -232,6 +244,13 @@ final class FakeTransport implements DownloadTransport {
   @override
   Future<void> cancel(int taskId) async => cancelled.add(taskId);
 
+  /// The transport's own names for what it is still carrying. A test sets it to whatever surviving a
+  /// process kill is supposed to have left behind.
+  var carried = <String>{};
+
+  @override
+  Future<Set<String>> carrying() async => carried;
+
   /// Says [report] and lets the driver finish acting on it.
   Future<void> say(TransportReport report) async {
     _reports.add(report);
@@ -398,7 +417,7 @@ void main() {
     });
 
     test(
-      'a rejected URL goes back to be resolved, costing no attempt',
+      'a rejected URL is asked for again at once, costing no attempt',
       () async {
         final task = store.add();
         await driver.pump();
@@ -407,18 +426,48 @@ void main() {
           TransportFailed(task, message: '403', urlRejected: true),
         );
 
-        expect(store.stateOf(task), DownloadState.needsResolve);
         expect(
           store.tasks[task]!.attempts,
           0,
           reason: 'an address expiring is the source working as designed',
         );
-
-        // And the next pass asks the extension again.
-        await driver.pump();
-        expect(resolved, hasLength(2));
+        expect(
+          resolved,
+          hasLength(2),
+          reason: 'the freed slot is filled without waiting for a tick',
+        );
+        expect(store.stateOf(task), DownloadState.downloading);
       },
     );
+
+    test('a source that keeps refusing its own address is failed', () async {
+      // §5.4 charges a stale address no attempt, which on its own is unbounded: a source that hands
+      // out an address it then refuses would have the queue asking and being refused as fast as the
+      // network answered. Failing it hands the pacing back to §5.5.
+      final task = store.add();
+      await driver.pump();
+
+      for (
+        var refusal = 0;
+        refusal < DownloadDriver.maxUrlRejections;
+        refusal++
+      ) {
+        await transport.say(
+          TransportFailed(task, message: '403', urlRejected: true),
+        );
+        expect(store.stateOf(task), DownloadState.downloading);
+        expect(store.tasks[task]!.attempts, 0);
+      }
+
+      await transport.say(
+        TransportFailed(task, message: '403', urlRejected: true),
+      );
+
+      expect(store.stateOf(task), DownloadState.failedRetryable);
+      expect(store.tasks[task]!.attempts, 1);
+      expect(store.tasks[task]!.retryAt, isNotNull);
+      expect(store.tasks[task]!.lastError, contains('kept refusing'));
+    });
 
     test('a resolution that fails is a retryable failure', () async {
       resolveFailure = StateError('the source would not answer');
@@ -501,6 +550,72 @@ void main() {
       expect(held.every((t) => t.hold == DownloadHold.slot), isTrue);
     });
 
+    test('a held task is picked up again once a slot opens', () async {
+      // The bug this is here for: holding a task wrote `waiting` to its row, and the query that found
+      // work to do looked only at `queued`. The scheduler was the only thing that could release a held
+      // task and the only thing that could not see one, so a book of more files than the caps allow
+      // downloaded exactly as many as the first pass started and then stopped for good.
+      final held = <int>[];
+      for (var i = 0; i < 5; i++) {
+        held.add(store.add(sourceId: i, mediaFileId: 100 + i));
+      }
+
+      await driver.pump();
+      expect(transport.started, hasLength(3));
+
+      // The three that started finish, freeing every slot.
+      for (final task in transport.started.toList()) {
+        await transport.say(TransportFinished(task, path: '/tmp/\$task.mp3'));
+      }
+
+      expect(
+        store.tasks.values.where((t) => t.state == DownloadState.completed),
+        hasLength(3),
+      );
+      expect(
+        transport.started,
+        hasLength(5),
+        reason: 'the two that were held were started without another nudge',
+      );
+      expect(
+        store.tasks.values.where((t) => t.state == DownloadState.waiting),
+        isEmpty,
+      );
+    });
+
+    test(
+      'every file of a book gets there, however few may run at once',
+      () async {
+        // The shape of the real failure: one source, fifteen files, two allowed at a time.
+        for (var i = 0; i < 15; i++) {
+          store.add(mediaFileId: 200 + i);
+        }
+        driver = build(limits: const DownloadLimits(perSource: 2))..start();
+
+        await driver.pump();
+        // Nothing drives this but the transport answering: each completion frees a slot and the driver
+        // fills it.
+        for (var settled = 0; settled < 15; settled++) {
+          final moving = store.tasks.values
+              .where((t) => t.state == DownloadState.downloading)
+              .toList();
+          expect(
+            moving,
+            isNotEmpty,
+            reason: 'the queue stopped after \$settled',
+          );
+          await transport.say(
+            TransportFinished(moving.first.taskId, path: '/tmp/a.mp3'),
+          );
+        }
+
+        expect(
+          store.tasks.values.every((t) => t.state == DownloadState.completed),
+          isTrue,
+        );
+      },
+    );
+
     test('holds everything, and resolves nothing, with no network', () async {
       store.add();
       driver = build(
@@ -573,6 +688,80 @@ void main() {
 
       expect(transport.started, [task], reason: 'started once, not twice');
     });
+  });
+
+  group('putting right what a process kill left behind (§5.2)', () {
+    test('a task the transport no longer has goes back in the queue', () async {
+      final task = store.add(state: DownloadState.downloading);
+      store.tasks[task]!.transportId = 'transport-\$task';
+      transport.carried = {};
+
+      await driver.reconcile();
+
+      expect(store.stateOf(task), DownloadState.queued);
+      expect(
+        store.tasks[task]!.transportId,
+        isNull,
+        reason:
+            'a job that died with the process is not one to match reports to',
+      );
+    });
+
+    test('a task it is still carrying is left alone', () async {
+      final task = store.add(state: DownloadState.downloading);
+      store.tasks[task]!.transportId = 'transport-\$task';
+      transport.carried = {'transport-\$task'};
+
+      await driver.reconcile();
+
+      expect(store.stateOf(task), DownloadState.downloading);
+    });
+
+    test('and its next report is still believed', () async {
+      // Without this the driver would judge a report against a state it had never seen, which is the
+      // one case where guessing wrong loses a finished download.
+      final task = store.add(state: DownloadState.downloading);
+      store.tasks[task]!.transportId = 'transport-\$task';
+      transport.carried = {'transport-\$task'};
+      await driver.reconcile();
+
+      await transport.say(TransportFinished(task, path: '/tmp/a.mp3'));
+
+      expect(store.stateOf(task), DownloadState.completed);
+    });
+
+    test('resolving and processing cannot survive a restart', () async {
+      // Both happen inside a single pass, so a task found in either was interrupted, whatever the
+      // transport says it is carrying.
+      final resolving = store.add(state: DownloadState.resolving);
+      final processing = store.add(state: DownloadState.processing);
+      transport.carried = {'transport-\$resolving', 'transport-\$processing'};
+
+      await driver.reconcile();
+
+      expect(store.stateOf(resolving), DownloadState.queued);
+      expect(store.stateOf(processing), DownloadState.queued);
+    });
+
+    test('an empty queue asks the transport nothing', () async {
+      store.add();
+
+      await driver.reconcile();
+
+      expect(store.stateOf(1), DownloadState.queued);
+    });
+  });
+
+  test('two passes at once do not both authorise a full set', () async {
+    // The caps are read at the start of a pass, so two passes overlapping would each see nothing
+    // running and each start three.
+    for (var i = 0; i < 6; i++) {
+      store.add(sourceId: i, mediaFileId: 100 + i);
+    }
+
+    await Future.wait([driver.pump(), driver.pump(), driver.pump()]);
+
+    expect(transport.started, hasLength(3));
   });
 
   test('a pass with nothing to do costs nothing', () async {

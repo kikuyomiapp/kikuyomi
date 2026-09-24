@@ -159,8 +159,9 @@ final class AppServices {
     deviceConditions.changes.listen((_) => unawaited(downloads.pump()));
     Timer.periodic(_downloadTick, (_) => unawaited(downloads.pump()));
     // Anything left running when the app was last killed is still in the table, and the transport may
-    // even still be carrying it. This is what starts it moving again.
-    unawaited(downloads.pump());
+    // even still be carrying it. Reconciling first is what settles which of those it is, because a row
+    // stuck in flight holds one of §5.2's slots against the source for as long as the app runs.
+    unawaited(downloads.reconcile().then((_) => downloads.pump()));
 
     // §5.1: automatic backups to the folder the user chose, which outlives an Android uninstall and
     // an iOS re-sign.

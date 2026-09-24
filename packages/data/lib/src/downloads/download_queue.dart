@@ -206,9 +206,11 @@ Stream<List<DownloadTaskRow>> watchBookDownloads(
 
 /// The tasks the scheduler may start, most wanted first (§5.2).
 ///
-/// Only the states that are waiting on the app rather than on the world: a queued task, and one whose
-/// URL went stale and has to be asked for again. A task waiting on Wi-Fi or on free space is the
-/// scheduler's to reconsider when those change, not to pick up now.
+/// Every task that is pending: waiting on the app rather than on the world (queued, or its URL went
+/// stale and has to be asked for again) and also the ones the scheduler itself held back. The held
+/// ones belong here even though the reason they were held may not have changed, because the scheduler
+/// is the only thing that can release them — leaving them out made `waiting` a state nothing ever
+/// left, and a book whose files were held for a slot never finished downloading.
 Future<List<DownloadTaskRow>> readStartableDownloads(
   KikuyomiDatabase db, {
   int limit = 20,
@@ -218,6 +220,7 @@ Future<List<DownloadTaskRow>> readStartableDownloads(
             (t) => t.state.isInValues([
               DownloadState.queued,
               DownloadState.needsResolve,
+              DownloadState.waiting,
             ]),
           )
           ..orderBy([

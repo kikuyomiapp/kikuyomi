@@ -65,14 +65,32 @@ final class DownloadSubject {
       request != null && (expiresAt == null || expiresAt!.isAfter(now));
 }
 
+/// A task the queue last recorded as in flight, and the transport's name for it.
+///
+/// A record rather than a class: it exists only to carry three columns from the table to the
+/// reconciler.
+typedef InFlightDownload = ({
+  int taskId,
+  DownloadState state,
+  String? transportTaskId,
+});
+
 /// Where the queue lives.
 abstract interface class DownloadStore {
-  /// The tasks that could start now, most wanted first (§5.2).
+  /// The tasks that are pending, most wanted first (§5.2).
   ///
-  /// Only the ones waiting on the app rather than on the world: queued, and those whose address went
-  /// stale and must be asked for again. A task waiting on Wi-Fi or on free space is reconsidered when
-  /// those change, not picked up now.
+  /// Every task that has not finished and is not in flight: queued, held back by the scheduler, and
+  /// those whose address went stale and must be asked for again. A held task has to be in here,
+  /// because the scheduler is the only thing that can release it and it cannot release what it cannot
+  /// see — leaving it out made [DownloadState.waiting] a state nothing ever left.
   Future<List<DownloadCandidate>> readStartable({int limit});
+
+  /// The tasks the queue believes are in flight, with what the transport called each one.
+  ///
+  /// For the reconciler (§5.2): resolving and processing both happen inside a single pass, so a task
+  /// found in either was interrupted, and a downloading task is only really downloading if the
+  /// transport still has it.
+  Future<List<InFlightDownload>> readInFlight();
 
   /// How many files are in flight, by source, for the caps the scheduler applies.
   Future<Map<int, int>> countRunningBySource();

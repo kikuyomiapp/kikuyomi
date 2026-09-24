@@ -34,6 +34,7 @@ final class DriftDownloadStore implements DownloadStore {
           _db.downloadTasks.state.isInValues([
             DownloadState.queued,
             DownloadState.needsResolve,
+            DownloadState.waiting,
           ]),
         );
     query
@@ -52,6 +53,27 @@ final class DriftDownloadStore implements DownloadStore {
           priority: row.readTable(_db.downloadTasks).priority,
           askedAt: row.readTable(_db.downloadTasks).createdAt,
           bytesTotal: row.readTable(_db.downloadTasks).bytesTotal,
+        ),
+    ];
+  }
+
+  @override
+  Future<List<InFlightDownload>> readInFlight() async {
+    final rows =
+        await (_db.select(_db.downloadTasks)..where(
+              (t) => t.state.isInValues([
+                DownloadState.resolving,
+                DownloadState.downloading,
+                DownloadState.processing,
+              ]),
+            ))
+            .get();
+    return [
+      for (final row in rows)
+        (
+          taskId: row.id,
+          state: row.state,
+          transportTaskId: row.transportTaskId,
         ),
     ];
   }
@@ -110,17 +132,28 @@ final class DriftDownloadStore implements DownloadStore {
     DownloadState state, {
     DownloadHold? hold,
   }) async {
-    await (_db.update(
-      _db.downloadTasks,
-    )..where((t) => t.id.equals(taskId))).write(
-      DownloadTasksCompanion(
-        state: Value(state),
-        // Cleared by every state but `waiting`, so a task that is moving does not go on claiming
-        // it wants Wi-Fi.
-        hold: Value(state == DownloadState.waiting ? hold : null),
-        updatedAt: Value(_clock.now()),
-      ),
-    );
+    // Cleared by every state but `waiting`, so a task that is moving does not go on claiming it
+    // wants Wi-Fi.
+    final reason = state == DownloadState.waiting ? hold : null;
+    await _db.transaction(() async {
+      final task = await (_db.select(
+        _db.downloadTasks,
+      )..where((t) => t.id.equals(taskId))).getSingleOrNull();
+      if (task == null) return;
+      // A task held for the same reason twice running is the ordinary case now that the scheduler
+      // reconsiders held tasks every pass, and writing the row again would be a change notification
+      // to every screen watching the queue for no change at all.
+      if (task.state == state && task.hold == reason) return;
+      await (_db.update(
+        _db.downloadTasks,
+      )..where((t) => t.id.equals(taskId))).write(
+        DownloadTasksCompanion(
+          state: Value(state),
+          hold: Value(reason),
+          updatedAt: Value(_clock.now()),
+        ),
+      );
+    });
   }
 
   @override

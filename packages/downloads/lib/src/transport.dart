@@ -99,4 +99,13 @@ abstract interface class DownloadTransport {
 
   /// Everything the transport has to say, for as long as the app runs.
   Stream<TransportReport> get reports;
+
+  /// The transport's own names for the tasks it is still carrying: enqueued, running, or waiting.
+  ///
+  /// The one question worth asking it, and only at startup. ADR-0007 makes the table the source of
+  /// truth precisely because the transport's idea of itself does not survive a process kill — but the
+  /// converse is what the reconciler needs (§5.2). A row that says `downloading` after a restart is
+  /// either a job the platform really did keep going or a job that died with the process, and this is
+  /// the only thing that can tell the two apart.
+  Future<Set<String>> carrying();
 }

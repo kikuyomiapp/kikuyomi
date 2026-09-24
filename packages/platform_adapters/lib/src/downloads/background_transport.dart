@@ -18,6 +18,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart' as bd;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
@@ -89,6 +90,10 @@ final class BackgroundTransport implements DownloadTransport {
     await _downloader.cancelTaskWithId('$taskId');
   }
 
+  @override
+  Future<Set<String>> carrying() async =>
+      (await _downloader.allTaskIds()).toSet();
+
   /// Stops listening and closes the reports. The app keeps one transport for as long as it runs.
   Future<void> dispose() async {
     await _updates?.cancel();
@@ -104,6 +109,10 @@ final class BackgroundTransport implements DownloadTransport {
 
     switch (update) {
       case bd.TaskProgressUpdate(:final progress, :final expectedFileSize):
+        // The package puts sentinels below zero in this same field — a paused task, one waiting to
+        // retry — and they are states the queue already knows about because it asked for them. Read as
+        // a fraction they would be negative bytes.
+        if (progress < 0) return;
         // The package reports a fraction; the queue counts bytes. A size of -1 means it does not know
         // yet, and then neither do we, which is exactly what a null total says.
         final total = expectedFileSize > 0 ? expectedFileSize : null;
@@ -127,8 +136,13 @@ final class BackgroundTransport implements DownloadTransport {
   ) async {
     switch (status) {
       case bd.TaskStatus.complete:
+        final path = await update.task.filePath();
         _reports.add(
-          TransportFinished(taskId, path: await update.task.filePath()),
+          TransportFinished(
+            taskId,
+            path: path,
+            bytesTotal: await _sizeOf(path),
+          ),
         );
 
       case bd.TaskStatus.notFound:
@@ -152,6 +166,22 @@ final class BackgroundTransport implements DownloadTransport {
       case bd.TaskStatus.canceled:
       case bd.TaskStatus.waitingToRetry:
         break;
+    }
+  }
+
+  /// How big the file that arrived actually is.
+  ///
+  /// Asked rather than taken from the last progress report, because for a file small enough to arrive
+  /// between two reports there may not have been one: a finished download was being recorded as nought
+  /// bytes of a known total, which is a progress bar that never reaches the end. The file on disk is
+  /// the one thing that cannot be wrong about its own length.
+  static Future<int?> _sizeOf(String path) async {
+    try {
+      return await File(path).length();
+    } on FileSystemException {
+      // Reported as finished and not there. §5.2's post-processor is about to refuse it and say so
+      // properly, which is a better message than anything this could add.
+      return null;
     }
   }
 

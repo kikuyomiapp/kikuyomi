@@ -209,11 +209,21 @@ which is the half that can be tested without a device.
   the free-space floor, with every held task carrying the reason it is waiting.
 - The **driver**: one `pump` lets retries that are due rejoin the queue, asks the store what could
   start, asks the policy what may start, and acts. Transport reports are applied through the state
-  machine, so a completion for a task just cancelled does nothing instead of crashing. It owns no
-  timer — when to pump is the app's decision — and resolution is just in time, reusing a stored
-  address unless it has expired or was the one the site refused.
-- The **transport interface** ADR-0007 draws the line at: start, pause, cancel, and a stream of
-  reports carrying our task ids. Nothing above it is platform-bound.
+  machine, so a completion for a task just cancelled does nothing instead of crashing. Passes are
+  serialised — a call made while one is running asks for another rather than running alongside, or two
+  passes would each authorise a full set of downloads — and a task finishing asks for one, which is
+  the one piece of timing the driver keeps rather than leaving to the app, because it is the only
+  thing that knows a slot has opened. Resolution is just in time, reusing a stored address unless it
+  has expired or was the one the site refused; a source that keeps refusing the address it just gave
+  is failed after two tries, so §5.4's free re-resolution cannot become a hot loop.
+- The **reconciler** (§5.2): at launch, every row the table says is in flight is checked against what
+  the transport is still carrying. `resolving` and `processing` both happen inside a single pass and
+  so cannot survive a restart, and a `downloading` row the transport has never heard of is a job that
+  died with the process; each goes back in the queue. It is not housekeeping — a row stuck in flight
+  counts against the caps for as long as the app runs, so two of them stop a source for good.
+- The **transport interface** ADR-0007 draws the line at: start, pause, cancel, a stream of reports
+  carrying our task ids, and one question — what it is still carrying — which only the reconciler
+  asks. Nothing above it is platform-bound.
 - §5.2's **post-processor**: a pure check on the first sixty-four bytes — a size floor, a content
   type that condemns a file, the signatures audiobooks come in, and a test for the web page the
   design warns about — and the keeper that names a file after its book, moves it into place with an
@@ -231,8 +241,17 @@ ADR-0007's line, which retries nothing and applies no network policy of its own,
 to the queue. It is the one layer here that cannot be unit tested, so what stands behind it is that
 CI builds it on Android, Windows and iOS.
 
-**What is missing**: the reconciler (§5.2), wiring any of it into the app, and every screen. **No
-byte has been downloaded**, on any platform — nothing calls the driver yet.
+**What is missing**: probing a kept file for its real duration and markers, and most of §5.6's
+screens.
+
+**This has now run for real.** Four files of a fifteen-file LibriVox book were fetched on Windows,
+checked, named and moved into place, and the recorded sizes match the bytes on disk. The other eleven
+did not, and the reason is worth keeping: a task the scheduler held wrote `waiting` to its row, and
+the query that looked for work to do read only `queued` and `needsResolve`. The scheduler was the one
+thing that could release a held task and the one thing that could not see one, so the book downloaded
+exactly as many files as the first pass started and then stopped for ever. A green suite of a hundred
+tests did not catch it, because every test of the queue asked for fewer files than the caps allow.
+There are now two that do not.
 
 ### `sync`
 
@@ -426,23 +445,27 @@ Framework is the door — and the folder picker on desktop. See
 
 ### Phase 3 — offline, in progress
 
-The queue exists and nothing fetches anything yet. What is built is listed under
-[`downloads`](#downloads) and in schema version 3's `download_task` table; what is left, in order:
+The queue is wired and has fetched real files on Windows, from a book's details screen. What is built
+is listed under [`downloads`](#downloads) and in schema version 3's `download_task` table; what is
+left, in order:
 
-1. **Wiring it into the app.** The composition root builds the store, the transport, the
-   post-processor and the driver, and something decides when to pump: after enqueueing, when the
-   network changes, when a task finishes. This is the next thing, and the first point at which a
-   byte can actually move.
-2. **Probing a kept file** for its real duration, format and embedded markers, which §5.2 puts in
+1. **The screens** (§5.6): what is downloading, per-book and per-chapter sizes, delete, and the
+   automatic policies. A book's details screen has a button and one line of progress, which is enough
+   to ask for a download and not enough to manage one.
+2. **Android.** `background_downloader` hands work to `WorkManager` there, which needs a foreground
+   service declared in the manifest, with a service type on Android 14 and later. Nothing of this
+   fails at compile time, so CI is no evidence; it is the most likely reason a first Android attempt
+   will do nothing.
+3. **Probing a kept file** for its real duration, format and embedded markers, which §5.2 puts in
    the post-processor and which is the one part of it not built. `sources_builtin` already has the
    readers; nothing has been wired to call them after a download. Until it is, §4.5 refines a
    duration the first time the engine plays the file, which is late but not wrong.
-3. **The reconciler** (§5.2), matching the transport's live tasks to rows at launch and sweeping
-   orphans. This is also where a task orphaned by a layout rewrite is repaired — an estimate is
-   usually consumed in place, but a resolution that changes a chapter's shape drops it and takes the
-   task with it.
-4. **The screens** (§5.6): what is downloading, per-book and per-chapter sizes, delete, and the
-   automatic policies.
+4. **Repairing a task orphaned by a layout rewrite.** An estimate is usually consumed in place, but a
+   resolution that changes a chapter's shape drops the row and takes the task with it. The reconciler
+   settles what a process kill left behind; this is the other half and is not built.
+5. **A download-aware resolution**, so that a file being fetched asks its source as a download rather
+   than as a stream. `MediaResolver` has no `purpose`, so a download currently resolves as if it were
+   about to be played, which is right for LibriVox and will not be for every source.
 
 The exit criterion is the roadmap's: a full book downloaded and finished with no network.
 

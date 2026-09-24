@@ -95,19 +95,30 @@ void main() {
       expect(startable.single.priority, 3);
     });
 
-    test('is only what waits on the app', () async {
+    test('is everything pending, held or not', () async {
       await addSource(1);
       final book = await addBook(1);
+      final tasks = <int, DownloadState>{};
       for (final state in DownloadState.values) {
-        await addTask(
-          await addFile(book, fileKey: '${state.name}.mp3'),
-          state: state,
-        );
+        tasks[await addTask(
+              await addFile(book, fileKey: '${state.name}.mp3'),
+              state: state,
+            )] =
+            state;
       }
 
       final startable = await store.readStartable();
 
-      expect(startable, hasLength(2));
+      expect(
+        {for (final task in startable) tasks[task.taskId]},
+        {
+          DownloadState.queued,
+          DownloadState.needsResolve,
+          // A held task belongs here: the scheduler is the only thing that can release one, and it
+          // cannot release what it cannot see.
+          DownloadState.waiting,
+        },
+      );
     });
 
     test('is ordered by priority, then age, then id', () async {
@@ -158,6 +169,30 @@ void main() {
 
       expect(await store.countRunningBySource(), isEmpty);
     });
+
+    test(
+      'is listed for the reconciler, with the transport it was given to',
+      () async {
+        await addSource(1);
+        final book = await addBook(1);
+        final moving = await addTask(
+          await addFile(book, fileKey: 'a.mp3'),
+          state: DownloadState.downloading,
+        );
+        await store.saveTransportId(moving, 'platform-job-7');
+        await addTask(
+          await addFile(book, fileKey: 'b.mp3'),
+          state: DownloadState.queued,
+        );
+
+        final inFlight = await store.readInFlight();
+
+        expect(inFlight, hasLength(1));
+        expect(inFlight.single.taskId, moving);
+        expect(inFlight.single.state, DownloadState.downloading);
+        expect(inFlight.single.transportTaskId, 'platform-job-7');
+      },
+    );
   });
 
   group('the subject of a task', () {
@@ -242,6 +277,45 @@ void main() {
       await store.saveState(task, DownloadState.downloading);
 
       expect((await taskRow(task)).hold, isNull);
+    });
+
+    test('and writes nothing at all when neither has changed', () async {
+      // The scheduler reconsiders every held task on every pass, so re-recording the same hold is the
+      // ordinary case. Writing the row again would be a change notification to every screen watching
+      // the queue, for no change.
+      final task = await addTask(await aFile());
+      await store.saveState(
+        task,
+        DownloadState.waiting,
+        hold: DownloadHold.slot,
+      );
+      final before = (await taskRow(task)).updatedAt;
+      clock.advance(const Duration(minutes: 1));
+
+      await store.saveState(
+        task,
+        DownloadState.waiting,
+        hold: DownloadHold.slot,
+      );
+
+      expect((await taskRow(task)).updatedAt, before);
+    });
+
+    test('but does write when only the reason has changed', () async {
+      final task = await addTask(await aFile());
+      await store.saveState(
+        task,
+        DownloadState.waiting,
+        hold: DownloadHold.slot,
+      );
+
+      await store.saveState(
+        task,
+        DownloadState.waiting,
+        hold: DownloadHold.network,
+      );
+
+      expect((await taskRow(task)).hold, DownloadHold.network);
     });
 
     test('an address, with its expiry', () async {
