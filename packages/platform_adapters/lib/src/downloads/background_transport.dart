@@ -91,6 +91,17 @@ final class BackgroundTransport implements DownloadTransport {
   }
 
   @override
+  Future<bool> resume(int taskId) async {
+    final task = await _downloader.taskForId('$taskId');
+    // Gone from the platform's own records, which is what a long enough pause comes to.
+    if (task is! bd.DownloadTask) return false;
+    // Asked rather than assumed: it depends on the server having offered ranges and on the partial
+    // file still being where the platform left it.
+    if (!await _downloader.taskCanResume(task)) return false;
+    return _downloader.resume(task);
+  }
+
+  @override
   Future<Set<String>> carrying() async =>
       (await _downloader.allTaskIds()).toSet();
 

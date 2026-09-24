@@ -97,6 +97,16 @@ abstract interface class DownloadTransport {
   /// Stops [taskId] and throws away what has arrived.
   Future<void> cancel(int taskId);
 
+  /// Asks the platform to carry on with [taskId] from where it paused, and says whether it will.
+  ///
+  /// False is an ordinary answer rather than a failure: not every platform can resume, not every
+  /// server offers byte ranges, and a paused job may have been swept up while the app was closed. The
+  /// queue then fetches the file again from the beginning, which is slower and always works.
+  ///
+  /// This is the one place the transport is allowed to move a task without being told what to fetch,
+  /// because the partial file and the range request that continues it are both things only it holds.
+  Future<bool> resume(int taskId);
+
   /// Everything the transport has to say, for as long as the app runs.
   Stream<TransportReport> get reports;
 

@@ -244,6 +244,17 @@ final class FakeTransport implements DownloadTransport {
   @override
   Future<void> cancel(int taskId) async => cancelled.add(taskId);
 
+  final resumed = <int>[];
+
+  /// Whether the platform will carry on with a paused task. Both answers are ordinary.
+  var canResume = true;
+
+  @override
+  Future<bool> resume(int taskId) async {
+    resumed.add(taskId);
+    return canResume;
+  }
+
   /// The transport's own names for what it is still carrying. A test sets it to whatever surviving a
   /// process kill is supposed to have left behind.
   var carried = <String>{};
@@ -687,6 +698,78 @@ void main() {
       await driver.pump();
 
       expect(transport.started, [task], reason: 'started once, not twice');
+    });
+
+    test('resuming carries on where it left off when it can', () async {
+      // An audiobook is hundreds of megabytes. §5.3 would send a resumed task back to the queue, and
+      // that is right when the partial file is worth nothing; when the platform will carry on with it,
+      // throwing those bytes away to re-read a URL is the worse trade.
+      final task = store.add();
+      await driver.pump();
+      await driver.pause(task);
+      transport.canResume = true;
+
+      await driver.resume(task);
+
+      expect(transport.resumed, [task]);
+      expect(store.stateOf(task), DownloadState.downloading);
+      expect(
+        resolved,
+        hasLength(1),
+        reason: 'the address it already had is the one it is continuing with',
+      );
+      expect(transport.started, hasLength(1), reason: 'not started afresh');
+    });
+
+    test('and starts again from the beginning when it cannot', () async {
+      final task = store.add();
+      await driver.pump();
+      await driver.pause(task);
+      transport.canResume = false;
+
+      await driver.resume(task);
+
+      expect(transport.cancelled, [
+        task,
+      ], reason: 'a partial file nothing will continue is only taking up room');
+      expect(transport.started, [
+        task,
+        task,
+      ], reason: 'the same pass that would have started it fresh did');
+      expect(store.stateOf(task), DownloadState.downloading);
+    });
+
+    test('and forgets the job that will not be continued', () async {
+      // Checked where the restart cannot hide it by assigning a new one: a dead job's id left in the
+      // row is one the reconciler would take for a live download at the next launch.
+      final task = store.add();
+      await driver.pump();
+      await driver.pause(task);
+      transport.canResume = false;
+      driver = build(
+        device: (network: NetworkKind.none, freeSpaceBytes: 999999999999),
+      )..start();
+
+      await driver.resume(task);
+
+      expect(store.tasks[task]!.transportId, isNull);
+      expect(store.stateOf(task), DownloadState.waiting);
+    });
+
+    test('resuming something that is not paused does nothing', () async {
+      final task = store.add();
+      await driver.pump();
+
+      await driver.resume(task);
+
+      expect(transport.resumed, isEmpty);
+      expect(store.stateOf(task), DownloadState.downloading);
+    });
+
+    test('resuming a task that has gone does nothing', () async {
+      await driver.resume(999);
+
+      expect(transport.resumed, isEmpty);
     });
   });
 

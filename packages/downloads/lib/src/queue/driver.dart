@@ -190,6 +190,29 @@ final class DownloadDriver {
     await _moveTo(taskId, DownloadState.paused);
   }
 
+  /// Carries on with [taskId], from where it paused if the platform can.
+  ///
+  /// The state it is in is read rather than assumed, because a task paused before the app was last
+  /// closed is one the driver has never seen and the listener is most likely to resume.
+  ///
+  /// §5.3 sends a resumed task back to the queue rather than straight to the transport, on the grounds
+  /// that its address may have expired while it sat there and the caps may be full now. That is the
+  /// right answer when the partial file is worth nothing. When the platform will carry on with it,
+  /// throwing away hundreds of megabytes to re-read a URL is the worse trade, and a stale address
+  /// shows up as the 403 §5.4 already knows how to answer.
+  Future<void> resume(int taskId) async {
+    final subject = await _store.readSubject(taskId);
+    if (subject == null || subject.state != DownloadState.paused) return;
+    if (await _transport.resume(taskId)) {
+      await _moveTo(taskId, DownloadState.downloading);
+      return;
+    }
+    await _transport.cancel(taskId);
+    await _store.saveTransportId(taskId, null);
+    await _moveTo(taskId, DownloadState.queued);
+    await pump();
+  }
+
   /// Gives up on [taskId] and throws away what has arrived.
   Future<void> cancel(int taskId) async {
     await _transport.cancel(taskId);
