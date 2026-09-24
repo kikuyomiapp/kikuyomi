@@ -214,6 +214,10 @@ which is the half that can be tested without a device.
   address unless it has expired or was the one the site refused.
 - The **transport interface** ADR-0007 draws the line at: start, pause, cancel, and a stream of
   reports carrying our task ids. Nothing above it is platform-bound.
+- §5.2's **post-processor**: a pure check on the first sixty-four bytes — a size floor, a content
+  type that condemns a file, the signatures audiobooks come in, and a test for the web page the
+  design warns about — and the keeper that names a file after its book, moves it into place with an
+  atomic rename, and hands back a path relative to the downloads folder.
 
 A grid test sweeps every event against every state and compares the whole set of legal moves with
 §5.3, so a transition added because some later feature found it convenient fails the build. A
@@ -222,9 +226,13 @@ download goes from queued to completed in a test, against a fake store and a fak
 The queue also has its **store** — `DownloadStore` in `domain`, `DriftDownloadStore` in `data`, the
 same division `PlaybackStore` already has.
 
-**What is missing** is everything that touches the world: the transport adapter over
-`background_downloader`, the post-processor, the reconciler, and any UI. **No byte has been
-downloaded**, on any platform.
+The **transport** itself is in `platform_adapters`, over `background_downloader`: the thin side of
+ADR-0007's line, which retries nothing and applies no network policy of its own, because both belong
+to the queue. It is the one layer here that cannot be unit tested, so what stands behind it is that
+CI builds it on Android, Windows and iOS.
+
+**What is missing**: the reconciler (§5.2), wiring any of it into the app, and every screen. **No
+byte has been downloaded**, on any platform — nothing calls the driver yet.
 
 ### `sync`
 
@@ -421,13 +429,14 @@ Framework is the door — and the folder picker on desktop. See
 The queue exists and nothing fetches anything yet. What is built is listed under
 [`downloads`](#downloads) and in schema version 3's `download_task` table; what is left, in order:
 
-1. **The transport**, over `background_downloader` behind ADR-0007's interface, in
-   `platform_adapters`. The thin, untestable part, and the one that adds a dependency: it must
-   support Android, Windows and iOS, which is why it was chosen. This is the next thing to build,
-   and the first point at which a byte can actually move.
-2. **The post-processor** (§5.2): status, content type, plausible size and a magic-byte check,
-   because many sites answer with an HTML error page and a 200; then probe, then move atomically
-   into place and write `local_path`.
+1. **Wiring it into the app.** The composition root builds the store, the transport, the
+   post-processor and the driver, and something decides when to pump: after enqueueing, when the
+   network changes, when a task finishes. This is the next thing, and the first point at which a
+   byte can actually move.
+2. **Probing a kept file** for its real duration, format and embedded markers, which §5.2 puts in
+   the post-processor and which is the one part of it not built. `sources_builtin` already has the
+   readers; nothing has been wired to call them after a download. Until it is, §4.5 refines a
+   duration the first time the engine plays the file, which is late but not wrong.
 3. **The reconciler** (§5.2), matching the transport's live tasks to rows at launch and sweeping
    orphans. This is also where a task orphaned by a layout rewrite is repaired — an estimate is
    usually consumed in place, but a resolution that changes a chapter's shape drops it and takes the
