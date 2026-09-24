@@ -111,7 +111,17 @@ final class AppServices {
     final streamCache = StreamAudioCache(locations.streamCache);
     unawaited(streamCache.prune());
     final coordinator = PlaybackCoordinator(
-      engine: JustAudioEngine(cache: streamCache, userAgent: userAgent),
+      engine: JustAudioEngine(
+        cache: streamCache,
+        userAgent: userAgent,
+        // Into the extension console, because a streamed book's bytes are an extension's URL being
+        // fetched, and whoever is looking at why it will not play is looking there. The player only
+        // ever reports its own platform's word for a failed fetch.
+        onStreamFailure: (error, uri) => console.report(
+          playbackConsoleId,
+          uri == null ? error : 'fetching $uri: $error',
+        ),
+      ),
       // One resolver for the whole library: files on the device go to the local one, and a book
       // that streams is resolved through its source, just in time (§6.3).
       resolver: SourceMediaResolver(

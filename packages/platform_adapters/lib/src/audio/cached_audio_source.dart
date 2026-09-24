@@ -36,7 +36,18 @@ final class CachedAudioSource extends ja.StreamAudioSource {
     required this.cache,
     required Future<ResolvedMedia> Function() resolve,
     this.userAgent,
+    this.onFailure,
   }) : _resolve = resolve;
+
+  /// Told when this file cannot be resolved or its bytes cannot be fetched, with the address that
+  /// was being fetched from when there is one.
+  ///
+  /// Without it the reason is lost. The bytes are fetched here and served to the player through a
+  /// local proxy, so what the player reports is its own platform's word for "the proxy gave me
+  /// nothing" — AVFoundation says `-1008 resource unavailable` — and the 403, the 404 or the dead
+  /// host that actually happened is never written down anywhere. Whoever is debugging an extension
+  /// then has a number that cannot be acted on.
+  final void Function(Object error, Uri? uri)? onFailure;
 
   /// The library's id for this file, which is what the cache file is named after.
   final int fileId;
@@ -55,20 +66,33 @@ final class CachedAudioSource extends ja.StreamAudioSource {
 
   Future<ja.LockCachingAudioSource>? _opening;
 
+  /// Where this file is fetched from, once it has been resolved: for saying which address a failure
+  /// was about.
+  Uri? _uri;
+
   @override
   Future<ja.StreamAudioResponse> request([int? start, int? end]) async {
     final opening = _opening ??= _open();
     final ja.LockCachingAudioSource source;
     try {
       source = await opening;
-    } catch (_) {
+    } catch (error) {
       // A URL that could not be resolved, or a cache folder that could not be made. Forget the
       // attempt so that §6.3's retry, and any later request, starts again rather than being handed
       // the same failure for as long as the book is open.
       if (identical(_opening, opening)) _opening = null;
+      onFailure?.call(error, _uri);
       rethrow;
     }
-    return source.request(start, end);
+    try {
+      return await source.request(start, end);
+    } catch (error) {
+      // The fetch itself: a status the site answered with, a connection that went, a file that is
+      // no longer there. Reported before it is passed on, because what reaches the player from here
+      // no longer says which of those it was.
+      onFailure?.call(error, _uri);
+      rethrow;
+    }
   }
 
   /// The cache-backed source for this file, made once the URL is known.
@@ -80,6 +104,7 @@ final class CachedAudioSource extends ja.StreamAudioSource {
   /// here instead, so nothing is lost by leaving it detached.
   Future<ja.LockCachingAudioSource> _open() async {
     final media = await _resolve();
+    _uri = media.uri;
     // The source's own headers come first, and the User-Agent is put in beside them rather than
     // over them: a site that needs a particular one is answering the extension, not the app.
     final headers = {

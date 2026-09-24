@@ -39,7 +39,7 @@ import 'stream_audio_cache.dart';
 /// Each item's duration is reported once the player knows it (§4.5), from a ready player only; see
 /// [_reportDuration] for why.
 final class JustAudioEngine implements PlaybackEngine {
-  JustAudioEngine({this.cache, this.userAgent}) {
+  JustAudioEngine({this.cache, this.userAgent, this.onStreamFailure}) {
     _subscriptions
       ..add(_player.positionStream.listen(_onPosition))
       ..add(_player.currentIndexStream.listen(_onIndex))
@@ -63,6 +63,13 @@ final class JustAudioEngine implements PlaybackEngine {
   /// How the app names itself when it fetches a stream's bytes itself, which it does for every file
   /// it caches. §2.7 decides it in one place; this is where that reaches the audio.
   final String? userAgent;
+
+  /// Told when a streamed file cannot be resolved or fetched, with the address it was fetching from.
+  ///
+  /// The bytes of a cached stream are fetched here and served to the player through a local proxy,
+  /// so a failure reaches the player as its own platform's word for "the proxy gave me nothing" and
+  /// the status the site really answered with is lost. This carries it to somewhere it can be read.
+  final void Function(Object error, Uri? uri)? onStreamFailure;
 
   /// How long a seek into another item may wait for that item to become ready.
   static const _itemReadyTimeout = Duration(seconds: 10);
@@ -193,6 +200,7 @@ final class JustAudioEngine implements PlaybackEngine {
         cache: store,
         resolve: () async => known ?? await entry.resolve(),
         userAgent: userAgent,
+        onFailure: onStreamFailure,
       );
     }
     final media = known ?? await entry.resolve();
