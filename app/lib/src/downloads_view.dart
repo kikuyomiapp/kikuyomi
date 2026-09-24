@@ -22,8 +22,8 @@ class DownloadsView extends StatelessWidget {
     required this.onResumeBook,
     required this.onCancelBook,
     required this.onRetryBook,
-    required this.onDeleteBook,
-    required this.onDeleteFile,
+    required this.onRemoveBook,
+    required this.onRemoveFile,
     required this.onRetryFile,
   });
 
@@ -39,8 +39,12 @@ class DownloadsView extends StatelessWidget {
   final ValueChanged<DownloadedBook> onResumeBook;
   final ValueChanged<DownloadedBook> onCancelBook;
   final ValueChanged<DownloadedBook> onRetryBook;
-  final ValueChanged<DownloadedBook> onDeleteBook;
-  final ValueChanged<DownloadEntry> onDeleteFile;
+
+  /// Stops whatever is going, deletes whatever arrived, and takes the book off the list.
+  final ValueChanged<DownloadedBook> onRemoveBook;
+
+  /// The same for one file, which is the only way a cancelled or given-up one ever leaves.
+  final ValueChanged<DownloadEntry> onRemoveFile;
   final ValueChanged<DownloadEntry> onRetryFile;
 
   @override
@@ -61,8 +65,8 @@ class DownloadsView extends StatelessWidget {
               onResume: onResumeBook,
               onCancel: onCancelBook,
               onRetry: onRetryBook,
-              onDelete: onDeleteBook,
-              onDeleteFile: onDeleteFile,
+              onRemove: onRemoveBook,
+              onRemoveFile: onRemoveFile,
               onRetryFile: onRetryFile,
             ),
     );
@@ -133,8 +137,8 @@ class _BookTile extends StatelessWidget {
     required this.onResume,
     required this.onCancel,
     required this.onRetry,
-    required this.onDelete,
-    required this.onDeleteFile,
+    required this.onRemove,
+    required this.onRemoveFile,
     required this.onRetryFile,
   });
 
@@ -145,8 +149,10 @@ class _BookTile extends StatelessWidget {
   final ValueChanged<DownloadedBook> onResume;
   final ValueChanged<DownloadedBook> onCancel;
   final ValueChanged<DownloadedBook> onRetry;
-  final ValueChanged<DownloadedBook> onDelete;
-  final ValueChanged<DownloadEntry> onDeleteFile;
+  final ValueChanged<DownloadedBook> onRemove;
+
+  /// The same for one file, which is the only way a cancelled or given-up one ever leaves.
+  final ValueChanged<DownloadEntry> onRemoveFile;
   final ValueChanged<DownloadEntry> onRetryFile;
 
   @override
@@ -178,14 +184,14 @@ class _BookTile extends StatelessWidget {
               onResume: onResume,
               onCancel: onCancel,
               onRetry: onRetry,
-              onDelete: onDelete,
+              onRemove: onRemove,
             ),
       children: [
         for (final file in book.files)
           _FileTile(
             entry: file,
             enabled: !busy,
-            onDelete: onDeleteFile,
+            onRemove: onRemoveFile,
             onRetry: onRetryFile,
           ),
       ],
@@ -214,7 +220,7 @@ class _BookMenu extends StatelessWidget {
     required this.onResume,
     required this.onCancel,
     required this.onRetry,
-    required this.onDelete,
+    required this.onRemove,
   });
 
   final DownloadedBook book;
@@ -223,10 +229,22 @@ class _BookMenu extends StatelessWidget {
   final ValueChanged<DownloadedBook> onResume;
   final ValueChanged<DownloadedBook> onCancel;
   final ValueChanged<DownloadedBook> onRetry;
-  final ValueChanged<DownloadedBook> onDelete;
+  final ValueChanged<DownloadedBook> onRemove;
 
   bool get _hasPaused =>
       book.files.any((f) => f.task.state == DownloadState.paused);
+
+  /// Whether anything could be paused: on its way, held, or still to start.
+  ///
+  /// Wider than "working", because a file queued behind another book's is one a listener may well
+  /// want to stop before it ever starts.
+  bool get _hasPausable => book.files.any(
+    (f) => const {
+      DownloadState.downloading,
+      DownloadState.waiting,
+      DownloadState.queued,
+    }.contains(f.task.state),
+  );
 
   @override
   Widget build(BuildContext context) => PopupMenuButton<VoidCallback>(
@@ -237,7 +255,7 @@ class _BookMenu extends StatelessWidget {
         value: () => onOpen(book.bookId),
         child: const Text('Open the book'),
       ),
-      if (book.isWorking)
+      if (_hasPausable)
         PopupMenuItem(value: () => onPause(book), child: const Text('Pause')),
       if (_hasPaused)
         PopupMenuItem(value: () => onResume(book), child: const Text('Resume')),
@@ -246,16 +264,21 @@ class _BookMenu extends StatelessWidget {
           value: () => onRetry(book),
           child: const Text('Try again'),
         ),
-      if (book.isWorking)
+      if (book.hasUnfinished)
         PopupMenuItem(
           value: () => onCancel(book),
           child: const Text('Stop downloading'),
         ),
-      if (book.hasFilesOnDevice)
-        PopupMenuItem(
-          value: () => onDelete(book),
-          child: const Text('Delete downloaded files'),
+      // Always offered, whatever state the book is in. Stopping leaves the rows behind, and a
+      // cancelled or given-up row that nothing could remove would sit on this screen for the life of
+      // the library. This is the action that always applies: it stops what is going, deletes what
+      // arrived, and takes the book off the list.
+      PopupMenuItem(
+        value: () => onRemove(book),
+        child: Text(
+          book.hasFilesOnDevice ? 'Delete and remove' : 'Remove from the list',
         ),
+      ),
     ],
   );
 }
@@ -264,13 +287,13 @@ class _FileTile extends StatelessWidget {
   const _FileTile({
     required this.entry,
     required this.enabled,
-    required this.onDelete,
+    required this.onRemove,
     required this.onRetry,
   });
 
   final DownloadEntry entry;
   final bool enabled;
-  final ValueChanged<DownloadEntry> onDelete;
+  final ValueChanged<DownloadEntry> onRemove;
   final ValueChanged<DownloadEntry> onRetry;
 
   bool get _failed =>
@@ -305,19 +328,27 @@ class _FileTile extends StatelessWidget {
           color: _failed ? theme.colorScheme.error : null,
         ),
       ),
-      trailing: entry.isOnDevice
-          ? IconButton(
-              tooltip: 'Delete this file',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: enabled ? () => onDelete(entry) : null,
-            )
-          : _failed
-          ? IconButton(
+      // Removing is offered on every file, in every state. On the device it deletes the file; before
+      // then it stops the fetch and takes the row away, which is the only way a cancelled or
+      // given-up file ever leaves this screen.
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_failed)
+            IconButton(
               tooltip: 'Try this file again',
               icon: const Icon(Icons.refresh),
               onPressed: enabled ? () => onRetry(entry) : null,
-            )
-          : null,
+            ),
+          IconButton(
+            tooltip: entry.isOnDevice
+                ? 'Delete this file'
+                : 'Remove this file from the list',
+            icon: Icon(entry.isOnDevice ? Icons.delete_outline : Icons.close),
+            onPressed: enabled ? () => onRemove(entry) : null,
+          ),
+        ],
+      ),
     );
   }
 }

@@ -602,6 +602,39 @@ final class AppServices {
     return true;
   }
 
+  /// Takes file [mediaFileId] off the Downloads screen entirely (§5.6).
+  ///
+  /// The one action that applies in every state, which is why it is three: whatever is still going is
+  /// stopped, whatever arrived is deleted, and the row goes last. A file that refuses to be deleted
+  /// keeps its row, because a row is the only thing that shows the file at all and the only thing that
+  /// can offer to try again.
+  Future<void> removeDownload(int mediaFileId) async {
+    final task = await readDownloadTask(database, mediaFileId);
+    // Cancelling something already finished would write `cancelled` over a completed row for the sake
+    // of a job the transport let go of long ago.
+    if (task != null && !task.state.isFinished) {
+      await downloads.cancel(task.id);
+    }
+    await deleteDownloadedFile(mediaFileId);
+    if (task != null) await forgetDownloadTask(database, task.id);
+  }
+
+  /// Takes every download of book [bookId] off the screen, and says what became of its files (§5.6).
+  ///
+  /// [kept] is what could not be deleted — a file the player still has open, which is how Windows
+  /// behaves. Those keep their rows so they can be tried again; everything else goes.
+  Future<({int deleted, int kept})> removeBookDownloads(int bookId) async {
+    // Stopped before anything is deleted, so the transport is not still writing into a file that is
+    // about to go.
+    for (final task in await readBookDownloadTasks(database, bookId)) {
+      if (!task.state.isFinished) await downloads.cancel(task.id);
+    }
+    final onDevice = (await readDownloadedPathsOfBook(database, bookId)).length;
+    final deleted = await deleteBookDownloads(bookId);
+    await forgetUnheldDownloads(database, bookId);
+    return (deleted: deleted, kept: onDevice - deleted);
+  }
+
   /// Deletes every downloaded file of book [bookId], and says how many went (§5.6).
   ///
   /// Carries on past one it could not delete, so a single file the player has open does not leave the

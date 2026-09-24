@@ -224,6 +224,10 @@ which is the half that can be tested without a device.
 - The **transport interface** ADR-0007 draws the line at: start, pause, cancel, a stream of reports
   carrying our task ids, and one question — what it is still carrying — which only the reconciler
   asks. Nothing above it is platform-bound.
+- **Removing a download**, which applies in every state and is the only way a cancelled or given-up
+  row ever leaves the screen: whatever is going is stopped, whatever arrived is deleted, and the rows
+  go last. A row is never deleted while its file is on the device, because a file with no row is one
+  nothing shows and nothing can delete.
 - **Letting go of a file** (§5.6), which refuses to touch a file the listener imported: their
   `local_path` is their own file, wherever they keep it, and the delete path ends in a real
   `File.delete`. `downloaded_at` is what separates the two, the queue is the only thing that writes
@@ -255,14 +259,18 @@ CI builds it on Android, Windows and iOS.
 **What is missing**: probing a kept file for its real duration and markers, and most of §5.6's
 screens.
 
-**This has now run for real.** Four files of a fifteen-file LibriVox book were fetched on Windows,
-checked, named and moved into place, and the recorded sizes match the bytes on disk. The other eleven
-did not, and the reason is worth keeping: a task the scheduler held wrote `waiting` to its row, and
-the query that looked for work to do read only `queued` and `needsResolve`. The scheduler was the one
-thing that could release a held task and the one thing that could not see one, so the book downloaded
-exactly as many files as the first pass started and then stopped for ever. A green suite of a hundred
-tests did not catch it, because every test of the queue asked for fewer files than the caps allow.
-There are now two that do not.
+**This has now run for real, and works.** A fifteen-file LibriVox book downloads on Windows from a
+book's details screen: fetched, checked, named and moved into place, with the recorded sizes matching
+the bytes on disk.
+
+The first attempt did not, and the reason is worth keeping. It stopped after four files. A task the
+scheduler held wrote `waiting` to its row, and the query that looked for work to do read only
+`queued` and `needsResolve` — so the scheduler was the one thing that could release a held task and
+the one thing that could not see one, and the book downloaded exactly as many files as the first pass
+started and then stopped for ever. A green suite of a hundred tests did not catch it, because every
+test of the queue asked for fewer files than the caps allow. There are now two that do not.
+
+Playing a downloaded book with the network off is still unconfirmed.
 
 ### `sync`
 
@@ -469,8 +477,8 @@ left, in order:
 1. **The automatic policies** (§5.6): deleting finished chapters, keeping the next few chapters
    downloaded while listening, and fetching new chapters of library books on an unmetered connection.
    Nothing of this exists; every download is asked for by hand. The Downloads screen itself is built —
-   total usage, per-book sizes, a book opened to its files, pause, resume, stop, retry and delete,
-   reached from the library's app bar beside Settings — and so is the button on a book's details
+   total usage, per-book sizes, a book opened to its files, pause, resume, stop, retry, and remove in
+   any state, reached from the library's app bar beside Settings — and so is the button on a book's details
    screen. What is still missing from the screens themselves is a per-chapter download action, and
    deleting per chapter rather than per file: a file can hold thirty chapters and a chapter can span
    three files, so a per-chapter delete that quietly took a neighbouring chapter with it would be

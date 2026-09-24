@@ -48,9 +48,9 @@ void main() {
   setUp(() => _nextId = 0);
 
   late List<DownloadedBook> paused;
-  late List<DownloadEntry> deletedFiles;
+  late List<DownloadEntry> removedFiles;
   late List<DownloadEntry> retriedFiles;
-  late List<DownloadedBook> deleted;
+  late List<DownloadedBook> removed;
   late List<DownloadedBook> cancelled;
   late List<DownloadedBook> resumed;
   late List<DownloadedBook> retried;
@@ -58,9 +58,9 @@ void main() {
 
   setUp(() {
     paused = [];
-    deletedFiles = [];
+    removedFiles = [];
     retriedFiles = [];
-    deleted = [];
+    removed = [];
     cancelled = [];
     resumed = [];
     retried = [];
@@ -85,8 +85,8 @@ void main() {
             onResumeBook: resumed.add,
             onCancelBook: cancelled.add,
             onRetryBook: retried.add,
-            onDeleteBook: deleted.add,
-            onDeleteFile: deletedFiles.add,
+            onRemoveBook: removed.add,
+            onRemoveFile: removedFiles.add,
             onRetryFile: retriedFiles.add,
           ),
         ),
@@ -214,22 +214,69 @@ void main() {
       expect(find.text('Try again'), findsOneWidget);
     });
 
-    testWidgets('deleting, only once something is on the device', (
+    testWidgets('removing, whatever state the book is in', (tester) async {
+      // Always offered. Stopping a download leaves its rows behind, and a cancelled or given-up row
+      // that nothing could remove would sit on this screen for the life of the library.
+      for (final state in DownloadState.values) {
+        await pumpView(tester, [entry(state: state)]);
+        await openMenu(tester);
+
+        expect(
+          find.text('Remove from the list'),
+          findsOneWidget,
+          reason: 'nothing offered to remove a ${state.name} download',
+        );
+
+        await tester.tap(find.text('Open the book'));
+        await tester.pumpAndSettle();
+      }
+    });
+
+    testWidgets('and says it deletes, once there is something to delete', (
       tester,
     ) async {
-      // The refusal worth testing: nothing offers to delete what is not here.
-      await pumpView(tester, [entry(state: DownloadState.downloading)]);
-      await openMenu(tester);
-      expect(find.text('Delete downloaded files'), findsNothing);
-
-      await tester.tap(find.text('Open the book'));
-      await tester.pumpAndSettle();
-
       await pumpView(tester, [
         entry(state: DownloadState.completed, onDevice: true),
       ]);
       await openMenu(tester);
-      expect(find.text('Delete downloaded files'), findsOneWidget);
+
+      expect(find.text('Delete and remove'), findsOneWidget);
+      expect(find.text('Remove from the list'), findsNothing);
+    });
+
+    testWidgets('stopping, even when nothing is running yet', (tester) async {
+      // A file queued behind another book's is not "working" and is very much worth being able to
+      // stop before it starts.
+      for (final state in [
+        DownloadState.queued,
+        DownloadState.paused,
+        DownloadState.failedRetryable,
+        DownloadState.needsResolve,
+      ]) {
+        await pumpView(tester, [entry(state: state)]);
+        await openMenu(tester);
+
+        expect(
+          find.text('Stop downloading'),
+          findsOneWidget,
+          reason: 'nothing offered to stop a ${state.name} download',
+        );
+
+        await tester.tap(find.text('Open the book'));
+        await tester.pumpAndSettle();
+      }
+    });
+
+    testWidgets('but not for a book that has nothing left to do', (
+      tester,
+    ) async {
+      await pumpView(tester, [
+        entry(state: DownloadState.completed, onDevice: true),
+      ]);
+      await openMenu(tester);
+
+      expect(find.text('Stop downloading'), findsNothing);
+      expect(find.text('Pause'), findsNothing);
     });
 
     testWidgets('and each one tells the screen', (tester) async {
@@ -265,15 +312,46 @@ void main() {
       await tester.tap(find.byTooltip('Delete this file'));
       await tester.pumpAndSettle();
 
-      expect(deletedFiles, hasLength(1));
+      expect(removedFiles, hasLength(1));
     });
 
-    testWidgets('cannot be deleted before it is', (tester) async {
-      await pumpView(tester, [entry(state: DownloadState.downloading)]);
+    testWidgets('can be removed before it is, in any state', (tester) async {
+      for (final state in DownloadState.values) {
+        // An empty list first, so the previous round's tile is gone rather than still expanded —
+        // otherwise the tap below would close it instead of opening it.
+        await pumpView(tester, const []);
+        await pumpView(tester, [entry(state: state)]);
+        await tester.tap(find.text('Moby-Dick'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byTooltip('Remove this file from the list'),
+          findsOneWidget,
+          reason: 'nothing offered to remove a ${state.name} file',
+        );
+      }
+    });
+
+    testWidgets('and removing it tells the screen', (tester) async {
+      await pumpView(tester, [entry(state: DownloadState.cancelled)]);
       await tester.tap(find.text('Moby-Dick'));
       await tester.pumpAndSettle();
 
-      expect(find.byTooltip('Delete this file'), findsNothing);
+      await tester.tap(find.byTooltip('Remove this file from the list'));
+      await tester.pumpAndSettle();
+
+      expect(removedFiles, hasLength(1));
+    });
+
+    testWidgets('one that failed offers both trying again and removing', (
+      tester,
+    ) async {
+      await pumpView(tester, [entry(state: DownloadState.failedPermanent)]);
+      await tester.tap(find.text('Moby-Dick'));
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Try this file again'), findsOneWidget);
+      expect(find.byTooltip('Remove this file from the list'), findsOneWidget);
     });
 
     testWidgets('can be tried again once it has failed', (tester) async {

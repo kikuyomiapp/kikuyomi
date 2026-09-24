@@ -47,6 +47,14 @@ final class DownloadedBook {
   /// Whether anything is still expected to happen without the listener doing something.
   bool get isWorking => progress.isWorking;
 
+  /// Whether anything has not finished one way or another: still to come, on its way, held, paused,
+  /// or waiting out a backoff.
+  ///
+  /// Wider than [isWorking], and it is this that decides whether stopping is worth offering. A book
+  /// whose files are all queued behind another book's is not working and is very much worth being
+  /// able to stop.
+  bool get hasUnfinished => files.any((file) => !file.task.state.isFinished);
+
   /// Whether every file it has a task for gave up.
   bool get hasFailed => progress.failed > 0;
 }

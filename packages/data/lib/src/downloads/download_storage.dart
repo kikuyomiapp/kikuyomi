@@ -181,6 +181,68 @@ Future<void> forgetDownloadedFile(KikuyomiDatabase db, int mediaFileId) async {
   });
 }
 
+/// Every download task of book [bookId], whatever state it is in.
+///
+/// For the actions that apply to a whole book at once — stopping it, taking it off the screen — which
+/// have to reach the cancelled and failed rows as much as the moving ones.
+Future<List<DownloadTaskRow>> readBookDownloadTasks(
+  KikuyomiDatabase db,
+  int bookId,
+) async {
+  final query = db.select(db.downloadTasks).join([
+    innerJoin(
+      db.mediaFiles,
+      db.mediaFiles.id.equalsExp(db.downloadTasks.mediaFileId),
+    ),
+  ])..where(db.mediaFiles.bookId.equals(bookId));
+  return [for (final row in await query.get()) row.readTable(db.downloadTasks)];
+}
+
+/// Removes task [taskId] from the queue entirely, and says whether it went.
+///
+/// How a row that has nothing left to do — cancelled, given up on, or never started — is taken off the
+/// Downloads screen. Without it such a row stays there for the life of the library, since nothing else
+/// deletes one.
+///
+/// **Refuses a task whose file is on the device.** Deleting the row would leave the file on disk with
+/// nothing pointing at it: not on the screen, since a file is listed only as long as it has a task,
+/// and so not deletable either. That file is removed by deleting it, which takes the row with it.
+Future<bool> forgetDownloadTask(KikuyomiDatabase db, int taskId) async {
+  var removed = false;
+  await db.transaction(() async {
+    final task = await (db.select(
+      db.downloadTasks,
+    )..where((t) => t.id.equals(taskId))).getSingleOrNull();
+    if (task == null) return;
+    final file = await (db.select(
+      db.mediaFiles,
+    )..where((f) => f.id.equals(task.mediaFileId))).getSingleOrNull();
+    if (file != null && file.downloadedAt != null && file.localPath != null) {
+      return;
+    }
+    await (db.delete(db.downloadTasks)..where((t) => t.id.equals(taskId))).go();
+    removed = true;
+  });
+  return removed;
+}
+
+/// Removes every task of book [bookId] that is not holding a file, and says how many went.
+///
+/// The second half of taking a book off the Downloads screen: its downloaded files are deleted one by
+/// one, because each is a file on a disk that may refuse, and everything else — the cancelled, the
+/// failed, the never-started — goes in one write. A file that refused to be deleted keeps its row, so
+/// the listener can still see it and try again.
+Future<int> forgetUnheldDownloads(KikuyomiDatabase db, int bookId) async {
+  final held = await readDownloadedPathsOfBook(db, bookId);
+  final tasks = await readBookDownloadTasks(db, bookId);
+  final removable = [
+    for (final task in tasks)
+      if (!held.containsKey(task.mediaFileId)) task.id,
+  ];
+  if (removable.isEmpty) return 0;
+  return (db.delete(db.downloadTasks)..where((t) => t.id.isIn(removable))).go();
+}
+
 /// Puts task [taskId] back in the queue, with its attempts forgiven (§5.5).
 ///
 /// How the listener retries a file that gave up, and how a cancelled one is asked for again. A task

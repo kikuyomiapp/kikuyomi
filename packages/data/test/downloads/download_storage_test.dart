@@ -331,6 +331,130 @@ void main() {
     });
   });
 
+  group('removing a task from the queue', () {
+    test('takes a cancelled row off the screen', () async {
+      // Nothing else deletes one, so without this a cancelled row would sit there for the life of
+      // the library.
+      await addSource(1);
+      final task = await addTask(
+        await addFile(await addBook('A Book')),
+        state: DownloadState.cancelled,
+      );
+
+      expect(await forgetDownloadTask(db, task), isTrue);
+      expect(await db.select(db.downloadTasks).get(), isEmpty);
+    });
+
+    test('works whatever state the task is in', () async {
+      await addSource(1);
+      final book = await addBook('A Book');
+      for (final state in DownloadState.values) {
+        final task = await addTask(
+          await addFile(book, fileKey: '${state.name}.mp3'),
+          state: state,
+        );
+        expect(
+          await forgetDownloadTask(db, task),
+          isTrue,
+          reason: 'a ${state.name} task could not be removed',
+        );
+      }
+    });
+
+    test('refuses one whose file is on the device', () async {
+      // Deleting the row would leave the file on disk with nothing pointing at it: not on the
+      // screen, because a file is listed only as long as it has a task, and so not deletable either.
+      await addSource(1);
+      final file = await addFile(
+        await addBook('A Book'),
+        downloadedTo: '1/1.mp3',
+      );
+      final task = await addTask(file, state: DownloadState.completed);
+
+      expect(await forgetDownloadTask(db, task), isFalse);
+      expect(await db.select(db.downloadTasks).get(), hasLength(1));
+    });
+
+    test('a task that has gone is not a failure', () async {
+      expect(await forgetDownloadTask(db, 404), isFalse);
+    });
+  });
+
+  group('clearing a book from the screen', () {
+    test('removes every row that is not holding a file', () async {
+      await addSource(1);
+      final book = await addBook('A Book');
+      await addTask(
+        await addFile(book, fileKey: 'a.mp3'),
+        state: DownloadState.cancelled,
+      );
+      await addTask(
+        await addFile(book, fileKey: 'b.mp3'),
+        state: DownloadState.failedPermanent,
+      );
+      final held = await addFile(
+        book,
+        fileKey: 'c.mp3',
+        downloadedTo: '1/3.mp3',
+      );
+      await addTask(held, state: DownloadState.completed);
+
+      expect(await forgetUnheldDownloads(db, book), 2);
+      final left = await db.select(db.downloadTasks).get();
+      expect(left, hasLength(1));
+      expect(
+        left.single.mediaFileId,
+        held,
+        reason: 'a file that is really here keeps the row that can delete it',
+      );
+    });
+
+    test('leaves another book alone', () async {
+      await addSource(1);
+      final mine = await addBook('Mine');
+      final theirs = await addBook('Theirs');
+      await addTask(
+        await addFile(mine, fileKey: 'a.mp3'),
+        state: DownloadState.cancelled,
+      );
+      await addTask(
+        await addFile(theirs, fileKey: 'b.mp3'),
+        state: DownloadState.cancelled,
+      );
+
+      await forgetUnheldDownloads(db, mine);
+
+      expect(await db.select(db.downloadTasks).get(), hasLength(1));
+    });
+
+    test('a book with nothing to clear is not a failure', () async {
+      await addSource(1);
+      expect(await forgetUnheldDownloads(db, await addBook('A Book')), 0);
+    });
+
+    test('its tasks can be read whatever state they are in', () async {
+      await addSource(1);
+      final book = await addBook('A Book');
+      await addTask(
+        await addFile(book, fileKey: 'a.mp3'),
+        state: DownloadState.cancelled,
+      );
+      await addTask(
+        await addFile(book, fileKey: 'b.mp3'),
+        state: DownloadState.downloading,
+      );
+      await addTask(await addFile(await addBook('Other'), fileKey: 'c.mp3'));
+
+      final tasks = await readBookDownloadTasks(db, book);
+
+      expect(tasks, hasLength(2));
+      expect(
+        {for (final task in tasks) task.state},
+        {DownloadState.cancelled, DownloadState.downloading},
+      );
+    });
+  });
+
   group('retrying (§5.5)', () {
     Future<DownloadTaskRow> taskRow(int id) => (db.select(
       db.downloadTasks,

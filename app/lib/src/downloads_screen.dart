@@ -43,8 +43,8 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
           onResumeBook: _resumeBook,
           onCancelBook: _cancelBook,
           onRetryBook: _retryBook,
-          onDeleteBook: _deleteBook,
-          onDeleteFile: _deleteFile,
+          onRemoveBook: _removeBook,
+          onRemoveFile: _removeFile,
           onRetryFile: _retryFile,
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -86,37 +86,43 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
     }
   });
 
-  /// Deletes every downloaded file of a book, after asking.
+  /// Takes a book off the screen entirely: stops what is going, deletes what arrived, clears the rows.
   ///
-  /// Asked for because it is the one action here that throws away something the listener waited for,
-  /// and the message says how much room it frees, which is the number they are deciding on.
-  Future<void> _deleteBook(DownloadedBook book) async {
-    final confirmed = await _confirm(
-      title: 'Delete the downloaded files?',
-      message:
-          '${book.title} will be removed from this device and will need the '
-          'network again. ${_freed(book.bytesOnDevice)}',
-    );
-    if (!confirmed) return;
-    await _work(book, () async {
-      final deleted = await ref
-          .read(servicesProvider)
-          .deleteBookDownloads(book.bookId);
-      _tell(
-        deleted == book.filesOnDevice
-            ? 'Deleted ${book.title}.'
-            : 'Deleted $deleted of ${book.filesOnDevice} files. The rest are '
-                  'in use — stop playing the book and try again.',
+  /// Asked about only when there is something to lose. Throwing away files the listener waited for is
+  /// worth a question, and the message says how much room it frees, which is the number they are
+  /// deciding on; clearing away rows for files that were cancelled or never arrived is not, and a
+  /// dialog there would be a question with one sensible answer.
+  Future<void> _removeBook(DownloadedBook book) async {
+    if (book.hasFilesOnDevice) {
+      final confirmed = await _confirm(
+        title: 'Delete the downloaded files?',
+        message:
+            '${book.title} will be removed from this device and will need the '
+            'network again. ${_freed(book.bytesOnDevice)}',
       );
+      if (!confirmed) return;
+    }
+    await _work(book, () async {
+      final gone = await ref
+          .read(servicesProvider)
+          .removeBookDownloads(book.bookId);
+      if (gone.kept > 0) {
+        _tell(
+          '${gone.kept} of ${book.filesOnDevice} files are in use — stop '
+          'playing the book and try again.',
+        );
+      } else if (gone.deleted > 0) {
+        _tell('Deleted ${book.title}.');
+      }
     });
   }
 
-  Future<void> _deleteFile(DownloadEntry entry) => _work(entry, () async {
-    final deleted = await ref
-        .read(servicesProvider)
-        .deleteDownloadedFile(entry.mediaFileId);
-    if (!deleted) _tell('There was nothing on this device to delete.');
-  }, bookId: entry.bookId);
+  /// The same for one file. No question asked: it is one file, and asking for it again is a tap.
+  Future<void> _removeFile(DownloadEntry entry) => _work(
+    entry,
+    () => ref.read(servicesProvider).removeDownload(entry.mediaFileId),
+    bookId: entry.bookId,
+  );
 
   Future<void> _retryFile(DownloadEntry entry) => _work(
     entry,
