@@ -224,6 +224,17 @@ which is the half that can be tested without a device.
 - The **transport interface** ADR-0007 draws the line at: start, pause, cancel, a stream of reports
   carrying our task ids, and one question — what it is still carrying — which only the reconciler
   asks. Nothing above it is platform-bound.
+- **Letting go of a file** (§5.6), which refuses to touch a file the listener imported: their
+  `local_path` is their own file, wherever they keep it, and the delete path ends in a real
+  `File.delete`. `downloaded_at` is what separates the two, the queue is the only thing that writes
+  it, and both the read and the write check it — which is why those functions return a path rather
+  than take one. The file goes before the row, so a delete the system refuses, as Windows does for a
+  file the player has open, leaves the row saying what is true.
+- **Resuming**, which asks the platform whether it will carry on from the partial file. §5.3 sends a
+  resumed task back to the queue because its address may have expired while it sat there; for an
+  audiobook that is hundreds of megabytes thrown away to re-read a URL, so the partial file is kept
+  when `background_downloader` will continue it, and a stale address then shows up as the 403 §5.4
+  already answers.
 - §5.2's **post-processor**: a pure check on the first sixty-four bytes — a size floor, a content
   type that condemns a file, the signatures audiobooks come in, and a test for the web page the
   design warns about — and the keeper that names a file after its book, moves it into place with an
@@ -455,9 +466,15 @@ left, in order:
    relative to the media root, which is a different folder and, on iOS, a different branch entirely.
    `downloaded_at` now says which root a path belongs to. Verified against the real rows and files of
    a part-downloaded book, where all four resolved to nothing before and to the right file after.
-1. **The screens** (§5.6): what is downloading, per-book and per-chapter sizes, delete, and the
-   automatic policies. A book's details screen has a button and one line of progress, which is enough
-   to ask for a download and not enough to manage one.
+1. **The automatic policies** (§5.6): deleting finished chapters, keeping the next few chapters
+   downloaded while listening, and fetching new chapters of library books on an unmetered connection.
+   Nothing of this exists; every download is asked for by hand. The Downloads screen itself is built —
+   total usage, per-book sizes, a book opened to its files, pause, resume, stop, retry and delete,
+   reached from the library's app bar beside Settings — and so is the button on a book's details
+   screen. What is still missing from the screens themselves is a per-chapter download action, and
+   deleting per chapter rather than per file: a file can hold thirty chapters and a chapter can span
+   three files, so a per-chapter delete that quietly took a neighbouring chapter with it would be
+   worse than not offering one.
 2. **Android.** `background_downloader` hands work to `WorkManager` there, which needs a foreground
    service declared in the manifest, with a service type on Android 14 and later. Nothing of this
    fails at compile time, so CI is no evidence; it is the most likely reason a first Android attempt

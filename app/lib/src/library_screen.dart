@@ -79,6 +79,11 @@ class LibraryScreen extends ConsumerWidget {
                 onPressed: () => _lookForNewBooks(context, ref),
               ),
             IconButton(
+              tooltip: 'Downloads',
+              icon: const Icon(Icons.download_outlined),
+              onPressed: () => const DownloadsRoute().push<void>(context),
+            ),
+            IconButton(
               tooltip: 'Settings',
               icon: const Icon(Icons.settings_outlined),
               onPressed: () => const SettingsRoute().push<void>(context),

@@ -6,6 +6,7 @@ import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
 import 'downloads/book_downloads.dart';
+import 'downloads/downloads_overview.dart';
 import 'services.dart';
 import 'setup_gate.dart';
 import 'sources/extension_console.dart';
@@ -186,6 +187,15 @@ final bookDownloadsProvider = StreamProvider.autoDispose
         bookId,
       ).map(summariseDownloads),
     );
+
+/// Everything the download system is holding or fetching, grouped by book, watched (§5.6).
+///
+/// Not disposed with the screen: the same stream answers whether there is anything to show at all,
+/// and it is one query over a table that is nearly always small.
+final downloadsProvider = StreamProvider<List<DownloadedBook>>(
+  (ref) =>
+      watchDownloads(ref.watch(servicesProvider).database).map(groupDownloads),
+);
 
 /// A book's bookmarks in playing order, straight from the database, so one added, changed or
 /// deleted shows at once. Disposed once no screen shows them.

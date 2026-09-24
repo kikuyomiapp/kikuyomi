@@ -572,8 +572,52 @@ final class AppServices {
   /// Stops download [taskId], keeping what has arrived.
   Future<void> pauseDownload(int taskId) => downloads.pause(taskId);
 
+  /// Carries on with download [taskId], from where it paused if the platform can.
+  Future<void> resumeDownload(int taskId) => downloads.resume(taskId);
+
   /// Gives up on download [taskId] and throws away what has arrived.
   Future<void> cancelDownload(int taskId) => downloads.cancel(taskId);
+
+  /// Puts download [taskId] back in the queue with its attempts forgiven (§5.5).
+  Future<void> retryDownload(int taskId) async {
+    await retryDownloadTask(database, taskId, clock: clock);
+    unawaited(downloads.pump());
+  }
+
+  /// Deletes the downloaded file [mediaFileId] and forgets it (§5.6).
+  ///
+  /// The file goes first and the row second, so a delete the system refuses — a file the player still
+  /// has open, which is how Windows behaves — leaves the row saying the file is here, which it is.
+  /// The other order would show the listener a book they could no longer play and no longer delete.
+  ///
+  /// Nothing happens for a file the download system is not holding. A local book's path is the
+  /// listener's own file and is not this app's to delete; `readDownloadedPath` is what refuses it, and
+  /// it refuses by answering null rather than by throwing, because asking about a file that is not a
+  /// download is ordinary rather than wrong.
+  Future<bool> deleteDownloadedFile(int mediaFileId) async {
+    final path = await readDownloadedPath(database, mediaFileId);
+    if (path == null) return false;
+    await downloadFiles.discard(path);
+    await forgetDownloadedFile(database, mediaFileId);
+    return true;
+  }
+
+  /// Deletes every downloaded file of book [bookId], and says how many went (§5.6).
+  ///
+  /// Carries on past one it could not delete, so a single file the player has open does not leave the
+  /// rest of a finished book taking up room. What it returns is what really went.
+  Future<int> deleteBookDownloads(int bookId) async {
+    final paths = await readDownloadedPathsOfBook(database, bookId);
+    var deleted = 0;
+    for (final fileId in paths.keys) {
+      try {
+        if (await deleteDownloadedFile(fileId)) deleted++;
+      } on FileSystemException {
+        continue;
+      }
+    }
+    return deleted;
+  }
 
   /// Opens a book in the player, resuming where it was left with smart rewind applied.
   Future<void> openBook(int bookId) async {

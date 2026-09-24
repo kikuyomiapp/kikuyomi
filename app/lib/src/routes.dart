@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'book_details_screen.dart';
 import 'browse_screen.dart';
+import 'downloads_screen.dart';
 import 'extension_console_screen.dart';
 import 'extensions_screen.dart';
 import 'library_screen.dart';
@@ -82,6 +83,7 @@ class SetupRoute extends GoRouteData with $SetupRoute {
       path: 'settings',
       routes: [TypedGoRoute<RestoreRoute>(path: 'restore')],
     ),
+    TypedGoRoute<DownloadsRoute>(path: 'downloads'),
     TypedGoRoute<BrowseRoute>(
       path: 'browse',
       routes: [
@@ -193,6 +195,18 @@ class ExtensionConsoleRoute extends GoRouteData with $ExtensionConsoleRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) =>
       ExtensionConsoleScreen(extensionId: extensionId);
+}
+
+/// Downloads: what is on this device and what is being fetched (§5.6).
+///
+/// Beside Settings in the home's app bar and under the home in the tree, for the same reason Settings
+/// is: §2.6's More tab is where both belong and it does not exist yet.
+class DownloadsRoute extends GoRouteData with $DownloadsRoute {
+  const DownloadsRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const DownloadsScreen();
 }
 
 /// Settings, from the home's app bar. There is no More tab yet, so it sits above the home.
