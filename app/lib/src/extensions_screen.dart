@@ -8,6 +8,7 @@ import 'package:kikuyomi_source_runtime/kikuyomi_source_runtime.dart';
 import 'extensions_view.dart';
 import 'providers.dart';
 import 'routes.dart';
+import 'snack_bars.dart';
 import 'sources/extension_library.dart';
 
 /// Extensions: what is installed, what each one has produced, and installing or removing one (§3.9).
@@ -158,7 +159,6 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen> {
 
   void _tell(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    tellInSnackBar(ScaffoldMessenger.of(context), message);
   }
 }

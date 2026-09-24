@@ -6,6 +6,7 @@ import 'package:kikuyomi_source_api/kikuyomi_source_api.dart';
 
 import 'providers.dart';
 import 'routes.dart';
+import 'snack_bars.dart';
 import 'source_books_view.dart';
 import 'sources/source_books_controller.dart';
 import 'sources/source_error_view.dart';
@@ -93,13 +94,10 @@ class _SourceScreenState extends ConsumerState<SourceScreen> {
         filters = _filters = await source.getFilters();
       } catch (error) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Could not read this source\'s filters: '
-              '${describeSourceProblemBriefly(error, sourceName: _name)}',
-            ),
-          ),
+        tellInSnackBar(
+          ScaffoldMessenger.of(context),
+          'Could not read this source\'s filters: '
+          '${describeSourceProblemBriefly(error, sourceName: _name)}',
         );
         return;
       }

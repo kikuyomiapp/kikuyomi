@@ -8,6 +8,7 @@ import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'backup_text.dart';
 import 'providers.dart';
 import 'services.dart';
+import 'snack_bars.dart';
 
 /// Shows the folder picker and makes the folder chosen the one backups go to. Returns it, or null
 /// when the listener cancels or the folder cannot be chosen, which a snack bar explains.
@@ -28,13 +29,9 @@ Future<UserFolder?> chooseBackupFolder(
     }
     return folder;
   } on FolderException catch (error) {
-    messenger.showSnackBar(
-      SnackBar(content: Text('Could not choose the folder: ${error.message}')),
-    );
+    tellInSnackBar(messenger, 'Could not choose the folder: ${error.message}');
   } catch (error) {
-    messenger.showSnackBar(
-      SnackBar(content: Text('Could not choose the folder: $error')),
-    );
+    tellInSnackBar(messenger, 'Could not choose the folder: $error');
   }
   return null;
 }
@@ -45,8 +42,6 @@ Future<BackupOutcome> backUpNow(
   ScaffoldMessengerState messenger,
 ) async {
   final outcome = await services.backupScheduler.backUpNow();
-  messenger.showSnackBar(
-    SnackBar(content: Text(describeBackupOutcome(outcome))),
-  );
+  tellInSnackBar(messenger, describeBackupOutcome(outcome));
   return outcome;
 }

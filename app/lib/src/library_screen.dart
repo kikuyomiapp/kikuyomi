@@ -14,6 +14,7 @@ import 'home_view.dart';
 import 'open_book.dart';
 import 'providers.dart';
 import 'routes.dart';
+import 'snack_bars.dart';
 
 /// The files "Add book" offers: every extension a book is read from, whether or not this device
 /// can play it, so that a book it cannot play is refused with its format named rather than hidden
@@ -228,5 +229,4 @@ class LibraryScreen extends ConsumerWidget {
 }
 
 void _tell(BuildContext context, String message) =>
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    tellInSnackBar(ScaffoldMessenger.of(context), message);

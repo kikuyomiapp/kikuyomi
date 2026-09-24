@@ -6,6 +6,7 @@ import 'package:kikuyomi_source_api/kikuyomi_source_api.dart';
 
 import 'providers.dart';
 import 'routes.dart';
+import 'snack_bars.dart';
 import 'source_book_view.dart';
 import 'sources/source_error_view.dart';
 import 'sources/source_problem.dart';
@@ -92,25 +93,20 @@ class _SourceBookScreenState extends ConsumerState<SourceBookScreen> {
         _bookId = added;
         _adding = false;
       });
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Added ${details.title} to the library'),
-          action: SnackBarAction(
-            label: 'Open',
-            onPressed: () => BookRoute(bookId: added).push<void>(context),
-          ),
-        ),
+      offerInSnackBar(
+        context,
+        messenger,
+        message: 'Added ${details.title} to the library',
+        action: 'Open',
+        onPressed: () => BookRoute(bookId: added).push<void>(context),
       );
     } catch (error) {
       if (!mounted) return;
       setState(() => _adding = false);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not add the book: '
-            '${describeSourceProblemBriefly(error, sourceName: _name)}',
-          ),
-        ),
+      tellInSnackBar(
+        messenger,
+        'Could not add the book: '
+        '${describeSourceProblemBriefly(error, sourceName: _name)}',
       );
     }
   }

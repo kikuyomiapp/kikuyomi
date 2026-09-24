@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'extension_console_view.dart';
 import 'providers.dart';
+import 'snack_bars.dart';
 
 /// The extension console (§3.11), for every extension or for one.
 ///
@@ -60,6 +61,6 @@ class ExtensionConsoleScreen extends ConsumerWidget {
   Future<void> _copy(BuildContext context, String text) async {
     final messenger = ScaffoldMessenger.of(context);
     await Clipboard.setData(ClipboardData(text: text));
-    messenger.showSnackBar(const SnackBar(content: Text('Copied the console')));
+    tellInSnackBar(messenger, 'Copied the console');
   }
 }

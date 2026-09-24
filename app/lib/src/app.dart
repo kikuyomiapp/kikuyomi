@@ -11,6 +11,7 @@ import 'book_files.dart';
 import 'providers.dart';
 import 'routes.dart';
 import 'setup_gate.dart';
+import 'snack_bars.dart';
 
 class KikuyomiApp extends ConsumerStatefulWidget {
   const KikuyomiApp({
@@ -219,8 +220,7 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
   void _tell(String message) {
     final context = _navigator.currentContext;
     if (context != null && context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+      tellInSnackBar(ScaffoldMessenger.of(context), message);
     }
   }
 
@@ -230,8 +230,15 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
     return MaterialApp.router(
       title: 'Kikuyomi',
       routerConfig: _router,
-      theme: ThemeData(colorSchemeSeed: seed),
-      darkTheme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.dark),
+      theme: ThemeData(
+        colorSchemeSeed: seed,
+        snackBarTheme: kikuyomiSnackBarTheme,
+      ),
+      darkTheme: ThemeData(
+        colorSchemeSeed: seed,
+        brightness: Brightness.dark,
+        snackBarTheme: kikuyomiSnackBarTheme,
+      ),
     );
   }
 }

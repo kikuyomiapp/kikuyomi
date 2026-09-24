@@ -9,6 +9,7 @@ import 'open_book.dart';
 import 'providers.dart';
 import 'routes.dart';
 import 'services.dart';
+import 'snack_bars.dart';
 
 /// A book's details, watched from the database, so progress saved while the book plays shows here
 /// on returning from the player without anything being refreshed. Reached through [BookRoute].
@@ -72,9 +73,7 @@ class BookDetailsScreen extends ConsumerWidget {
         bookId,
         clock: services.clock,
       );
-      messenger.showSnackBar(
-        SnackBar(content: Text('Removed $title from the library')),
-      );
+      tellInSnackBar(messenger, 'Removed $title from the library');
       if (context.mounted) {
         // A screen opened straight at its location may have nothing beneath it to return to.
         if (context.canPop()) {
@@ -84,9 +83,7 @@ class BookDetailsScreen extends ConsumerWidget {
         }
       }
     } catch (error) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Could not remove the book: $error')),
-      );
+      tellInSnackBar(messenger, 'Could not remove the book: $error');
     }
   }
 }
