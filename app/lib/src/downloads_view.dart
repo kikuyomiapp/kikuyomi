@@ -16,6 +16,7 @@ class DownloadsView extends StatelessWidget {
   const DownloadsView({
     super.key,
     required this.books,
+    required this.rates,
     required this.busyWith,
     required this.onOpenBook,
     required this.onPauseBook,
@@ -29,6 +30,12 @@ class DownloadsView extends StatelessWidget {
 
   /// Every book the download system is holding or fetching, most interesting first.
   final List<DownloadedBook> books;
+
+  /// How fast each download is moving, by task id, for the tasks that can say (§5.2).
+  ///
+  /// Passed in rather than watched: a speed is not written down, so it arrives on a timer of its own
+  /// and a missing entry simply means there is no speed to show.
+  final Map<int, double> rates;
 
   /// The book being worked on, so that two taps cannot delete the same files twice. Null when nothing
   /// is under way.
@@ -59,6 +66,7 @@ class DownloadsView extends StatelessWidget {
           ? _Total(books: books)
           : _BookTile(
               book: books[index - 1],
+              rates: rates,
               busy: busyWith == books[index - 1].bookId,
               onOpen: onOpenBook,
               onPause: onPauseBook,
@@ -131,6 +139,7 @@ class _Total extends StatelessWidget {
 class _BookTile extends StatelessWidget {
   const _BookTile({
     required this.book,
+    required this.rates,
     required this.busy,
     required this.onOpen,
     required this.onPause,
@@ -143,6 +152,7 @@ class _BookTile extends StatelessWidget {
   });
 
   final DownloadedBook book;
+  final Map<int, double> rates;
   final bool busy;
   final ValueChanged<int> onOpen;
   final ValueChanged<DownloadedBook> onPause;
@@ -190,6 +200,7 @@ class _BookTile extends StatelessWidget {
         for (final file in book.files)
           _FileTile(
             entry: file,
+            bytesPerSecond: rates[file.task.id],
             enabled: !busy,
             onRemove: onRemoveFile,
             onRetry: onRetryFile,
@@ -204,11 +215,25 @@ class _BookTile extends StatelessWidget {
   /// state worth knowing, and showing only one of them is how a listener ends up guessing.
   String _subtitle() {
     final queue = describeDownloads(book.progress);
-    if (!book.hasFilesOnDevice) return queue;
+    final speed = _speed();
+    if (!book.hasFilesOnDevice) return '$queue$speed';
     final size = book.bytesOnDevice == 0
         ? '${book.filesOnDevice} of ${book.files.length} on this device'
         : formatBytes(book.bytesOnDevice);
-    return book.progress.isComplete ? '$queue · $size' : '$queue · $size here';
+    return book.progress.isComplete
+        ? '$queue · $size'
+        : '$queue · $size here$speed';
+  }
+
+  /// What the book as a whole is moving at, when anything is moving.
+  ///
+  /// Its files come down two at a time and the listener is waiting on the book, not on either file,
+  /// so the figure that belongs here is the sum.
+  String _speed() {
+    final total = rates.entries
+        .where((rate) => book.files.any((f) => f.task.id == rate.key))
+        .fold<double?>(null, (sum, rate) => (sum ?? 0) + rate.value);
+    return total == null ? '' : ' · ${formatRate(total)}';
   }
 }
 
@@ -286,12 +311,14 @@ class _BookMenu extends StatelessWidget {
 class _FileTile extends StatelessWidget {
   const _FileTile({
     required this.entry,
+    required this.bytesPerSecond,
     required this.enabled,
     required this.onRemove,
     required this.onRetry,
   });
 
   final DownloadEntry entry;
+  final double? bytesPerSecond;
   final bool enabled;
   final ValueChanged<DownloadEntry> onRemove;
   final ValueChanged<DownloadEntry> onRetry;
@@ -322,7 +349,7 @@ class _FileTile extends StatelessWidget {
         style: theme.textTheme.bodyMedium,
       ),
       subtitle: Text(
-        describeDownloadedFile(entry),
+        describeDownloadedFile(entry, bytesPerSecond: bytesPerSecond),
         maxLines: 2,
         style: theme.textTheme.bodySmall?.copyWith(
           color: _failed ? theme.colorScheme.error : null,

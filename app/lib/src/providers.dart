@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kikuyomi_backup/kikuyomi_backup.dart';
@@ -196,6 +198,25 @@ final downloadsProvider = StreamProvider<List<DownloadedBook>>(
   (ref) =>
       watchDownloads(ref.watch(servicesProvider).database).map(groupDownloads),
 );
+
+/// How fast each download is moving, by task id, sampled once a second (§5.2).
+///
+/// A stream on a timer rather than a watched query, because a speed is not written down: it is a
+/// property of the last few seconds and putting it in the database would churn a table every open
+/// screen is watching. Disposed with the last screen that shows one, so nothing ticks when nobody is
+/// looking.
+final downloadRatesProvider = StreamProvider.autoDispose<Map<int, double>>((
+  ref,
+) {
+  final services = ref.watch(servicesProvider);
+  return Stream<Map<int, double>>.multi((controller) {
+    void emit() =>
+        controller.add(services.downloads.rates.snapshot(services.clock.now()));
+    emit();
+    final timer = Timer.periodic(const Duration(seconds: 1), (_) => emit());
+    controller.onCancel = timer.cancel;
+  });
+});
 
 /// A book's bookmarks in playing order, straight from the database, so one added, changed or
 /// deleted shows at once. Disposed once no screen shows them.

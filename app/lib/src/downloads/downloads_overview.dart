@@ -109,8 +109,16 @@ int _rank(DownloadedBook book) {
 int totalBytesOnDevice(List<DownloadedBook> books) =>
     books.fold(0, (total, book) => total + book.bytesOnDevice);
 
+/// A speed as a person reads it: `4.2 MB/s`.
+String formatRate(double bytesPerSecond) =>
+    '${formatBytes(bytesPerSecond.round())}/s';
+
 /// What to say about one file, in a few words: its state, or its size once it is here.
-String describeDownloadedFile(DownloadEntry entry) {
+///
+/// [bytesPerSecond] is how fast it is moving right now, when anything knows. It is passed in rather
+/// than looked up because it does not live in the database — see `rates.dart` — and because a pure
+/// function of both is the only way to test the sentence.
+String describeDownloadedFile(DownloadEntry entry, {double? bytesPerSecond}) {
   final size = entry.sizeBytes;
   if (entry.isOnDevice) {
     return size == null ? 'Downloaded' : 'Downloaded · ${formatBytes(size)}';
@@ -119,7 +127,7 @@ String describeDownloadedFile(DownloadEntry entry) {
     DownloadState.queued => 'Queued',
     DownloadState.needsResolve => 'Finding it again',
     DownloadState.resolving => 'Finding it',
-    DownloadState.downloading => _downloading(entry),
+    DownloadState.downloading => _downloading(entry, bytesPerSecond),
     DownloadState.processing => 'Checking it',
     DownloadState.waiting => switch (entry.task.hold) {
       DownloadHold.network => 'Waiting for Wi-Fi',
@@ -138,11 +146,14 @@ String describeDownloadedFile(DownloadEntry entry) {
   };
 }
 
-String _downloading(DownloadEntry entry) {
+String _downloading(DownloadEntry entry, double? bytesPerSecond) {
+  final speed = bytesPerSecond == null
+      ? ''
+      : ' · ${formatRate(bytesPerSecond)}';
   final total = entry.task.bytesTotal;
-  if (total == null || total <= 0) return 'Downloading';
+  if (total == null || total <= 0) return 'Downloading$speed';
   final done = entry.task.bytesDone.clamp(0, total);
-  return 'Downloading · ${formatBytes(done)} of ${formatBytes(total)}';
+  return 'Downloading · ${formatBytes(done)} of ${formatBytes(total)}$speed';
 }
 
 /// A size as a person reads it: `1.4 GB`, `812 MB`, `4 KB`.

@@ -32,11 +32,13 @@ class _DownloadsScreenState extends ConsumerState<DownloadsScreen> {
   @override
   Widget build(BuildContext context) {
     final downloads = ref.watch(downloadsProvider);
+    final rates = ref.watch(downloadRatesProvider).value ?? const {};
     return Scaffold(
       appBar: AppBar(title: const Text('Downloads')),
       body: downloads.when(
         data: (books) => DownloadsView(
           books: books,
+          rates: rates,
           busyWith: _busyWith,
           onOpenBook: (bookId) => BookRoute(bookId: bookId).push<void>(context),
           onPauseBook: _pauseBook,

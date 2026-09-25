@@ -24,6 +24,7 @@ import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 
 import '../transport.dart';
 import 'backoff.dart';
+import 'rates.dart';
 import 'scheduler_policy.dart';
 import 'transitions.dart';
 
@@ -77,6 +78,12 @@ final class DownloadDriver {
 
   /// §5.5's retry schedule.
   final DownloadBackoff backoff;
+
+  /// How fast each download is moving, from the reports as they arrive.
+  ///
+  /// Kept here rather than written down: see `rates.dart`. A screen that shows a speed reads this and
+  /// redraws on a timer of its own, because nothing in the database changes when a speed does.
+  final rates = DownloadRates();
 
   /// How many times running a task may be sent back to its source by a refused address before the
   /// refusal is treated as a failure (§5.4).
@@ -187,6 +194,7 @@ final class DownloadDriver {
   /// Stops [taskId], keeping what has arrived.
   Future<void> pause(int taskId) async {
     await _transport.pause(taskId);
+    rates.forget(taskId);
     await _moveTo(taskId, DownloadState.paused);
   }
 
@@ -217,6 +225,7 @@ final class DownloadDriver {
   Future<void> cancel(int taskId) async {
     await _transport.cancel(taskId);
     await _store.saveTransportId(taskId, null);
+    rates.forget(taskId);
     await _moveTo(taskId, DownloadState.cancelled);
   }
 
@@ -225,6 +234,7 @@ final class DownloadDriver {
   Future<void> dispose() async {
     await _reports?.cancel();
     _reports = null;
+    rates.clear();
   }
 
   /// Lets any retryable failure whose wait has elapsed rejoin the queue (§5.5).
@@ -293,6 +303,7 @@ final class DownloadDriver {
         // Progress is not a transition, so it needs no judgement from the state machine — but a
         // report for a task that has finished or been cancelled is still worth nothing.
         if (await _stateOf(taskId) != DownloadState.downloading) return;
+        rates.sample(taskId, bytesDone: bytesDone, at: _clock.now());
         await _store.saveProgress(
           taskId,
           bytesDone: bytesDone,
@@ -308,6 +319,9 @@ final class DownloadDriver {
             bytesTotal: bytesTotal,
           );
         }
+        // Every byte is here, so there is no speed left to report. Forgotten before the post-processor
+        // runs, which can take a moment on a large file and would otherwise show a stale rate.
+        rates.forget(taskId);
         await _moveTo(taskId, DownloadState.processing);
         final subject = await _store.readSubject(taskId);
         if (subject == null) return;
@@ -318,6 +332,7 @@ final class DownloadDriver {
           await _store.saveTransportId(taskId, null);
           _believed[taskId] = DownloadState.completed;
           _rejections.remove(taskId);
+          rates.forget(taskId);
           _slotFreed();
         } catch (error) {
           // A file that arrived but is not what it claimed to be will not become one by being
@@ -387,6 +402,7 @@ final class DownloadDriver {
         ? DownloadState.failedPermanent
         : DownloadState.failedRetryable;
     await _store.saveTransportId(subject.taskId, null);
+    rates.forget(subject.taskId);
     _slotFreed();
   }
 

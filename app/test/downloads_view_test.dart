@@ -71,6 +71,7 @@ void main() {
     WidgetTester tester,
     List<DownloadEntry> entries, {
     int? busyWith,
+    Map<int, double> rates = const {},
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -79,6 +80,7 @@ void main() {
         home: Scaffold(
           body: DownloadsView(
             books: groupDownloads(entries),
+            rates: rates,
             busyWith: busyWith,
             onOpenBook: opened.add,
             onPauseBook: paused.add,
@@ -388,6 +390,48 @@ void main() {
         reason: 'and the book says what the two come to',
       );
       expect(find.text('6.0 KB across 1 book'), findsOneWidget);
+    });
+  });
+
+  group('how fast it is going', () {
+    testWidgets('a moving file shows its speed', (tester) async {
+      final moving = entry(state: DownloadState.downloading, sizeBytes: 4096);
+      await pumpView(
+        tester,
+        [moving],
+        rates: {moving.task.id: 2 * 1024 * 1024},
+      );
+      await tester.tap(find.text('Moby-Dick'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('2.0 MB/s'), findsWidgets);
+    });
+
+    testWidgets('and the book shows what its files come to', (tester) async {
+      // Two files at once, and the listener is waiting on the book rather than on either of them.
+      final one = entry(state: DownloadState.downloading);
+      final two = entry(fileKey: 'two.mp3', state: DownloadState.downloading);
+      await pumpView(
+        tester,
+        [one, two],
+        rates: {one.task.id: 1024 * 1024, two.task.id: 1024 * 1024},
+      );
+
+      expect(find.textContaining('2.0 MB/s'), findsOneWidget);
+    });
+
+    testWidgets('nothing is shown when nothing can say', (tester) async {
+      await pumpView(tester, [entry(state: DownloadState.downloading)]);
+
+      expect(find.textContaining('/s'), findsNothing);
+    });
+
+    testWidgets('a finished book says nothing about speed', (tester) async {
+      await pumpView(tester, [
+        entry(state: DownloadState.completed, onDevice: true, sizeBytes: 1024),
+      ]);
+
+      expect(find.textContaining('/s'), findsNothing);
     });
   });
 
