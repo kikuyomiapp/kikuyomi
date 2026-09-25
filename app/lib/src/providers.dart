@@ -8,6 +8,7 @@ import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
 import 'downloads/book_downloads.dart';
+import 'history/listening_history_days.dart';
 import 'downloads/downloads_overview.dart';
 import 'services.dart';
 import 'setup_gate.dart';
@@ -216,6 +217,18 @@ final downloadRatesProvider = StreamProvider.autoDispose<Map<int, double>>((
     final timer = Timer.periodic(const Duration(seconds: 1), (_) => emit());
     controller.onCancel = timer.cancel;
   });
+});
+
+/// What has been listened to, grouped by day, newest first (§6.4).
+///
+/// `listening_session` has been recorded since the coordinator learned to, and nothing ever read it
+/// back until the History screen. The grouping is done here rather than in the view so the view takes
+/// finished data, and `now` is read once per emission so "Today" is right for the day the listener is
+/// actually having.
+final listeningHistoryProvider = StreamProvider<List<HistoryDay>>((ref) {
+  final services = ref.watch(servicesProvider);
+  return watchListeningHistory(services.database)
+      .map((entries) => groupHistoryByDay(entries, now: services.clock.now()));
 });
 
 /// A book's bookmarks in playing order, straight from the database, so one added, changed or

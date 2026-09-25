@@ -20,6 +20,7 @@ export 'src/library/book_overview.dart';
 export 'src/library/bookmarks.dart';
 export 'src/library/continue_listening.dart';
 export 'src/library/listened_chapters.dart';
+export 'src/library/listening_history.dart';
 export 'src/library/remove_from_library.dart';
 export 'src/local/import_folder.dart';
 export 'src/local/local_covers.dart';

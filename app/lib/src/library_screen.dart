@@ -71,22 +71,33 @@ class LibraryScreen extends ConsumerWidget {
         tab: AppTab.library,
         appBar: AppBar(
           title: const Text('Kikuyomi'),
+          // Downloads keeps an icon of its own because it is the one that means something at a
+          // glance while a book is coming down. The rest go behind the overflow, which is where
+          // Mihon puts them and what keeps a phone's app bar from filling with four icons.
           actions: [
-            if (locations.importFolderIsVisible)
-              IconButton(
-                tooltip: 'Look for new books in the Import folder',
-                icon: const Icon(Icons.refresh),
-                onPressed: () => _lookForNewBooks(context, ref),
-              ),
             IconButton(
               tooltip: 'Downloads',
               icon: const Icon(Icons.download_outlined),
               onPressed: () => const DownloadsRoute().push<void>(context),
             ),
-            IconButton(
-              tooltip: 'Settings',
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: () => const SettingsRoute().push<void>(context),
+            PopupMenuButton<VoidCallback>(
+              tooltip: 'More',
+              onSelected: (action) => action(),
+              itemBuilder: (context) => [
+                if (locations.importFolderIsVisible)
+                  PopupMenuItem(
+                    value: () => _lookForNewBooks(context, ref),
+                    child: const Text('Look for new books'),
+                  ),
+                PopupMenuItem(
+                  value: () => const HistoryRoute().push<void>(context),
+                  child: const Text('History'),
+                ),
+                PopupMenuItem(
+                  value: () => const SettingsRoute().push<void>(context),
+                  child: const Text('Settings'),
+                ),
+              ],
             ),
           ],
         ),

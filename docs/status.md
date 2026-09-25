@@ -272,6 +272,21 @@ test of the queue asked for fewer files than the caps allow. There are now two t
 
 Playing a downloaded book with the network off is still unconfirmed.
 
+### History (§6.4)
+
+`listening_session` has been filled in since the coordinator learned to record one — every
+play-to-pause span, split whenever the chapter, the speed or the position jumps, so each row
+describes a stretch actually heard. Nothing ever read it back. The History screen does: newest first,
+under a heading per day with what that day came to, reached from the library's app bar.
+
+A session outlives the chapter it was in. `chapter_id` goes null when a chapter is purged, because
+§4.4's "keep while it carries user data" rule covers progress, bookmarks and downloads and not
+history, so an entry may have no chapter title and must still be shown.
+
+Forgetting comes in the two scopes worth offering: this entry, or everything for this book. Neither
+touches the book or the place in it — history records when something was heard, not the fact of
+having heard it, which stays in `playback_state` and the listened flags.
+
 ### `sync`
 
 Empty scaffolding.
