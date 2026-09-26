@@ -245,6 +245,12 @@ final librarySortProvider = StreamProvider<LibrarySort>(
       .map((sort) => sort ?? LibrarySort.fallback),
 );
 
+/// The repositories the listener has added, watched, so the screen follows an add or a removal
+/// (§3.8). What each one offers is not here: a listing is fetched rather than stored.
+final repositoriesProvider = StreamProvider<List<RepositoryRow>>(
+  (ref) => ref.watch(servicesProvider).repositories.watch(),
+);
+
 /// A book's bookmarks in playing order, straight from the database, so one added, changed or
 /// deleted shows at once. Disposed once no screen shows them.
 final bookmarksProvider = StreamProvider.autoDispose

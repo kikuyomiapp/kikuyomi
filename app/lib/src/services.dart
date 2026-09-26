@@ -27,6 +27,7 @@ import 'book_files.dart';
 import 'sources/drift_extension_store.dart';
 import 'sources/extension_console.dart';
 import 'sources/extension_library.dart';
+import 'sources/repository_library.dart';
 import 'sources/source_registry.dart';
 
 /// The composition root (§2.8): the one place concrete implementations are chosen and wired
@@ -42,6 +43,7 @@ final class AppServices {
     required this.backupScheduler,
     required this.playable,
     required this.extensions,
+    required this.repositories,
     required this.streamCache,
     required this.downloads,
     required this.downloadFiles,
@@ -108,6 +110,16 @@ final class AppServices {
       dropFolder: locations.extensionDrop,
       clock: clock,
       canInstallFromDropFolder: locations.importFolderIsVisible,
+    );
+    // §3.8's door for a listener, beside ADR-0017's door for an author. Its fetches go through the
+    // same transport everything else uses, under a client of their own, so a repository is rate
+    // limited per host like a source and its cookies are nobody else's.
+    final repositories = RepositoryLibrary(
+      database: database,
+      fetcher: RepositoryFetcher(
+        network.clientFor('org.kikuyomi.repositories'),
+      ),
+      clock: clock,
     );
     // What a streamed book's bytes are kept in, so that a skip, a chapter played again and the
     // book opened tomorrow are reads from this device. Pruned once at start, off the critical path.
@@ -211,6 +223,7 @@ final class AppServices {
       backupScheduler: backupScheduler,
       playable: EngineFormats.forThisDevice(),
       extensions: extensions,
+      repositories: repositories,
       streamCache: streamCache,
       downloads: downloads,
       downloadFiles: downloadFiles,
@@ -241,6 +254,9 @@ final class AppServices {
 
   /// The extensions the app has installed: installing, removing and reloading them (§3.9).
   final ExtensionLibrary extensions;
+
+  /// The repositories the listener has added, and what they offer (§3.8).
+  final RepositoryLibrary repositories;
 
   /// Every source the app offers, and the extension runtimes behind them (§3.6).
   SourceRegistry get sources => extensions.sources;

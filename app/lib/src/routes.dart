@@ -7,6 +7,7 @@ import 'downloads_screen.dart';
 import 'extension_console_screen.dart';
 import 'extensions_screen.dart';
 import 'history_screen.dart';
+import 'repositories_screen.dart';
 import 'library_screen.dart';
 import 'player_screen.dart';
 import 'restore_screen.dart';
@@ -95,7 +96,10 @@ class SetupRoute extends GoRouteData with $SetupRoute {
         ),
         TypedGoRoute<ExtensionsRoute>(
           path: 'extensions',
-          routes: [TypedGoRoute<ExtensionConsoleRoute>(path: 'console')],
+          routes: [
+            TypedGoRoute<ExtensionConsoleRoute>(path: 'console'),
+            TypedGoRoute<RepositoriesRoute>(path: 'repositories'),
+          ],
         ),
       ],
     ),
@@ -221,6 +225,18 @@ class HistoryRoute extends GoRouteData with $HistoryRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) =>
       const HistoryScreen();
+}
+
+/// Repositories: the addresses extensions can be taken from (§3.8).
+///
+/// Under Extensions, because a repository is where an extension comes from and Extensions is where
+/// they are managed. Mihon puts them in the same place, for the same reason.
+class RepositoriesRoute extends GoRouteData with $RepositoriesRoute {
+  const RepositoriesRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const RepositoriesScreen();
 }
 
 /// Settings, from the home's app bar. There is no More tab yet, so it sits above the home.
