@@ -477,6 +477,9 @@ Framework is the door — and the folder picker on desktop. See
 
 ## What is next
 
+**[`progress.md`](progress.md) is the checklist** — every scope item from §8's roadmap, ticked or
+not. What follows is the detail behind the boxes still empty in the phases being worked on.
+
 ### Phase 3 — offline, in progress
 
 The queue is wired and has fetched real files on Windows, from a book's details screen. What is built
