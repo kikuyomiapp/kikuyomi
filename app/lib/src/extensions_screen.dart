@@ -46,6 +46,11 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen> {
         title: const Text('Extensions'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.cloud_outlined),
+            tooltip: 'Repositories',
+            onPressed: () => const RepositoriesRoute().push<void>(context),
+          ),
+          IconButton(
             icon: const Icon(Icons.terminal),
             tooltip: 'Console',
             onPressed: () => const ExtensionConsoleRoute().push<void>(context),

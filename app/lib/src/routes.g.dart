@@ -98,6 +98,11 @@ RouteBase get $homeRoute => GoRouteData.$route(
               hasOverriddenOnExit: false,
               factory: $ExtensionConsoleRoute._fromState,
             ),
+            GoRouteData.$route(
+              path: 'repositories',
+              hasOverriddenOnExit: false,
+              factory: $RepositoriesRoute._fromState,
+            ),
           ],
         ),
       ],
@@ -364,6 +369,28 @@ mixin $ExtensionConsoleRoute on GoRouteData {
       if (_self.extensionId != null) 'extension-id': _self.extensionId,
     },
   );
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $RepositoriesRoute on GoRouteData {
+  static RepositoriesRoute _fromState(GoRouterState state) =>
+      const RepositoriesRoute();
+
+  @override
+  String get location =>
+      GoRouteData.$location('/browse/extensions/repositories');
 
   @override
   void go(BuildContext context) => context.go(location);
