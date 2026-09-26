@@ -3808,8 +3808,18 @@ class MediaFileRow extends DataClass implements Insertable<MediaFileRow> {
   final int? sizeBytes;
   final List<TimelineMarker>? embeddedMarkers;
 
-  /// Non-null once the file has been downloaded.
+  /// Where the file is, once it is on this device at all.
+  ///
+  /// Absolute for a file that stays where the user keeps it, and otherwise relative — to the app's
+  /// downloads folder when [downloadedAt] is set, and to the media root when it is not. The two are
+  /// different folders, so the pair of columns has to be read together; `LocalMediaResolver` is the
+  /// one place that does it.
   final String? localPath;
+
+  /// When the download queue put this file here, and nothing else ever sets it (§5.2).
+  ///
+  /// So it is also what says that [localPath] is relative to the downloads folder rather than to the
+  /// media root. An imported file is on the device without ever having been downloaded.
   final DateTime? downloadedAt;
   const MediaFileRow({
     required this.id,
@@ -6502,6 +6512,480 @@ class BookCategoriesCompanion extends UpdateCompanion<BookCategoryRow> {
   }
 }
 
+class $RepositoriesTable extends Repositories
+    with TableInfo<$RepositoriesTable, RepositoryRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RepositoriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+    'url',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _publicKeyMeta = const VerificationMeta(
+    'publicKey',
+  );
+  @override
+  late final GeneratedColumn<String> publicKey = GeneratedColumn<String>(
+    'public_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fingerprintMeta = const VerificationMeta(
+    'fingerprint',
+  );
+  @override
+  late final GeneratedColumn<String> fingerprint = GeneratedColumn<String>(
+    'fingerprint',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _etagMeta = const VerificationMeta('etag');
+  @override
+  late final GeneratedColumn<String> etag = GeneratedColumn<String>(
+    'etag',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastFetchedAtMeta = const VerificationMeta(
+    'lastFetchedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastFetchedAt =
+      GeneratedColumn<DateTime>(
+        'last_fetched_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    url,
+    name,
+    publicKey,
+    fingerprint,
+    etag,
+    lastFetchedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'repositories';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RepositoryRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+        _urlMeta,
+        url.isAcceptableOrUnknown(data['url']!, _urlMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('public_key')) {
+      context.handle(
+        _publicKeyMeta,
+        publicKey.isAcceptableOrUnknown(data['public_key']!, _publicKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_publicKeyMeta);
+    }
+    if (data.containsKey('fingerprint')) {
+      context.handle(
+        _fingerprintMeta,
+        fingerprint.isAcceptableOrUnknown(
+          data['fingerprint']!,
+          _fingerprintMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_fingerprintMeta);
+    }
+    if (data.containsKey('etag')) {
+      context.handle(
+        _etagMeta,
+        etag.isAcceptableOrUnknown(data['etag']!, _etagMeta),
+      );
+    }
+    if (data.containsKey('last_fetched_at')) {
+      context.handle(
+        _lastFetchedAtMeta,
+        lastFetchedAt.isAcceptableOrUnknown(
+          data['last_fetched_at']!,
+          _lastFetchedAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {url},
+  ];
+  @override
+  RepositoryRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RepositoryRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      url: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}url'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      publicKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}public_key'],
+      )!,
+      fingerprint: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}fingerprint'],
+      )!,
+      etag: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}etag'],
+      ),
+      lastFetchedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_fetched_at'],
+      ),
+    );
+  }
+
+  @override
+  $RepositoriesTable createAlias(String alias) {
+    return $RepositoriesTable(attachedDatabase, alias);
+  }
+}
+
+class RepositoryRow extends DataClass implements Insertable<RepositoryRow> {
+  final int id;
+
+  /// The folder its documents sit in, as `RepositoryLocation` works it out — so the same repository
+  /// reached by its project page and by its raw index is one row, not two.
+  final String url;
+
+  /// What it calls itself, from `repo.json`.
+  final String name;
+
+  /// Its Ed25519 signing key, base64, exactly as published. What signatures are checked against.
+  final String publicKey;
+
+  /// The key's fingerprint, as it was shown to the listener when they accepted it.
+  ///
+  /// Derived from [publicKey] and stored anyway, because it is the thing a person compared against
+  /// what the repository's operator published, and re-deriving it to show again would be deriving it
+  /// from whatever the key is now rather than from what they agreed to.
+  final String fingerprint;
+
+  /// What the index answered with last time, to send back as `If-None-Match`. Null until one is
+  /// fetched, and null again if the repository stops sending one.
+  final String? etag;
+  final DateTime? lastFetchedAt;
+  const RepositoryRow({
+    required this.id,
+    required this.url,
+    required this.name,
+    required this.publicKey,
+    required this.fingerprint,
+    this.etag,
+    this.lastFetchedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['url'] = Variable<String>(url);
+    map['name'] = Variable<String>(name);
+    map['public_key'] = Variable<String>(publicKey);
+    map['fingerprint'] = Variable<String>(fingerprint);
+    if (!nullToAbsent || etag != null) {
+      map['etag'] = Variable<String>(etag);
+    }
+    if (!nullToAbsent || lastFetchedAt != null) {
+      map['last_fetched_at'] = Variable<DateTime>(lastFetchedAt);
+    }
+    return map;
+  }
+
+  RepositoriesCompanion toCompanion(bool nullToAbsent) {
+    return RepositoriesCompanion(
+      id: Value(id),
+      url: Value(url),
+      name: Value(name),
+      publicKey: Value(publicKey),
+      fingerprint: Value(fingerprint),
+      etag: etag == null && nullToAbsent ? const Value.absent() : Value(etag),
+      lastFetchedAt: lastFetchedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastFetchedAt),
+    );
+  }
+
+  factory RepositoryRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RepositoryRow(
+      id: serializer.fromJson<int>(json['id']),
+      url: serializer.fromJson<String>(json['url']),
+      name: serializer.fromJson<String>(json['name']),
+      publicKey: serializer.fromJson<String>(json['publicKey']),
+      fingerprint: serializer.fromJson<String>(json['fingerprint']),
+      etag: serializer.fromJson<String?>(json['etag']),
+      lastFetchedAt: serializer.fromJson<DateTime?>(json['lastFetchedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'url': serializer.toJson<String>(url),
+      'name': serializer.toJson<String>(name),
+      'publicKey': serializer.toJson<String>(publicKey),
+      'fingerprint': serializer.toJson<String>(fingerprint),
+      'etag': serializer.toJson<String?>(etag),
+      'lastFetchedAt': serializer.toJson<DateTime?>(lastFetchedAt),
+    };
+  }
+
+  RepositoryRow copyWith({
+    int? id,
+    String? url,
+    String? name,
+    String? publicKey,
+    String? fingerprint,
+    Value<String?> etag = const Value.absent(),
+    Value<DateTime?> lastFetchedAt = const Value.absent(),
+  }) => RepositoryRow(
+    id: id ?? this.id,
+    url: url ?? this.url,
+    name: name ?? this.name,
+    publicKey: publicKey ?? this.publicKey,
+    fingerprint: fingerprint ?? this.fingerprint,
+    etag: etag.present ? etag.value : this.etag,
+    lastFetchedAt: lastFetchedAt.present
+        ? lastFetchedAt.value
+        : this.lastFetchedAt,
+  );
+  RepositoryRow copyWithCompanion(RepositoriesCompanion data) {
+    return RepositoryRow(
+      id: data.id.present ? data.id.value : this.id,
+      url: data.url.present ? data.url.value : this.url,
+      name: data.name.present ? data.name.value : this.name,
+      publicKey: data.publicKey.present ? data.publicKey.value : this.publicKey,
+      fingerprint: data.fingerprint.present
+          ? data.fingerprint.value
+          : this.fingerprint,
+      etag: data.etag.present ? data.etag.value : this.etag,
+      lastFetchedAt: data.lastFetchedAt.present
+          ? data.lastFetchedAt.value
+          : this.lastFetchedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RepositoryRow(')
+          ..write('id: $id, ')
+          ..write('url: $url, ')
+          ..write('name: $name, ')
+          ..write('publicKey: $publicKey, ')
+          ..write('fingerprint: $fingerprint, ')
+          ..write('etag: $etag, ')
+          ..write('lastFetchedAt: $lastFetchedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, url, name, publicKey, fingerprint, etag, lastFetchedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RepositoryRow &&
+          other.id == this.id &&
+          other.url == this.url &&
+          other.name == this.name &&
+          other.publicKey == this.publicKey &&
+          other.fingerprint == this.fingerprint &&
+          other.etag == this.etag &&
+          other.lastFetchedAt == this.lastFetchedAt);
+}
+
+class RepositoriesCompanion extends UpdateCompanion<RepositoryRow> {
+  final Value<int> id;
+  final Value<String> url;
+  final Value<String> name;
+  final Value<String> publicKey;
+  final Value<String> fingerprint;
+  final Value<String?> etag;
+  final Value<DateTime?> lastFetchedAt;
+  const RepositoriesCompanion({
+    this.id = const Value.absent(),
+    this.url = const Value.absent(),
+    this.name = const Value.absent(),
+    this.publicKey = const Value.absent(),
+    this.fingerprint = const Value.absent(),
+    this.etag = const Value.absent(),
+    this.lastFetchedAt = const Value.absent(),
+  });
+  RepositoriesCompanion.insert({
+    this.id = const Value.absent(),
+    required String url,
+    required String name,
+    required String publicKey,
+    required String fingerprint,
+    this.etag = const Value.absent(),
+    this.lastFetchedAt = const Value.absent(),
+  }) : url = Value(url),
+       name = Value(name),
+       publicKey = Value(publicKey),
+       fingerprint = Value(fingerprint);
+  static Insertable<RepositoryRow> custom({
+    Expression<int>? id,
+    Expression<String>? url,
+    Expression<String>? name,
+    Expression<String>? publicKey,
+    Expression<String>? fingerprint,
+    Expression<String>? etag,
+    Expression<DateTime>? lastFetchedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (url != null) 'url': url,
+      if (name != null) 'name': name,
+      if (publicKey != null) 'public_key': publicKey,
+      if (fingerprint != null) 'fingerprint': fingerprint,
+      if (etag != null) 'etag': etag,
+      if (lastFetchedAt != null) 'last_fetched_at': lastFetchedAt,
+    });
+  }
+
+  RepositoriesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? url,
+    Value<String>? name,
+    Value<String>? publicKey,
+    Value<String>? fingerprint,
+    Value<String?>? etag,
+    Value<DateTime?>? lastFetchedAt,
+  }) {
+    return RepositoriesCompanion(
+      id: id ?? this.id,
+      url: url ?? this.url,
+      name: name ?? this.name,
+      publicKey: publicKey ?? this.publicKey,
+      fingerprint: fingerprint ?? this.fingerprint,
+      etag: etag ?? this.etag,
+      lastFetchedAt: lastFetchedAt ?? this.lastFetchedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (publicKey.present) {
+      map['public_key'] = Variable<String>(publicKey.value);
+    }
+    if (fingerprint.present) {
+      map['fingerprint'] = Variable<String>(fingerprint.value);
+    }
+    if (etag.present) {
+      map['etag'] = Variable<String>(etag.value);
+    }
+    if (lastFetchedAt.present) {
+      map['last_fetched_at'] = Variable<DateTime>(lastFetchedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RepositoriesCompanion(')
+          ..write('id: $id, ')
+          ..write('url: $url, ')
+          ..write('name: $name, ')
+          ..write('publicKey: $publicKey, ')
+          ..write('fingerprint: $fingerprint, ')
+          ..write('etag: $etag, ')
+          ..write('lastFetchedAt: $lastFetchedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $ExtensionsTable extends Extensions
     with TableInfo<$ExtensionsTable, ExtensionRow> {
   @override
@@ -8420,6 +8904,7 @@ abstract class _$KikuyomiDatabase extends GeneratedDatabase {
   late final $BookmarksTable bookmarks = $BookmarksTable(this);
   late final $CategoriesTable categories = $CategoriesTable(this);
   late final $BookCategoriesTable bookCategories = $BookCategoriesTable(this);
+  late final $RepositoriesTable repositories = $RepositoriesTable(this);
   late final $ExtensionsTable extensions = $ExtensionsTable(this);
   late final $ExtensionPreferencesTable extensionPreferences =
       $ExtensionPreferencesTable(this);
@@ -8461,6 +8946,7 @@ abstract class _$KikuyomiDatabase extends GeneratedDatabase {
     bookmarks,
     categories,
     bookCategories,
+    repositories,
     extensions,
     extensionPreferences,
     downloadTasks,
@@ -14874,6 +15360,257 @@ typedef $$BookCategoriesTableProcessedTableManager =
       BookCategoryRow,
       PrefetchHooks Function({bool bookId, bool categoryId})
     >;
+typedef $$RepositoriesTableCreateCompanionBuilder =
+    RepositoriesCompanion Function({
+      Value<int> id,
+      required String url,
+      required String name,
+      required String publicKey,
+      required String fingerprint,
+      Value<String?> etag,
+      Value<DateTime?> lastFetchedAt,
+    });
+typedef $$RepositoriesTableUpdateCompanionBuilder =
+    RepositoriesCompanion Function({
+      Value<int> id,
+      Value<String> url,
+      Value<String> name,
+      Value<String> publicKey,
+      Value<String> fingerprint,
+      Value<String?> etag,
+      Value<DateTime?> lastFetchedAt,
+    });
+
+class $$RepositoriesTableFilterComposer
+    extends Composer<_$KikuyomiDatabase, $RepositoriesTable> {
+  $$RepositoriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get publicKey => $composableBuilder(
+    column: $table.publicKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fingerprint => $composableBuilder(
+    column: $table.fingerprint,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get etag => $composableBuilder(
+    column: $table.etag,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastFetchedAt => $composableBuilder(
+    column: $table.lastFetchedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RepositoriesTableOrderingComposer
+    extends Composer<_$KikuyomiDatabase, $RepositoriesTable> {
+  $$RepositoriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get url => $composableBuilder(
+    column: $table.url,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get publicKey => $composableBuilder(
+    column: $table.publicKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fingerprint => $composableBuilder(
+    column: $table.fingerprint,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get etag => $composableBuilder(
+    column: $table.etag,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastFetchedAt => $composableBuilder(
+    column: $table.lastFetchedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RepositoriesTableAnnotationComposer
+    extends Composer<_$KikuyomiDatabase, $RepositoriesTable> {
+  $$RepositoriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get publicKey =>
+      $composableBuilder(column: $table.publicKey, builder: (column) => column);
+
+  GeneratedColumn<String> get fingerprint => $composableBuilder(
+    column: $table.fingerprint,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get etag =>
+      $composableBuilder(column: $table.etag, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastFetchedAt => $composableBuilder(
+    column: $table.lastFetchedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$RepositoriesTableTableManager
+    extends
+        RootTableManager<
+          _$KikuyomiDatabase,
+          $RepositoriesTable,
+          RepositoryRow,
+          $$RepositoriesTableFilterComposer,
+          $$RepositoriesTableOrderingComposer,
+          $$RepositoriesTableAnnotationComposer,
+          $$RepositoriesTableCreateCompanionBuilder,
+          $$RepositoriesTableUpdateCompanionBuilder,
+          (
+            RepositoryRow,
+            BaseReferences<
+              _$KikuyomiDatabase,
+              $RepositoriesTable,
+              RepositoryRow
+            >,
+          ),
+          RepositoryRow,
+          PrefetchHooks Function()
+        > {
+  $$RepositoriesTableTableManager(
+    _$KikuyomiDatabase db,
+    $RepositoriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RepositoriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RepositoriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RepositoriesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> url = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> publicKey = const Value.absent(),
+                Value<String> fingerprint = const Value.absent(),
+                Value<String?> etag = const Value.absent(),
+                Value<DateTime?> lastFetchedAt = const Value.absent(),
+              }) => RepositoriesCompanion(
+                id: id,
+                url: url,
+                name: name,
+                publicKey: publicKey,
+                fingerprint: fingerprint,
+                etag: etag,
+                lastFetchedAt: lastFetchedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String url,
+                required String name,
+                required String publicKey,
+                required String fingerprint,
+                Value<String?> etag = const Value.absent(),
+                Value<DateTime?> lastFetchedAt = const Value.absent(),
+              }) => RepositoriesCompanion.insert(
+                id: id,
+                url: url,
+                name: name,
+                publicKey: publicKey,
+                fingerprint: fingerprint,
+                etag: etag,
+                lastFetchedAt: lastFetchedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$RepositoriesTable, RepositoryRow>(table),
+                  BaseReferences<
+                    _$KikuyomiDatabase,
+                    $RepositoriesTable,
+                    RepositoryRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RepositoriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$KikuyomiDatabase,
+      $RepositoriesTable,
+      RepositoryRow,
+      $$RepositoriesTableFilterComposer,
+      $$RepositoriesTableOrderingComposer,
+      $$RepositoriesTableAnnotationComposer,
+      $$RepositoriesTableCreateCompanionBuilder,
+      $$RepositoriesTableUpdateCompanionBuilder,
+      (
+        RepositoryRow,
+        BaseReferences<_$KikuyomiDatabase, $RepositoriesTable, RepositoryRow>,
+      ),
+      RepositoryRow,
+      PrefetchHooks Function()
+    >;
 typedef $$ExtensionsTableCreateCompanionBuilder = ExtensionsCompanion Function({
   required String id,
   required String name,
@@ -15950,6 +16687,8 @@ class $KikuyomiDatabaseManager {
       $$CategoriesTableTableManager(_db, _db.categories);
   $$BookCategoriesTableTableManager get bookCategories =>
       $$BookCategoriesTableTableManager(_db, _db.bookCategories);
+  $$RepositoriesTableTableManager get repositories =>
+      $$RepositoriesTableTableManager(_db, _db.repositories);
   $$ExtensionsTableTableManager get extensions =>
       $$ExtensionsTableTableManager(_db, _db.extensions);
   $$ExtensionPreferencesTableTableManager get extensionPreferences =>

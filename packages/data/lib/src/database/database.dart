@@ -22,6 +22,7 @@ part 'database.g.dart';
     Bookmarks,
     Categories,
     BookCategories,
+    Repositories,
     Extensions,
     ExtensionPreferences,
     DownloadTasks,
@@ -33,7 +34,7 @@ class KikuyomiDatabase extends _$KikuyomiDatabase {
   KikuyomiDatabase(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -55,6 +56,12 @@ class KikuyomiDatabase extends _$KikuyomiDatabase {
       from2To3: (m, schema) async {
         await m.createTable(schema.downloadTasks);
         await m.createIndex(schema.downloadTasksPending);
+      },
+      // Version 4 adds the repositories the listener has added, and nothing else. A library written
+      // by any earlier version has none: until now the only door was a folder (ADR-0017), so there
+      // is nothing to move into it.
+      from3To4: (m, schema) async {
+        await m.createTable(schema.repositories);
       },
     ),
     beforeOpen: (details) async {

@@ -42,6 +42,11 @@ List<TableInfo<Table, Object?>> backedUpTables(KikuyomiDatabase db) => [
 const backupLeavesOut = [
   'extensions',
   'extension_preferences',
+  // For the same reason the extensions themselves are left out: which repositories a library wants
+  // is worth carrying, and carrying it means restoring a list of URLs that decide what code runs on
+  // the device. That belongs to a backup format version of its own, with the trust decision made
+  // deliberately rather than inherited from a restore.
+  'repositories',
   'download_tasks',
 ];
 

@@ -292,6 +292,51 @@ class BookCategories extends Table {
 /// Version 2's reason for existing: what is installed, which version it is and where it came from
 /// have to survive a restart, since after one the app has only its own storage to go on. No code is
 /// here — the files live in the app's storage, at [Extensions.installPath] — and nothing here runs:
+/// A repository the listener has added: where it is, who it says it is, and the key it signs with
+/// (§3.8, §4.3).
+///
+/// **The key is pinned here, and that is the point of the row.** §3.8's trust is trust on first use:
+/// the fingerprint is shown when a repository is added, the listener accepts it, and what is stored
+/// is what every later fetch is checked against. A repository that comes back one day with a
+/// different key has either rotated it properly, signed by the old one, or is not the repository it
+/// was — and the only way to tell is to have written down what it used to be.
+///
+/// [etag] and [lastFetchedAt] are the cache. A listener with a dozen repositories refreshes them all
+/// on the same schedule and almost nothing has changed, so the tag turns most of those refreshes
+/// into a conditional request with no body at all.
+@DataClassName('RepositoryRow')
+class Repositories extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// The folder its documents sit in, as `RepositoryLocation` works it out — so the same repository
+  /// reached by its project page and by its raw index is one row, not two.
+  TextColumn get url => text()();
+
+  /// What it calls itself, from `repo.json`.
+  TextColumn get name => text()();
+
+  /// Its Ed25519 signing key, base64, exactly as published. What signatures are checked against.
+  TextColumn get publicKey => text()();
+
+  /// The key's fingerprint, as it was shown to the listener when they accepted it.
+  ///
+  /// Derived from [publicKey] and stored anyway, because it is the thing a person compared against
+  /// what the repository's operator published, and re-deriving it to show again would be deriving it
+  /// from whatever the key is now rather than from what they agreed to.
+  TextColumn get fingerprint => text()();
+
+  /// What the index answered with last time, to send back as `If-None-Match`. Null until one is
+  /// fetched, and null again if the repository stops sending one.
+  TextColumn get etag => text().nullable()();
+
+  DateTimeColumn get lastFetchedAt => dateTime().nullable()();
+
+  @override
+  List<Set<Column<Object>>> get uniqueKeys => [
+    {url},
+  ];
+}
+
 /// §3.6 starts a runtime on first use, from these rows and the manifest beside the code.
 ///
 /// §4.3's column list also has `repository_id`, which waits for the repository door: until then
