@@ -231,6 +231,20 @@ final listeningHistoryProvider = StreamProvider<List<HistoryDay>>((ref) {
       .map((entries) => groupHistoryByDay(entries, now: services.clock.now()));
 });
 
+/// The order the library is shown in, so a shelf stays as the listener left it (§2.6).
+///
+/// Straight from the settings store, which reads it now and again after every write, so choosing an
+/// order redraws the shelf without anything being refreshed. A value this build does not know reads
+/// as not set, which is what lets an older build open a library a newer one ordered some way it has
+/// never heard of.
+final librarySortProvider = StreamProvider<LibrarySort>(
+  (ref) => ref
+      .watch(servicesProvider)
+      .settings
+      .watch(AppSettings.librarySort)
+      .map((sort) => sort ?? LibrarySort.fallback),
+);
+
 /// A book's bookmarks in playing order, straight from the database, so one added, changed or
 /// deleted shows at once. Disposed once no screen shows them.
 final bookmarksProvider = StreamProvider.autoDispose

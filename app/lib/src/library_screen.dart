@@ -1,6 +1,7 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_sources_builtin/kikuyomi_sources_builtin.dart'
     show audioExtensions;
 
@@ -11,6 +12,7 @@ import 'book_drop_zone.dart';
 import 'book_files.dart';
 import 'dropped_books.dart';
 import 'home_view.dart';
+import 'library/library_shelf.dart';
 import 'open_book.dart';
 import 'providers.dart';
 import 'routes.dart';
@@ -47,12 +49,36 @@ enum _Adding { file, folder }
 ///
 /// The first tab of §2.6's shell. That section splits this into Home and Library tabs of their own;
 /// until it does, this one screen is both, and Browse is the other tab.
-class LibraryScreen extends ConsumerWidget {
+class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  /// What the shelf has been narrowed to. Kept in memory rather than in settings: a search is about
+  /// the next ten seconds, and a library that opened still filtered from yesterday would look empty
+  /// for no reason anyone could see.
+  final _search = TextEditingController();
+  var _searching = false;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _stopSearching() {
+    _search.clear();
+    setState(() => _searching = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final library = ref.watch(libraryProvider);
+    final sort = ref.watch(librarySortProvider).value ?? LibrarySort.fallback;
+    final query = _search.text;
     final continueListening = ref.watch(continueListeningProvider);
     final services = ref.watch(servicesProvider);
     final locations = services.locations;
@@ -70,11 +96,56 @@ class LibraryScreen extends ConsumerWidget {
       child: AppShell(
         tab: AppTab.library,
         appBar: AppBar(
-          title: const Text('Kikuyomi'),
+          title: _searching
+              ? TextField(
+                  controller: _search,
+                  autofocus: true,
+                  textInputAction: TextInputAction.search,
+                  decoration: const InputDecoration(
+                    hintText: 'Search your library',
+                    border: InputBorder.none,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                )
+              : const Text('Kikuyomi'),
+          leading: _searching
+              ? IconButton(
+                  tooltip: 'Stop searching',
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: _stopSearching,
+                )
+              : null,
           // Downloads keeps an icon of its own because it is the one that means something at a
           // glance while a book is coming down. The rest go behind the overflow, which is where
           // Mihon puts them and what keeps a phone's app bar from filling with four icons.
           actions: [
+            if (_searching)
+              IconButton(
+                tooltip: 'Clear',
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  _search.clear();
+                  setState(() {});
+                },
+              )
+            else ...[
+              IconButton(
+                tooltip: 'Search your library',
+                icon: const Icon(Icons.search),
+                onPressed: () => setState(() => _searching = true),
+              ),
+              PopupMenuButton<LibrarySort>(
+                tooltip: 'Order the shelf',
+                icon: const Icon(Icons.sort),
+                initialValue: sort,
+                onSelected: (chosen) =>
+                    services.settings.write(AppSettings.librarySort, chosen),
+                itemBuilder: (context) => [
+                  for (final order in LibrarySort.values)
+                    PopupMenuItem(value: order, child: Text(order.label)),
+                ],
+              ),
+            ],
             IconButton(
               tooltip: 'Downloads',
               icon: const Icon(Icons.download_outlined),
@@ -110,7 +181,8 @@ class LibraryScreen extends ConsumerWidget {
           data: (books) => HomeView(
             // The library does not wait for Continue Listening; the shelf fills in when it arrives.
             continueListening: continueListening.value ?? const [],
-            library: books,
+            library: arrangeLibrary(books, query: query, sort: sort),
+            searchQuery: query,
             covers: services.covers,
             emptyMessage: locations.importFolderIsVisible
                 ? 'No books yet. Add an audiobook file, or copy books into the '

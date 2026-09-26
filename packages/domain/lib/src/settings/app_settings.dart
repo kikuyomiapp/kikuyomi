@@ -1,3 +1,4 @@
+import '../library/library_sort.dart';
 import 'settings_store.dart';
 
 /// What became of the offer, made when the app first starts with an empty library, to choose a
@@ -59,6 +60,16 @@ abstract final class AppSettings {
     decode: _decodeSetup,
   );
 
+  /// The order the library is shown in, so a shelf stays as the listener left it.
+  ///
+  /// Not set until one is chosen, and a value this build does not know reads as not set, which is
+  /// what lets an older build open a library a newer one ordered some way it has never heard of.
+  static const librarySort = Setting<LibrarySort>(
+    'library.sort',
+    encode: _encodeSort,
+    decode: LibrarySort.byName,
+  );
+
   /// Whether chapters listened to before listened state was recorded (§4.5) have been recorded from
   /// the positions saved in them. Not set until that has been done, which happens once: after it,
   /// a chapter the listener marks not listened stays so, wherever its position is.
@@ -101,3 +112,5 @@ String _encodeSetup(BackupSetup setup) => setup.name;
 
 BackupSetup? _decodeSetup(String stored) =>
     BackupSetup.values.asNameMap()[stored];
+
+String _encodeSort(LibrarySort sort) => sort.name;

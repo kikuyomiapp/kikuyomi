@@ -24,6 +24,7 @@ class HomeView extends StatelessWidget {
     required this.onResume,
     required this.onShowDetails,
     this.header,
+    this.searchQuery = '',
   });
 
   final List<ContinueListeningBook> continueListening;
@@ -43,6 +44,12 @@ class HomeView extends StatelessWidget {
 
   /// Shown above everything else, books or none, such as the reminder to choose a backup folder.
   final Widget? header;
+
+  /// What the library has been narrowed to, for saying what found nothing. The narrowing itself is
+  /// already done: [library] is what to show.
+  final String searchQuery;
+
+  bool get _searching => searchQuery.trim().isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +73,7 @@ class HomeView extends StatelessWidget {
     return CustomScrollView(
       slivers: [
         if (header != null) SliverToBoxAdapter(child: header),
-        if (continueListening.isNotEmpty) ...[
+        if (continueListening.isNotEmpty && !_searching) ...[
           const _SectionHeading('Continue listening'),
           SliverToBoxAdapter(
             child: Padding(
@@ -79,23 +86,42 @@ class HomeView extends StatelessWidget {
             ),
           ),
         ],
-        const _SectionHeading('Library'),
-        SliverList.builder(
-          itemCount: library.length,
-          itemBuilder: (context, index) {
-            final book = library[index];
-            return ListTile(
-              leading: BookCover(
-                file: covers.fileOf(book.coverLocalPath),
-                size: 56,
-                semanticLabel: 'Cover of ${book.title}',
+        if (!_searching) const _SectionHeading('Library'),
+        if (library.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+              child: Text(
+                _searching
+                    ? 'No book in your library matches ${'\u201c'}${searchQuery.trim()}${'\u201d'}.'
+                    : emptyMessage,
+                textAlign: TextAlign.center,
               ),
-              title: Text(book.title),
-              subtitle: Text(formatClock(book.totalDurationMs ?? 0)),
-              onTap: () => onShowDetails(book.id),
-            );
-          },
-        ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverGrid.builder(
+              // A covers grid rather than a list of rows: a cover is how anyone recognises a book
+              // they own, and a shelf of them shows a dozen where rows showed four.
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                // Wide enough for a cover to be recognised, narrow enough that a phone fits
+                // three across and a desktop window fills with them rather than stretching six.
+                maxCrossAxisExtent: 150,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                // The cover is square; the rest is the two lines of title beneath it.
+                childAspectRatio: 0.72,
+              ),
+              itemCount: library.length,
+              itemBuilder: (context, index) => _ShelfBook(
+                book: library[index],
+                covers: covers,
+                onTap: () => onShowDetails(library[index].id),
+              ),
+            ),
+          ),
         // Room below the last book, so the "Add book" button never covers it.
         const SliverToBoxAdapter(child: SizedBox(height: 88)),
       ],
@@ -246,6 +272,49 @@ class _SectionHeading extends StatelessWidget {
             color: theme.colorScheme.primary,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// One book on the shelf: its cover, with its title under it.
+class _ShelfBook extends StatelessWidget {
+  const _ShelfBook({
+    required this.book,
+    required this.covers,
+    required this.onTap,
+  });
+
+  final BookRow book;
+  final CoverFiles covers;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) => BookCover(
+                file: covers.fileOf(book.coverLocalPath),
+                size: constraints.maxWidth,
+                semanticLabel: 'Cover of ${book.title}',
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            book.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
       ),
     );
   }
