@@ -523,19 +523,28 @@ needs is now built; nothing has confirmed it.
 
 Installing from a URL, as Mihon does (§3.8, §3.9).
 
-1. An index format: for each extension its id, name, version, apiVersion, declared domains, icon,
-   the URL of its `main.js` and that file's SHA-256. A versioned public format, so it gets written
-   down as the manifest is.
+1. ~~An index format~~ — **built** (ADR-0018). `repo.json` carries the repository's name, website
+   and Ed25519 signing key, with a fingerprint to show when it is added; `index.json` repeats the
+   metadata the permissions summary and the filters need, plus each package's HTTPS URL, SHA-256 and
+   signature, and whether that version has been withdrawn. An entry is decoded by the manifest's own
+   decoder, so a field the two share cannot drift apart. It has its own `formatVersion`, and a
+   document from a newer one is refused rather than read hopefully.
 2. Fetching and parsing it; accepting a plain `github.com/user/repo` URL and working out the raw
    one, as Mihon does.
 3. Managing a list of repositories, browsing one, installing, updating, uninstalling.
 4. Update checks against the index.
 
-**Trust.** Mihon gets one protection free from Android: the OS refuses an update signed with a
-different key than the install. A JavaScript bundle gets nothing free. The proposal is to ship
-without signing — the index is fetched over HTTPS and pins each bundle's SHA-256, so a repository is
-as trustworthy as whoever runs it — and to leave room in the index format for signatures later. Not
-yet decided.
+**Trust.** Settled by ADR-0018, against an earlier proposal recorded here to ship unsigned. §3.8 had
+already decided: an Ed25519 key in `repo.json`, pinned on first use, with every package verified.
+Going unsigned would have been reversing that rather than filling a gap, in the direction of less
+safety, for a format that is public and versioned and therefore expensive to change afterwards.
+
+So the format carries `publicKey` and `signature` from version 1 and **nothing verifies them yet**.
+A package's SHA-256 is verified at install regardless, because it catches a truncated download — but
+it proves only that the bytes are the ones the index named, and nothing about who wrote the index.
+Until the install path verifies signatures, a repository is trusted no further than ADR-0017 trusts
+a folder, and an extension from one stays `untrusted`. That window is a stage, not a decision: Phase
+2 is not done before it closes.
 
 The app ships knowing only the official repository. Per `CLAUDE.md`, neither the app nor the docs
 list or recommend any other.
