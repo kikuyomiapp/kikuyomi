@@ -17,6 +17,7 @@ export 'src/downloads/download_store.dart';
 export 'src/extensions/installed_extension.dart';
 export 'src/library/book_field.dart';
 export 'src/library/contributor_role.dart';
+export 'src/library/library_sort.dart';
 export 'src/playback/audio_format.dart';
 export 'src/playback/listening_session.dart';
 export 'src/playback/media_resolver.dart';
