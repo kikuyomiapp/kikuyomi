@@ -266,6 +266,52 @@ void main() {
       ),
     );
   });
+
+  test('an upgraded library can add a repository', () async {
+    // Version 4's whole content. Nothing an earlier version wrote moves into it: until now the only
+    // door was a folder (ADR-0017), so a library upgrading from any version has no repositories.
+    //
+    // The property worth pinning is the unique key on the URL. `RepositoryLocation` normalises what
+    // the listener typed, so a project page and a raw index resolve to one address — and this is
+    // what makes that one row rather than a matter of whoever writes the next add path.
+    final schema = await verifier.schemaAt(1);
+    final db = KikuyomiDatabase(schema.newConnection());
+    addTearDown(db.close);
+    await verifier.migrateAndValidate(db, 4);
+
+    await db
+        .into(db.repositories)
+        .insert(
+          RepositoriesCompanion.insert(
+            url: 'https://example.org/repo/',
+            name: 'Kikuyomi official',
+            publicKey: 'aGVsbG8gdGhlcmUgZnJpZW5kIG9mIG1pbmUh',
+            fingerprint: 'AA:BB:CC',
+          ),
+        );
+
+    final stored = await db.select(db.repositories).getSingle();
+    expect(stored.name, 'Kikuyomi official');
+    // `null` rather than the matcher: drift exports an `isNull` of its own for queries, and this
+    // file imports both.
+    expect(stored.etag, null, reason: 'nothing has been fetched from it yet');
+    expect(stored.lastFetchedAt, null);
+
+    await expectLater(
+      db
+          .into(db.repositories)
+          .insert(
+            RepositoriesCompanion.insert(
+              url: 'https://example.org/repo/',
+              name: 'The same place twice',
+              publicKey: 'b3RoZXI=',
+              fingerprint: 'DD:EE:FF',
+            ),
+          ),
+      throwsA(anything),
+      reason: 'one address is one repository',
+    );
+  });
 }
 
 final _when = DateTime.utc(2026, 9, 13, 12, 30, 45, 123);

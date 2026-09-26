@@ -55,9 +55,10 @@ Not met — the app has never been run on Android at all.
 - [ ] TypeScript SDK and CLI — does not exist; `docs/writing-an-extension.md` is the whole of the author's story
 - [x] QuickJS runtime with worker isolates and bridges
 - [x] ExtensionManager: install, uninstall and reload from a folder (ADR-0017)
-- [ ] ExtensionManager: repositories — **in progress.** The `repo.json` and `index.json` format and
-      its parser are built (ADR-0018); fetching, adding a repository, browsing one and installing
-      from it are not
+- [ ] ExtensionManager: repositories — **in progress.** The format and its parser (ADR-0018),
+      working out where a repository's documents are from whatever the listener pasted, fetching them
+      with ETag caching, and the `repository` table with its pinned key are built. Adding one through
+      the app, browsing it and installing from it are not
 - [ ] ExtensionManager: update checks
 - [ ] ExtensionManager: signatures and trust — the format carries the key and the signatures, and
       nothing verifies them yet, so every extension is still `untrusted` (ADR-0018)

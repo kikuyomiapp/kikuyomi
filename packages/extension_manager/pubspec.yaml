@@ -25,6 +25,11 @@ dependencies:
     path: ../sources_builtin
   kikuyomi_domain:
     path: ../domain
+  # Fetching a repository's index is this package's own job (§3.8), and it goes through the app's one
+  # transport so a repository gets the same User-Agent, timeouts, body limits and per-host rate
+  # limiting everything else does.
+  kikuyomi_networking:
+    path: ../networking
   # §3.7's source id: the first 8 bytes of SHA-256 over the extension, source, language and version.
   # Dart team, BSD-3-Clause, pure Dart.
   crypto: ^3.0.6
