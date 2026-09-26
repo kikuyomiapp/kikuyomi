@@ -13,3 +13,4 @@ library;
 export 'src/install.dart';
 export 'src/manifest.dart';
 export 'src/package.dart';
+export 'src/repository/index.dart';
