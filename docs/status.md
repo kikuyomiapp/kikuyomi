@@ -190,7 +190,104 @@ tested without a site or an engine.
 `BookCover`, which shows a cover decoded at the size it is shown, or a placeholder — from a file for
 a book in the library, and from a URL, with the headers a site needs, for one being browsed.
 
-### `downloads`, `sync`
+### `downloads`
+
+Phase 3's queue, and only the queue: the half ADR-0007 keeps on our side of the transport line,
+which is the half that can be tested without a device.
+
+- §5.3's **state machine**, as a sealed event set and one `advance` function. Every legal move is
+  named and anything else is refused. It is total — an event that does not apply returns null rather
+  than throwing, because the transport reports progress and completion whenever it gets round to it,
+  possibly after the listener has cancelled. Two deliberate departures from the diagram: pausing
+  works from `waiting` and `queued`, not only `downloading`, and resuming returns to `queued` so the
+  scheduler decides afresh rather than a task with a stale URL walking back in.
+- §5.5's **backoff**: exponential from five seconds, jittered by up to half, never immediate,
+  `Retry-After` honoured as a floor up to an hour, five attempts before a retryable failure becomes
+  permanent.
+- §5.2's **scheduler policy**, as a pure function from the startable tasks, the limits and the state
+  of the device to a decision per task. The global cap, the per-source cap, the network policy and
+  the free-space floor, with every held task carrying the reason it is waiting.
+- The **driver**: one `pump` lets retries that are due rejoin the queue, asks the store what could
+  start, asks the policy what may start, and acts. Transport reports are applied through the state
+  machine, so a completion for a task just cancelled does nothing instead of crashing. Passes are
+  serialised — a call made while one is running asks for another rather than running alongside, or two
+  passes would each authorise a full set of downloads — and a task finishing asks for one, which is
+  the one piece of timing the driver keeps rather than leaving to the app, because it is the only
+  thing that knows a slot has opened. Resolution is just in time, reusing a stored address unless it
+  has expired or was the one the site refused; a source that keeps refusing the address it just gave
+  is failed after two tries, so §5.4's free re-resolution cannot become a hot loop.
+- The **reconciler** (§5.2): at launch, every row the table says is in flight is checked against what
+  the transport is still carrying. `resolving` and `processing` both happen inside a single pass and
+  so cannot survive a restart, and a `downloading` row the transport has never heard of is a job that
+  died with the process; each goes back in the queue. It is not housekeeping — a row stuck in flight
+  counts against the caps for as long as the app runs, so two of them stop a source for good.
+- The **transport interface** ADR-0007 draws the line at: start, pause, cancel, a stream of reports
+  carrying our task ids, and one question — what it is still carrying — which only the reconciler
+  asks. Nothing above it is platform-bound.
+- **Removing a download**, which applies in every state and is the only way a cancelled or given-up
+  row ever leaves the screen: whatever is going is stopped, whatever arrived is deleted, and the rows
+  go last. A row is never deleted while its file is on the device, because a file with no row is one
+  nothing shows and nothing can delete.
+- **Letting go of a file** (§5.6), which refuses to touch a file the listener imported: their
+  `local_path` is their own file, wherever they keep it, and the delete path ends in a real
+  `File.delete`. `downloaded_at` is what separates the two, the queue is the only thing that writes
+  it, and both the read and the write check it — which is why those functions return a path rather
+  than take one. The file goes before the row, so a delete the system refuses, as Windows does for a
+  file the player has open, leaves the row saying what is true.
+- **Resuming**, which asks the platform whether it will carry on from the partial file. §5.3 sends a
+  resumed task back to the queue because its address may have expired while it sat there; for an
+  audiobook that is hundreds of megabytes thrown away to re-read a URL, so the partial file is kept
+  when `background_downloader` will continue it, and a stale address then shows up as the 403 §5.4
+  already answers.
+- §5.2's **post-processor**: a pure check on the first sixty-four bytes — a size floor, a content
+  type that condemns a file, the signatures audiobooks come in, and a test for the web page the
+  design warns about — and the keeper that names a file after its book, moves it into place with an
+  atomic rename, and hands back a path relative to the downloads folder.
+
+A grid test sweeps every event against every state and compares the whole set of legal moves with
+§5.3, so a transition added because some later feature found it convenient fails the build. A
+download goes from queued to completed in a test, against a fake store and a fake transport.
+
+The queue also has its **store** — `DownloadStore` in `domain`, `DriftDownloadStore` in `data`, the
+same division `PlaybackStore` already has.
+
+The **transport** itself is in `platform_adapters`, over `background_downloader`: the thin side of
+ADR-0007's line, which retries nothing and applies no network policy of its own, because both belong
+to the queue. It is the one layer here that cannot be unit tested, so what stands behind it is that
+CI builds it on Android, Windows and iOS.
+
+**What is missing**: probing a kept file for its real duration and markers, and most of §5.6's
+screens.
+
+**This has now run for real, and works.** A fifteen-file LibriVox book downloads on Windows from a
+book's details screen: fetched, checked, named and moved into place, with the recorded sizes matching
+the bytes on disk.
+
+The first attempt did not, and the reason is worth keeping. It stopped after four files. A task the
+scheduler held wrote `waiting` to its row, and the query that looked for work to do read only
+`queued` and `needsResolve` — so the scheduler was the one thing that could release a held task and
+the one thing that could not see one, and the book downloaded exactly as many files as the first pass
+started and then stopped for ever. A green suite of a hundred tests did not catch it, because every
+test of the queue asked for fewer files than the caps allow. There are now two that do not.
+
+Playing a downloaded book with the network off is still unconfirmed.
+
+### History (§6.4)
+
+`listening_session` has been filled in since the coordinator learned to record one — every
+play-to-pause span, split whenever the chapter, the speed or the position jumps, so each row
+describes a stretch actually heard. Nothing ever read it back. The History screen does: newest first,
+under a heading per day with what that day came to, reached from the library's app bar.
+
+A session outlives the chapter it was in. `chapter_id` goes null when a chapter is purged, because
+§4.4's "keep while it carries user data" rule covers progress, bookmarks and downloads and not
+history, so an entry may have no chapter title and must still be shown.
+
+Forgetting comes in the two scopes worth offering: this entry, or everything for this book. Neither
+touches the book or the place in it — history records when something was heard, not the fact of
+having heard it, which stays in `playback_state` and the listened flags.
+
+### `sync`
 
 Empty scaffolding.
 
@@ -309,13 +406,25 @@ seconds over the network. The connection, not the Archive, is the ceiling for a 
 
 ## What has been run for real
 
-- **Windows**: everything but the LibriVox path and FLAC/Ogg books with real files. Installing an
-  extension from a folder has not been driven by the running app either — it is covered by tests, and
-  the app builds, but nobody has pressed the button.
-- **iOS**: the CI-built IPA launches on the iPhone. Nothing further; there is no Mac.
-- **Android**: nothing has been run for real, on an emulator or a device, outside the probe in CI.
-- **LibriVox**: browsing, searching, adding a book and streaming one have been driven only by tests
-  and by the probe — **never by the running app on any platform**.
+The extension system was first driven on a device on 24 September 2026, and the section below says
+what that established. It is worth recording what those few hours cost, because it is the argument
+for doing it sooner next time: three defects surfaced that a green test run and a clean build had
+both missed — a `TypeError` reaching the app with its stack thrown away, a failed open leaving the
+player unable to start any book including local ones, and this guide's own advice to cache something
+the host frees at the end of a call. All three are fixed. None was visible from inside the tests.
+
+- **Windows**: the library, the player, backups, adding local books, and building and launching the
+  app. Still untried here: the LibriVox path, and FLAC/Ogg books with real files. Whether an
+  extension has been installed from a folder on Windows is not confirmed; assume it has not.
+- **iOS**: a good deal, on an iPhone, through the CI-built canary IPA run under LiveContainer.
+  Installing an extension from the Files-visible `Extensions` folder, the Extensions screen,
+  removing one, installing it again, the extension console, browsing a source, and a book's details
+  and chapters. And **LibriVox: browse, resolve and play** — the first time the streaming path has
+  run anywhere outside a test.
+- **Android**: still nothing, on an emulator or a device, outside the probe in CI. It now carries the
+  most untested new code of any platform: the Storage Access Framework is the install door there,
+  and no real folder has been through it.
+- **LibriVox**: browsing, resolving and streaming work on iOS. Untried on Windows and Android.
 
 ### The probe
 
@@ -361,10 +470,51 @@ manifest's SHA-256 and is marked unverified, because in an author's folder a sta
 was edited. And `sources.extension_id` stays a plain id rather than becoming a foreign key, because a
 source has to outlive the extension it came from.
 
-What is **not** done: nobody has driven any of it in the running app. See
+Most of it has since been driven on an iPhone: installing from a folder, the Extensions screen,
+removing and installing again, and the console. What has not is Android — where the Storage Access
+Framework is the door — and the folder picker on desktop. See
 [what has been run for real](#what-has-been-run-for-real).
 
 ## What is next
+
+### Phase 3 — offline, in progress
+
+The queue is wired and has fetched real files on Windows, from a book's details screen. What is built
+is listed under [`downloads`](#downloads) and in schema version 3's `download_task` table; what is
+left, in order:
+
+0. **Playing a downloaded book with the network off** — the exit criterion, now believed reachable and
+   not yet confirmed on any device. A downloaded file was unplayable until recently: the queue records
+   a path relative to the downloads folder and `LocalMediaResolver` read every relative path as
+   relative to the media root, which is a different folder and, on iOS, a different branch entirely.
+   `downloaded_at` now says which root a path belongs to. Verified against the real rows and files of
+   a part-downloaded book, where all four resolved to nothing before and to the right file after.
+1. **The automatic policies** (§5.6): deleting finished chapters, keeping the next few chapters
+   downloaded while listening, and fetching new chapters of library books on an unmetered connection.
+   Nothing of this exists; every download is asked for by hand. The Downloads screen itself is built —
+   total usage, per-book sizes, a book opened to its files, pause, resume, stop, retry, and remove in
+   any state, reached from the library's app bar beside Settings — and so is the button on a book's details
+   screen. What is still missing from the screens themselves is a per-chapter download action, and
+   deleting per chapter rather than per file: a file can hold thirty chapters and a chapter can span
+   three files, so a per-chapter delete that quietly took a neighbouring chapter with it would be
+   worse than not offering one.
+2. **Android.** `background_downloader` hands work to `WorkManager` there, which needs a foreground
+   service declared in the manifest, with a service type on Android 14 and later. Nothing of this
+   fails at compile time, so CI is no evidence; it is the most likely reason a first Android attempt
+   will do nothing.
+3. **Probing a kept file** for its real duration, format and embedded markers, which §5.2 puts in
+   the post-processor and which is the one part of it not built. `sources_builtin` already has the
+   readers; nothing has been wired to call them after a download. Until it is, §4.5 refines a
+   duration the first time the engine plays the file, which is late but not wrong.
+4. **Repairing a task orphaned by a layout rewrite.** An estimate is usually consumed in place, but a
+   resolution that changes a chapter's shape drops the row and takes the task with it. The reconciler
+   settles what a process kill left behind; this is the other half and is not built.
+5. **A download-aware resolution**, so that a file being fetched asks its source as a download rather
+   than as a stream. `MediaResolver` has no `purpose`, so a download currently resolves as if it were
+   about to be played, which is right for LibriVox and will not be for every source.
+
+The exit criterion is the roadmap's: a full book downloaded and finished with no network. Everything it
+needs is now built; nothing has confirmed it.
 
 ### Step B — the repository door
 
@@ -389,8 +539,9 @@ list or recommend any other.
 
 ### Loose ends
 
-- Installing an extension has never been driven by the running app, on any platform: the Extensions
-  screen, the picker, Reload, Remove and the console have been exercised only by tests.
+- The folder **picker** path has never been driven by the running app: installing on iOS goes through
+  the app's own `Extensions` folder, not `UserFolders.choose()`, so the desktop path and Android's
+  Storage Access Framework tree are still exercised only by tests. Reload is untried too.
 - An extension is never verified once it is installed from a folder, so `untrusted` is the normal
   state. When repository installs arrive, `active` will start to mean something (ADR-0017).
 - Nothing rolls back to an earlier installed version, although the versioned directory keeps one.

@@ -36,6 +36,11 @@ dependencies:
   crypto: ^3.0.6
   media_kit_libs_windows_audio: ^1.0.9
   path_provider: ^2.1.6
+  # §5.2's transport, behind ADR-0007's interface: it delegates to WorkManager on Android, a
+  # background URLSession on iOS and an in-process isolate on desktop, which is the one thing no
+  # amount of Dart can do for itself. Android, Windows and iOS all supported, which is why it was
+  # chosen over writing three platform implementations by hand. MIT.
+  background_downloader: ^9.2.0
   audio_session: ^0.2.4
   audio_service: ^0.18.19
   desktop_drop: ^0.8.4
@@ -62,7 +67,11 @@ dependencies:
   # Windows, iOS, macOS and Linux. See third_party/flutter_qjs/README.kikuyomi.md.
   flutter_qjs:
     path: ../../third_party/flutter_qjs
-
+  # Whether the connection is one the listener pays for by the byte, which is what §5.2's network
+  # policy turns on. Already in every build as background_downloader's own dependency; declared here
+  # because this package imports it, and importing what you have not declared is a trap. Flutter
+  # team (Flutter Community Plus), BSD-3-Clause: Android, Windows, iOS, macOS and Linux.
+  connectivity_plus: ^7.3.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -3,8 +3,10 @@ import 'package:go_router/go_router.dart';
 
 import 'book_details_screen.dart';
 import 'browse_screen.dart';
+import 'downloads_screen.dart';
 import 'extension_console_screen.dart';
 import 'extensions_screen.dart';
+import 'history_screen.dart';
 import 'library_screen.dart';
 import 'player_screen.dart';
 import 'restore_screen.dart';
@@ -82,6 +84,8 @@ class SetupRoute extends GoRouteData with $SetupRoute {
       path: 'settings',
       routes: [TypedGoRoute<RestoreRoute>(path: 'restore')],
     ),
+    TypedGoRoute<DownloadsRoute>(path: 'downloads'),
+    TypedGoRoute<HistoryRoute>(path: 'history'),
     TypedGoRoute<BrowseRoute>(
       path: 'browse',
       routes: [
@@ -193,6 +197,30 @@ class ExtensionConsoleRoute extends GoRouteData with $ExtensionConsoleRoute {
   @override
   Widget build(BuildContext context, GoRouterState state) =>
       ExtensionConsoleScreen(extensionId: extensionId);
+}
+
+/// Downloads: what is on this device and what is being fetched (§5.6).
+///
+/// Beside Settings in the home's app bar and under the home in the tree, for the same reason Settings
+/// is: §2.6's More tab is where both belong and it does not exist yet.
+class DownloadsRoute extends GoRouteData with $DownloadsRoute {
+  const DownloadsRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const DownloadsScreen();
+}
+
+/// History: what has been listened to and when (§6.4).
+///
+/// Beside Downloads in the home's app bar and under the home in the tree, for the reason both are
+/// there: §2.6's More tab is where they belong and it does not exist yet. The four tabs are unchanged.
+class HistoryRoute extends GoRouteData with $HistoryRoute {
+  const HistoryRoute();
+
+  @override
+  Widget build(BuildContext context, GoRouterState state) =>
+      const HistoryScreen();
 }
 
 /// Settings, from the home's app bar. There is no More tab yet, so it sits above the home.

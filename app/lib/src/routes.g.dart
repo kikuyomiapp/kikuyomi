@@ -62,6 +62,16 @@ RouteBase get $homeRoute => GoRouteData.$route(
       ],
     ),
     GoRouteData.$route(
+      path: 'downloads',
+      hasOverriddenOnExit: false,
+      factory: $DownloadsRoute._fromState,
+    ),
+    GoRouteData.$route(
+      path: 'history',
+      hasOverriddenOnExit: false,
+      factory: $HistoryRoute._fromState,
+    ),
+    GoRouteData.$route(
       path: 'browse',
       hasOverriddenOnExit: false,
       factory: $BrowseRoute._fromState,
@@ -185,6 +195,47 @@ mixin $RestoreRoute on GoRouteData {
 
   @override
   String get location => GoRouteData.$location('/settings/restore');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $DownloadsRoute on GoRouteData {
+  static DownloadsRoute _fromState(GoRouterState state) =>
+      const DownloadsRoute();
+
+  @override
+  String get location => GoRouteData.$location('/downloads');
+
+  @override
+  void go(BuildContext context) => context.go(location);
+
+  @override
+  Future<T?> push<T>(BuildContext context) => context.push<T>(location);
+
+  @override
+  void pushReplacement(BuildContext context) =>
+      context.pushReplacement(location);
+
+  @override
+  void replace(BuildContext context) => context.replace(location);
+}
+
+mixin $HistoryRoute on GoRouteData {
+  static HistoryRoute _fromState(GoRouterState state) => const HistoryRoute();
+
+  @override
+  String get location => GoRouteData.$location('/history');
 
   @override
   void go(BuildContext context) => context.go(location);

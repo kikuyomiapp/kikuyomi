@@ -107,9 +107,10 @@ will otherwise get wrong from habit.
     `:empty` — the app's parser **throws** on these rather than answering wrongly.
 
   **Be polite to the server.** If one request returns a book's details, its chapter list and its audio
-  addresses — which is common — cache that document in memory keyed by book, for a few minutes, with a
-  small bound (four books) and least-recently-used eviction, so opening a book costs one request rather
-  than one per chapter. Do not let such a cache grow with the catalogue: the runtime lives as long as the
+  addresses — which is common — cache what you extracted from it, keyed by book, for a few minutes, with
+  a small bound (four books) and least-recently-used eviction, so opening a book costs one request
+  rather than one per chapter. Cache the extracted values or the response text, never the parsed
+  document, for the reason given above. Do not let such a cache grow with the catalogue: the runtime lives as long as the
   app, inside a 64 MB ceiling. Fetch no more pages than a screen needs; a page size of 24–50 is right.
 
   ## What to hand back

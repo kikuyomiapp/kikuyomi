@@ -10,9 +10,24 @@
 # build passes --no-codesign. Real signing arrives with the release pipeline, not the skeleton.
 name: CI
 
+# Named explicitly, because the default name depends on the event and that made every run on a
+# branch with an open pull request read as the pull request's title. A push is named after its
+# commit, which is what an Actions list is for: telling one run from the next at a glance.
+run-name: >-
+  ${{ github.event_name == 'push' && github.event.head_commit.message
+   || github.event_name == 'pull_request' && format('PR #{0} from {1}', github.event.pull_request.number, github.event.pull_request.head.repo.full_name)
+   || format('CI on {0}', github.ref_name) }}
+
+# Every branch, which is what the goal above says and what a feature branch needs: work that is
+# never going to be pushed straight to main still has to be known to build on all three targets.
+#
+# `pull_request` stays for one case only — a pull request from a fork, where `push` does not fire in
+# this repository and nothing else would ever build the contribution. For a branch in this
+# repository both events fire, so every job below skips the pull-request one rather than building
+# the same commit twice on a macOS runner.
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 
@@ -35,6 +50,9 @@ env:
 jobs:
   analyze:
     name: Analyze and test
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +103,9 @@ jobs:
 
   android:
     name: Android APK
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,6 +137,9 @@ jobs:
 
   windows:
     name: Windows build
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -142,6 +166,9 @@ jobs:
 
   ios:
     name: iOS canary (unsigned IPA)
+    if: >-
+      github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4

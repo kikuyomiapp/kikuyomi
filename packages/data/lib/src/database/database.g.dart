@@ -7488,6 +7488,920 @@ class ExtensionPreferencesCompanion
   }
 }
 
+class $DownloadTasksTable extends DownloadTasks
+    with TableInfo<$DownloadTasksTable, DownloadTaskRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DownloadTasksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _mediaFileIdMeta = const VerificationMeta(
+    'mediaFileId',
+  );
+  @override
+  late final GeneratedColumn<int> mediaFileId = GeneratedColumn<int>(
+    'media_file_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES media_files (id) ON DELETE CASCADE',
+    ),
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<DownloadState, String> state =
+      GeneratedColumn<String>(
+        'state',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<DownloadState>($DownloadTasksTable.$converterstate);
+  @override
+  late final GeneratedColumnWithTypeConverter<DownloadHold?, String> hold =
+      GeneratedColumn<String>(
+        'hold',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<DownloadHold?>($DownloadTasksTable.$converterholdn);
+  static const VerificationMeta _priorityMeta = const VerificationMeta(
+    'priority',
+  );
+  @override
+  late final GeneratedColumn<int> priority = GeneratedColumn<int>(
+    'priority',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _bytesDoneMeta = const VerificationMeta(
+    'bytesDone',
+  );
+  @override
+  late final GeneratedColumn<int> bytesDone = GeneratedColumn<int>(
+    'bytes_done',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _bytesTotalMeta = const VerificationMeta(
+    'bytesTotal',
+  );
+  @override
+  late final GeneratedColumn<int> bytesTotal = GeneratedColumn<int>(
+    'bytes_total',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<DownloadRequest?, String>
+  requestSnapshot =
+      GeneratedColumn<String>(
+        'request_snapshot',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<DownloadRequest?>(
+        $DownloadTasksTable.$converterrequestSnapshotn,
+      );
+  static const VerificationMeta _expiresAtMeta = const VerificationMeta(
+    'expiresAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> expiresAt = GeneratedColumn<DateTime>(
+    'expires_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _attemptsMeta = const VerificationMeta(
+    'attempts',
+  );
+  @override
+  late final GeneratedColumn<int> attempts = GeneratedColumn<int>(
+    'attempts',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _retryAtMeta = const VerificationMeta(
+    'retryAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> retryAt = GeneratedColumn<DateTime>(
+    'retry_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastErrorMeta = const VerificationMeta(
+    'lastError',
+  );
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+    'last_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _transportTaskIdMeta = const VerificationMeta(
+    'transportTaskId',
+  );
+  @override
+  late final GeneratedColumn<String> transportTaskId = GeneratedColumn<String>(
+    'transport_task_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    mediaFileId,
+    state,
+    hold,
+    priority,
+    bytesDone,
+    bytesTotal,
+    requestSnapshot,
+    expiresAt,
+    attempts,
+    retryAt,
+    lastError,
+    transportTaskId,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'download_tasks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DownloadTaskRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('media_file_id')) {
+      context.handle(
+        _mediaFileIdMeta,
+        mediaFileId.isAcceptableOrUnknown(
+          data['media_file_id']!,
+          _mediaFileIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_mediaFileIdMeta);
+    }
+    if (data.containsKey('priority')) {
+      context.handle(
+        _priorityMeta,
+        priority.isAcceptableOrUnknown(data['priority']!, _priorityMeta),
+      );
+    }
+    if (data.containsKey('bytes_done')) {
+      context.handle(
+        _bytesDoneMeta,
+        bytesDone.isAcceptableOrUnknown(data['bytes_done']!, _bytesDoneMeta),
+      );
+    }
+    if (data.containsKey('bytes_total')) {
+      context.handle(
+        _bytesTotalMeta,
+        bytesTotal.isAcceptableOrUnknown(data['bytes_total']!, _bytesTotalMeta),
+      );
+    }
+    if (data.containsKey('expires_at')) {
+      context.handle(
+        _expiresAtMeta,
+        expiresAt.isAcceptableOrUnknown(data['expires_at']!, _expiresAtMeta),
+      );
+    }
+    if (data.containsKey('attempts')) {
+      context.handle(
+        _attemptsMeta,
+        attempts.isAcceptableOrUnknown(data['attempts']!, _attemptsMeta),
+      );
+    }
+    if (data.containsKey('retry_at')) {
+      context.handle(
+        _retryAtMeta,
+        retryAt.isAcceptableOrUnknown(data['retry_at']!, _retryAtMeta),
+      );
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(
+        _lastErrorMeta,
+        lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta),
+      );
+    }
+    if (data.containsKey('transport_task_id')) {
+      context.handle(
+        _transportTaskIdMeta,
+        transportTaskId.isAcceptableOrUnknown(
+          data['transport_task_id']!,
+          _transportTaskIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+    {mediaFileId},
+  ];
+  @override
+  DownloadTaskRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DownloadTaskRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      mediaFileId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}media_file_id'],
+      )!,
+      state: $DownloadTasksTable.$converterstate.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}state'],
+        )!,
+      ),
+      hold: $DownloadTasksTable.$converterholdn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}hold'],
+        ),
+      ),
+      priority: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}priority'],
+      )!,
+      bytesDone: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bytes_done'],
+      )!,
+      bytesTotal: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}bytes_total'],
+      ),
+      requestSnapshot: $DownloadTasksTable.$converterrequestSnapshotn.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}request_snapshot'],
+        ),
+      ),
+      expiresAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}expires_at'],
+      ),
+      attempts: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempts'],
+      )!,
+      retryAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}retry_at'],
+      ),
+      lastError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_error'],
+      ),
+      transportTaskId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}transport_task_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DownloadTasksTable createAlias(String alias) {
+    return $DownloadTasksTable(attachedDatabase, alias);
+  }
+
+  static JsonTypeConverter2<DownloadState, String, String> $converterstate =
+      const EnumNameConverter<DownloadState>(DownloadState.values);
+  static JsonTypeConverter2<DownloadHold, String, String> $converterhold =
+      const EnumNameConverter<DownloadHold>(DownloadHold.values);
+  static JsonTypeConverter2<DownloadHold?, String?, String?> $converterholdn =
+      JsonTypeConverter2.asNullable($converterhold);
+  static TypeConverter<DownloadRequest, String> $converterrequestSnapshot =
+      const DownloadRequestConverter();
+  static TypeConverter<DownloadRequest?, String?> $converterrequestSnapshotn =
+      NullAwareTypeConverter.wrap($converterrequestSnapshot);
+}
+
+class DownloadTaskRow extends DataClass implements Insertable<DownloadTaskRow> {
+  final int id;
+
+  /// The file to fetch. Cascading: a file that is no longer part of any book has nothing to download.
+  final int mediaFileId;
+  final DownloadState state;
+
+  /// Why a `waiting` task is waiting, and null in every other state. Kept apart from [state] so a
+  /// screen can say "waiting for Wi-Fi" rather than "waiting" (§5.2).
+  final DownloadHold? hold;
+
+  /// What the scheduler picks first. Higher runs sooner; the chapter about to be played is raised
+  /// above the rest of its book.
+  final int priority;
+  final int bytesDone;
+
+  /// What the site said the whole file is, once it has said. Null until then, because a progress bar
+  /// that guesses is worse than one that waits.
+  final int? bytesTotal;
+
+  /// The resolved URL and headers, written down as the file is about to start (§5.4). Null until the
+  /// first resolution, and stale after [expiresAt].
+  final DownloadRequest? requestSnapshot;
+
+  /// When [requestSnapshot] stops being usable, as the source said. Null when the source gave no
+  /// expiry, which does not mean the URL is eternal — a 403 or a 410 sends it back to be resolved
+  /// either way.
+  final DateTime? expiresAt;
+
+  /// How many times this file has failed in a way that might not fail again (§5.5). Five ends it.
+  /// A URL that merely expired does not count here: that is the source working as designed.
+  final int attempts;
+
+  /// When a `failedRetryable` task may join the queue again.
+  ///
+  /// Not in §4.3's column list, but the backoff has to outlive the process or a phone that was
+  /// killed mid-queue would retry everything the moment it came back, which is the behaviour the
+  /// jitter exists to prevent.
+  final DateTime? retryAt;
+
+  /// What went wrong last, for the listener and for a bug report. Never the explanation on its own.
+  final String? lastError;
+
+  /// What the transport calls this task, so the reconciler can match its live tasks to these rows at
+  /// launch and repair the drift (§5.2).
+  final String? transportTaskId;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const DownloadTaskRow({
+    required this.id,
+    required this.mediaFileId,
+    required this.state,
+    this.hold,
+    required this.priority,
+    required this.bytesDone,
+    this.bytesTotal,
+    this.requestSnapshot,
+    this.expiresAt,
+    required this.attempts,
+    this.retryAt,
+    this.lastError,
+    this.transportTaskId,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['media_file_id'] = Variable<int>(mediaFileId);
+    {
+      map['state'] = Variable<String>(
+        $DownloadTasksTable.$converterstate.toSql(state),
+      );
+    }
+    if (!nullToAbsent || hold != null) {
+      map['hold'] = Variable<String>(
+        $DownloadTasksTable.$converterholdn.toSql(hold),
+      );
+    }
+    map['priority'] = Variable<int>(priority);
+    map['bytes_done'] = Variable<int>(bytesDone);
+    if (!nullToAbsent || bytesTotal != null) {
+      map['bytes_total'] = Variable<int>(bytesTotal);
+    }
+    if (!nullToAbsent || requestSnapshot != null) {
+      map['request_snapshot'] = Variable<String>(
+        $DownloadTasksTable.$converterrequestSnapshotn.toSql(requestSnapshot),
+      );
+    }
+    if (!nullToAbsent || expiresAt != null) {
+      map['expires_at'] = Variable<DateTime>(expiresAt);
+    }
+    map['attempts'] = Variable<int>(attempts);
+    if (!nullToAbsent || retryAt != null) {
+      map['retry_at'] = Variable<DateTime>(retryAt);
+    }
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    if (!nullToAbsent || transportTaskId != null) {
+      map['transport_task_id'] = Variable<String>(transportTaskId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  DownloadTasksCompanion toCompanion(bool nullToAbsent) {
+    return DownloadTasksCompanion(
+      id: Value(id),
+      mediaFileId: Value(mediaFileId),
+      state: Value(state),
+      hold: hold == null && nullToAbsent ? const Value.absent() : Value(hold),
+      priority: Value(priority),
+      bytesDone: Value(bytesDone),
+      bytesTotal: bytesTotal == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bytesTotal),
+      requestSnapshot: requestSnapshot == null && nullToAbsent
+          ? const Value.absent()
+          : Value(requestSnapshot),
+      expiresAt: expiresAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expiresAt),
+      attempts: Value(attempts),
+      retryAt: retryAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(retryAt),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      transportTaskId: transportTaskId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transportTaskId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory DownloadTaskRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DownloadTaskRow(
+      id: serializer.fromJson<int>(json['id']),
+      mediaFileId: serializer.fromJson<int>(json['mediaFileId']),
+      state: $DownloadTasksTable.$converterstate.fromJson(
+        serializer.fromJson<String>(json['state']),
+      ),
+      hold: $DownloadTasksTable.$converterholdn.fromJson(
+        serializer.fromJson<String?>(json['hold']),
+      ),
+      priority: serializer.fromJson<int>(json['priority']),
+      bytesDone: serializer.fromJson<int>(json['bytesDone']),
+      bytesTotal: serializer.fromJson<int?>(json['bytesTotal']),
+      requestSnapshot: serializer.fromJson<DownloadRequest?>(
+        json['requestSnapshot'],
+      ),
+      expiresAt: serializer.fromJson<DateTime?>(json['expiresAt']),
+      attempts: serializer.fromJson<int>(json['attempts']),
+      retryAt: serializer.fromJson<DateTime?>(json['retryAt']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      transportTaskId: serializer.fromJson<String?>(json['transportTaskId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'mediaFileId': serializer.toJson<int>(mediaFileId),
+      'state': serializer.toJson<String>(
+        $DownloadTasksTable.$converterstate.toJson(state),
+      ),
+      'hold': serializer.toJson<String?>(
+        $DownloadTasksTable.$converterholdn.toJson(hold),
+      ),
+      'priority': serializer.toJson<int>(priority),
+      'bytesDone': serializer.toJson<int>(bytesDone),
+      'bytesTotal': serializer.toJson<int?>(bytesTotal),
+      'requestSnapshot': serializer.toJson<DownloadRequest?>(requestSnapshot),
+      'expiresAt': serializer.toJson<DateTime?>(expiresAt),
+      'attempts': serializer.toJson<int>(attempts),
+      'retryAt': serializer.toJson<DateTime?>(retryAt),
+      'lastError': serializer.toJson<String?>(lastError),
+      'transportTaskId': serializer.toJson<String?>(transportTaskId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  DownloadTaskRow copyWith({
+    int? id,
+    int? mediaFileId,
+    DownloadState? state,
+    Value<DownloadHold?> hold = const Value.absent(),
+    int? priority,
+    int? bytesDone,
+    Value<int?> bytesTotal = const Value.absent(),
+    Value<DownloadRequest?> requestSnapshot = const Value.absent(),
+    Value<DateTime?> expiresAt = const Value.absent(),
+    int? attempts,
+    Value<DateTime?> retryAt = const Value.absent(),
+    Value<String?> lastError = const Value.absent(),
+    Value<String?> transportTaskId = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => DownloadTaskRow(
+    id: id ?? this.id,
+    mediaFileId: mediaFileId ?? this.mediaFileId,
+    state: state ?? this.state,
+    hold: hold.present ? hold.value : this.hold,
+    priority: priority ?? this.priority,
+    bytesDone: bytesDone ?? this.bytesDone,
+    bytesTotal: bytesTotal.present ? bytesTotal.value : this.bytesTotal,
+    requestSnapshot: requestSnapshot.present
+        ? requestSnapshot.value
+        : this.requestSnapshot,
+    expiresAt: expiresAt.present ? expiresAt.value : this.expiresAt,
+    attempts: attempts ?? this.attempts,
+    retryAt: retryAt.present ? retryAt.value : this.retryAt,
+    lastError: lastError.present ? lastError.value : this.lastError,
+    transportTaskId: transportTaskId.present
+        ? transportTaskId.value
+        : this.transportTaskId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  DownloadTaskRow copyWithCompanion(DownloadTasksCompanion data) {
+    return DownloadTaskRow(
+      id: data.id.present ? data.id.value : this.id,
+      mediaFileId: data.mediaFileId.present
+          ? data.mediaFileId.value
+          : this.mediaFileId,
+      state: data.state.present ? data.state.value : this.state,
+      hold: data.hold.present ? data.hold.value : this.hold,
+      priority: data.priority.present ? data.priority.value : this.priority,
+      bytesDone: data.bytesDone.present ? data.bytesDone.value : this.bytesDone,
+      bytesTotal: data.bytesTotal.present
+          ? data.bytesTotal.value
+          : this.bytesTotal,
+      requestSnapshot: data.requestSnapshot.present
+          ? data.requestSnapshot.value
+          : this.requestSnapshot,
+      expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
+      attempts: data.attempts.present ? data.attempts.value : this.attempts,
+      retryAt: data.retryAt.present ? data.retryAt.value : this.retryAt,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      transportTaskId: data.transportTaskId.present
+          ? data.transportTaskId.value
+          : this.transportTaskId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DownloadTaskRow(')
+          ..write('id: $id, ')
+          ..write('mediaFileId: $mediaFileId, ')
+          ..write('state: $state, ')
+          ..write('hold: $hold, ')
+          ..write('priority: $priority, ')
+          ..write('bytesDone: $bytesDone, ')
+          ..write('bytesTotal: $bytesTotal, ')
+          ..write('requestSnapshot: $requestSnapshot, ')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('attempts: $attempts, ')
+          ..write('retryAt: $retryAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('transportTaskId: $transportTaskId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    mediaFileId,
+    state,
+    hold,
+    priority,
+    bytesDone,
+    bytesTotal,
+    requestSnapshot,
+    expiresAt,
+    attempts,
+    retryAt,
+    lastError,
+    transportTaskId,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DownloadTaskRow &&
+          other.id == this.id &&
+          other.mediaFileId == this.mediaFileId &&
+          other.state == this.state &&
+          other.hold == this.hold &&
+          other.priority == this.priority &&
+          other.bytesDone == this.bytesDone &&
+          other.bytesTotal == this.bytesTotal &&
+          other.requestSnapshot == this.requestSnapshot &&
+          other.expiresAt == this.expiresAt &&
+          other.attempts == this.attempts &&
+          other.retryAt == this.retryAt &&
+          other.lastError == this.lastError &&
+          other.transportTaskId == this.transportTaskId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class DownloadTasksCompanion extends UpdateCompanion<DownloadTaskRow> {
+  final Value<int> id;
+  final Value<int> mediaFileId;
+  final Value<DownloadState> state;
+  final Value<DownloadHold?> hold;
+  final Value<int> priority;
+  final Value<int> bytesDone;
+  final Value<int?> bytesTotal;
+  final Value<DownloadRequest?> requestSnapshot;
+  final Value<DateTime?> expiresAt;
+  final Value<int> attempts;
+  final Value<DateTime?> retryAt;
+  final Value<String?> lastError;
+  final Value<String?> transportTaskId;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  const DownloadTasksCompanion({
+    this.id = const Value.absent(),
+    this.mediaFileId = const Value.absent(),
+    this.state = const Value.absent(),
+    this.hold = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.bytesDone = const Value.absent(),
+    this.bytesTotal = const Value.absent(),
+    this.requestSnapshot = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+    this.attempts = const Value.absent(),
+    this.retryAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.transportTaskId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  DownloadTasksCompanion.insert({
+    this.id = const Value.absent(),
+    required int mediaFileId,
+    required DownloadState state,
+    this.hold = const Value.absent(),
+    this.priority = const Value.absent(),
+    this.bytesDone = const Value.absent(),
+    this.bytesTotal = const Value.absent(),
+    this.requestSnapshot = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+    this.attempts = const Value.absent(),
+    this.retryAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.transportTaskId = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+  }) : mediaFileId = Value(mediaFileId),
+       state = Value(state),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<DownloadTaskRow> custom({
+    Expression<int>? id,
+    Expression<int>? mediaFileId,
+    Expression<String>? state,
+    Expression<String>? hold,
+    Expression<int>? priority,
+    Expression<int>? bytesDone,
+    Expression<int>? bytesTotal,
+    Expression<String>? requestSnapshot,
+    Expression<DateTime>? expiresAt,
+    Expression<int>? attempts,
+    Expression<DateTime>? retryAt,
+    Expression<String>? lastError,
+    Expression<String>? transportTaskId,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (mediaFileId != null) 'media_file_id': mediaFileId,
+      if (state != null) 'state': state,
+      if (hold != null) 'hold': hold,
+      if (priority != null) 'priority': priority,
+      if (bytesDone != null) 'bytes_done': bytesDone,
+      if (bytesTotal != null) 'bytes_total': bytesTotal,
+      if (requestSnapshot != null) 'request_snapshot': requestSnapshot,
+      if (expiresAt != null) 'expires_at': expiresAt,
+      if (attempts != null) 'attempts': attempts,
+      if (retryAt != null) 'retry_at': retryAt,
+      if (lastError != null) 'last_error': lastError,
+      if (transportTaskId != null) 'transport_task_id': transportTaskId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  DownloadTasksCompanion copyWith({
+    Value<int>? id,
+    Value<int>? mediaFileId,
+    Value<DownloadState>? state,
+    Value<DownloadHold?>? hold,
+    Value<int>? priority,
+    Value<int>? bytesDone,
+    Value<int?>? bytesTotal,
+    Value<DownloadRequest?>? requestSnapshot,
+    Value<DateTime?>? expiresAt,
+    Value<int>? attempts,
+    Value<DateTime?>? retryAt,
+    Value<String?>? lastError,
+    Value<String?>? transportTaskId,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+  }) {
+    return DownloadTasksCompanion(
+      id: id ?? this.id,
+      mediaFileId: mediaFileId ?? this.mediaFileId,
+      state: state ?? this.state,
+      hold: hold ?? this.hold,
+      priority: priority ?? this.priority,
+      bytesDone: bytesDone ?? this.bytesDone,
+      bytesTotal: bytesTotal ?? this.bytesTotal,
+      requestSnapshot: requestSnapshot ?? this.requestSnapshot,
+      expiresAt: expiresAt ?? this.expiresAt,
+      attempts: attempts ?? this.attempts,
+      retryAt: retryAt ?? this.retryAt,
+      lastError: lastError ?? this.lastError,
+      transportTaskId: transportTaskId ?? this.transportTaskId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (mediaFileId.present) {
+      map['media_file_id'] = Variable<int>(mediaFileId.value);
+    }
+    if (state.present) {
+      map['state'] = Variable<String>(
+        $DownloadTasksTable.$converterstate.toSql(state.value),
+      );
+    }
+    if (hold.present) {
+      map['hold'] = Variable<String>(
+        $DownloadTasksTable.$converterholdn.toSql(hold.value),
+      );
+    }
+    if (priority.present) {
+      map['priority'] = Variable<int>(priority.value);
+    }
+    if (bytesDone.present) {
+      map['bytes_done'] = Variable<int>(bytesDone.value);
+    }
+    if (bytesTotal.present) {
+      map['bytes_total'] = Variable<int>(bytesTotal.value);
+    }
+    if (requestSnapshot.present) {
+      map['request_snapshot'] = Variable<String>(
+        $DownloadTasksTable.$converterrequestSnapshotn.toSql(
+          requestSnapshot.value,
+        ),
+      );
+    }
+    if (expiresAt.present) {
+      map['expires_at'] = Variable<DateTime>(expiresAt.value);
+    }
+    if (attempts.present) {
+      map['attempts'] = Variable<int>(attempts.value);
+    }
+    if (retryAt.present) {
+      map['retry_at'] = Variable<DateTime>(retryAt.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (transportTaskId.present) {
+      map['transport_task_id'] = Variable<String>(transportTaskId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DownloadTasksCompanion(')
+          ..write('id: $id, ')
+          ..write('mediaFileId: $mediaFileId, ')
+          ..write('state: $state, ')
+          ..write('hold: $hold, ')
+          ..write('priority: $priority, ')
+          ..write('bytesDone: $bytesDone, ')
+          ..write('bytesTotal: $bytesTotal, ')
+          ..write('requestSnapshot: $requestSnapshot, ')
+          ..write('expiresAt: $expiresAt, ')
+          ..write('attempts: $attempts, ')
+          ..write('retryAt: $retryAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('transportTaskId: $transportTaskId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$KikuyomiDatabase extends GeneratedDatabase {
   _$KikuyomiDatabase(QueryExecutor e) : super(e);
   $KikuyomiDatabaseManager get managers => $KikuyomiDatabaseManager(this);
@@ -7509,6 +8423,7 @@ abstract class _$KikuyomiDatabase extends GeneratedDatabase {
   late final $ExtensionsTable extensions = $ExtensionsTable(this);
   late final $ExtensionPreferencesTable extensionPreferences =
       $ExtensionPreferencesTable(this);
+  late final $DownloadTasksTable downloadTasks = $DownloadTasksTable(this);
   late final Index booksLibrary = Index(
     'books_library',
     'CREATE INDEX books_library ON books (in_library, date_added)',
@@ -7524,6 +8439,10 @@ abstract class _$KikuyomiDatabase extends GeneratedDatabase {
   late final Index listeningSessionsStarted = Index(
     'listening_sessions_started',
     'CREATE INDEX listening_sessions_started ON listening_sessions (started_at)',
+  );
+  late final Index downloadTasksPending = Index(
+    'download_tasks_pending',
+    'CREATE INDEX download_tasks_pending ON download_tasks (state, priority)',
   );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -7544,10 +8463,12 @@ abstract class _$KikuyomiDatabase extends GeneratedDatabase {
     bookCategories,
     extensions,
     extensionPreferences,
+    downloadTasks,
     booksLibrary,
     chaptersOrder,
     playbackStatesRecent,
     listeningSessionsStarted,
+    downloadTasksPending,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -7620,6 +8541,13 @@ abstract class _$KikuyomiDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('book_categories', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'media_files',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('download_tasks', kind: UpdateKind.delete)],
     ),
   ]);
   @override
@@ -11007,6 +11935,25 @@ final class $$MediaFilesTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$DownloadTasksTable, List<DownloadTaskRow>>
+  _downloadTasksRefsTable(_$KikuyomiDatabase db) =>
+      MultiTypedResultKey.fromTable(
+        db.downloadTasks,
+        aliasName: 'media_files__id__download_tasks__media_file_id',
+      );
+
+  $$DownloadTasksTableProcessedTableManager get downloadTasksRefs {
+    final manager = $$DownloadTasksTableTableManager(
+      $_db,
+      $_db.downloadTasks,
+    ).filter((f) => f.mediaFileId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_downloadTasksRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$MediaFilesTableFilterComposer
@@ -11107,6 +12054,31 @@ class $$MediaFilesTableFilterComposer
           }) => $$ChapterSegmentsTableFilterComposer(
             $db: $db,
             $table: $db.chapterSegments,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> downloadTasksRefs(
+    Expression<bool> Function($$DownloadTasksTableFilterComposer f) f,
+  ) {
+    final $$DownloadTasksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.downloadTasks,
+      getReferencedColumn: (t) => t.mediaFileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DownloadTasksTableFilterComposer(
+            $db: $db,
+            $table: $db.downloadTasks,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -11287,6 +12259,31 @@ class $$MediaFilesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> downloadTasksRefs<T extends Object>(
+    Expression<T> Function($$DownloadTasksTableAnnotationComposer a) f,
+  ) {
+    final $$DownloadTasksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.downloadTasks,
+      getReferencedColumn: (t) => t.mediaFileId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DownloadTasksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.downloadTasks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MediaFilesTableTableManager
@@ -11302,7 +12299,11 @@ class $$MediaFilesTableTableManager
           $$MediaFilesTableUpdateCompanionBuilder,
           (MediaFileRow, $$MediaFilesTableReferences),
           MediaFileRow,
-          PrefetchHooks Function({bool bookId, bool chapterSegmentsRefs})
+          PrefetchHooks Function({
+            bool bookId,
+            bool chapterSegmentsRefs,
+            bool downloadTasksRefs,
+          })
         > {
   $$MediaFilesTableTableManager(_$KikuyomiDatabase db, $MediaFilesTable table)
     : super(
@@ -11374,11 +12375,16 @@ class $$MediaFilesTableTableManager
               )
               .toList(),
           prefetchHooksCallback:
-              ({bookId = false, chapterSegmentsRefs = false}) {
+              ({
+                bookId = false,
+                chapterSegmentsRefs = false,
+                downloadTasksRefs = false,
+              }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (chapterSegmentsRefs) db.chapterSegments,
+                    if (downloadTasksRefs) db.downloadTasks,
                   ],
                   addJoins:
                       <
@@ -11433,6 +12439,27 @@ class $$MediaFilesTableTableManager
                               ),
                           typedResults: items,
                         ),
+                      if (downloadTasksRefs)
+                        await $_getPrefetchedData<
+                          MediaFileRow,
+                          $MediaFilesTable,
+                          DownloadTaskRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MediaFilesTableReferences
+                              ._downloadTasksRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MediaFilesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).downloadTasksRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.mediaFileId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -11453,7 +12480,11 @@ typedef $$MediaFilesTableProcessedTableManager =
       $$MediaFilesTableUpdateCompanionBuilder,
       (MediaFileRow, $$MediaFilesTableReferences),
       MediaFileRow,
-      PrefetchHooks Function({bool bookId, bool chapterSegmentsRefs})
+      PrefetchHooks Function({
+        bool bookId,
+        bool chapterSegmentsRefs,
+        bool downloadTasksRefs,
+      })
     >;
 typedef $$ChapterSegmentsTableCreateCompanionBuilder =
     ChapterSegmentsCompanion Function({
@@ -14370,6 +15401,527 @@ typedef $$ExtensionPreferencesTableProcessedTableManager =
       ExtensionPreferenceRow,
       PrefetchHooks Function()
     >;
+typedef $$DownloadTasksTableCreateCompanionBuilder =
+    DownloadTasksCompanion Function({
+      Value<int> id,
+      required int mediaFileId,
+      required DownloadState state,
+      Value<DownloadHold?> hold,
+      Value<int> priority,
+      Value<int> bytesDone,
+      Value<int?> bytesTotal,
+      Value<DownloadRequest?> requestSnapshot,
+      Value<DateTime?> expiresAt,
+      Value<int> attempts,
+      Value<DateTime?> retryAt,
+      Value<String?> lastError,
+      Value<String?> transportTaskId,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+    });
+typedef $$DownloadTasksTableUpdateCompanionBuilder =
+    DownloadTasksCompanion Function({
+      Value<int> id,
+      Value<int> mediaFileId,
+      Value<DownloadState> state,
+      Value<DownloadHold?> hold,
+      Value<int> priority,
+      Value<int> bytesDone,
+      Value<int?> bytesTotal,
+      Value<DownloadRequest?> requestSnapshot,
+      Value<DateTime?> expiresAt,
+      Value<int> attempts,
+      Value<DateTime?> retryAt,
+      Value<String?> lastError,
+      Value<String?> transportTaskId,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+    });
+
+final class $$DownloadTasksTableReferences
+    extends
+        BaseReferences<
+          _$KikuyomiDatabase,
+          $DownloadTasksTable,
+          DownloadTaskRow
+        > {
+  $$DownloadTasksTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $MediaFilesTable _mediaFileIdTable(_$KikuyomiDatabase db) => db
+      .mediaFiles
+      .createAlias('download_tasks__media_file_id__media_files__id');
+
+  $$MediaFilesTableProcessedTableManager get mediaFileId {
+    final $_column = $_itemColumn<int>('media_file_id')!;
+
+    final manager = $$MediaFilesTableTableManager(
+      $_db,
+      $_db.mediaFiles,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_mediaFileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DownloadTasksTableFilterComposer
+    extends Composer<_$KikuyomiDatabase, $DownloadTasksTable> {
+  $$DownloadTasksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<DownloadState, DownloadState, String>
+  get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<DownloadHold?, DownloadHold, String>
+  get hold => $composableBuilder(
+    column: $table.hold,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get bytesDone => $composableBuilder(
+    column: $table.bytesDone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get bytesTotal => $composableBuilder(
+    column: $table.bytesTotal,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<DownloadRequest?, DownloadRequest, String>
+  get requestSnapshot => $composableBuilder(
+    column: $table.requestSnapshot,
+    builder: (column) => ColumnWithTypeConverterFilters(column),
+  );
+
+  ColumnFilters<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get retryAt => $composableBuilder(
+    column: $table.retryAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get transportTaskId => $composableBuilder(
+    column: $table.transportTaskId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MediaFilesTableFilterComposer get mediaFileId {
+    final $$MediaFilesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mediaFileId,
+      referencedTable: $db.mediaFiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MediaFilesTableFilterComposer(
+            $db: $db,
+            $table: $db.mediaFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DownloadTasksTableOrderingComposer
+    extends Composer<_$KikuyomiDatabase, $DownloadTasksTable> {
+  $$DownloadTasksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get state => $composableBuilder(
+    column: $table.state,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get hold => $composableBuilder(
+    column: $table.hold,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get priority => $composableBuilder(
+    column: $table.priority,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get bytesDone => $composableBuilder(
+    column: $table.bytesDone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get bytesTotal => $composableBuilder(
+    column: $table.bytesTotal,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get requestSnapshot => $composableBuilder(
+    column: $table.requestSnapshot,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get expiresAt => $composableBuilder(
+    column: $table.expiresAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get retryAt => $composableBuilder(
+    column: $table.retryAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get transportTaskId => $composableBuilder(
+    column: $table.transportTaskId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MediaFilesTableOrderingComposer get mediaFileId {
+    final $$MediaFilesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mediaFileId,
+      referencedTable: $db.mediaFiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MediaFilesTableOrderingComposer(
+            $db: $db,
+            $table: $db.mediaFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DownloadTasksTableAnnotationComposer
+    extends Composer<_$KikuyomiDatabase, $DownloadTasksTable> {
+  $$DownloadTasksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<DownloadState, String> get state =>
+      $composableBuilder(column: $table.state, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<DownloadHold?, String> get hold =>
+      $composableBuilder(column: $table.hold, builder: (column) => column);
+
+  GeneratedColumn<int> get priority =>
+      $composableBuilder(column: $table.priority, builder: (column) => column);
+
+  GeneratedColumn<int> get bytesDone =>
+      $composableBuilder(column: $table.bytesDone, builder: (column) => column);
+
+  GeneratedColumn<int> get bytesTotal => $composableBuilder(
+    column: $table.bytesTotal,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<DownloadRequest?, String>
+  get requestSnapshot => $composableBuilder(
+    column: $table.requestSnapshot,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get expiresAt =>
+      $composableBuilder(column: $table.expiresAt, builder: (column) => column);
+
+  GeneratedColumn<int> get attempts =>
+      $composableBuilder(column: $table.attempts, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get retryAt =>
+      $composableBuilder(column: $table.retryAt, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<String> get transportTaskId => $composableBuilder(
+    column: $table.transportTaskId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$MediaFilesTableAnnotationComposer get mediaFileId {
+    final $$MediaFilesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.mediaFileId,
+      referencedTable: $db.mediaFiles,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MediaFilesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.mediaFiles,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DownloadTasksTableTableManager
+    extends
+        RootTableManager<
+          _$KikuyomiDatabase,
+          $DownloadTasksTable,
+          DownloadTaskRow,
+          $$DownloadTasksTableFilterComposer,
+          $$DownloadTasksTableOrderingComposer,
+          $$DownloadTasksTableAnnotationComposer,
+          $$DownloadTasksTableCreateCompanionBuilder,
+          $$DownloadTasksTableUpdateCompanionBuilder,
+          (DownloadTaskRow, $$DownloadTasksTableReferences),
+          DownloadTaskRow,
+          PrefetchHooks Function({bool mediaFileId})
+        > {
+  $$DownloadTasksTableTableManager(
+    _$KikuyomiDatabase db,
+    $DownloadTasksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DownloadTasksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DownloadTasksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DownloadTasksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> mediaFileId = const Value.absent(),
+                Value<DownloadState> state = const Value.absent(),
+                Value<DownloadHold?> hold = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<int> bytesDone = const Value.absent(),
+                Value<int?> bytesTotal = const Value.absent(),
+                Value<DownloadRequest?> requestSnapshot = const Value.absent(),
+                Value<DateTime?> expiresAt = const Value.absent(),
+                Value<int> attempts = const Value.absent(),
+                Value<DateTime?> retryAt = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<String?> transportTaskId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => DownloadTasksCompanion(
+                id: id,
+                mediaFileId: mediaFileId,
+                state: state,
+                hold: hold,
+                priority: priority,
+                bytesDone: bytesDone,
+                bytesTotal: bytesTotal,
+                requestSnapshot: requestSnapshot,
+                expiresAt: expiresAt,
+                attempts: attempts,
+                retryAt: retryAt,
+                lastError: lastError,
+                transportTaskId: transportTaskId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int mediaFileId,
+                required DownloadState state,
+                Value<DownloadHold?> hold = const Value.absent(),
+                Value<int> priority = const Value.absent(),
+                Value<int> bytesDone = const Value.absent(),
+                Value<int?> bytesTotal = const Value.absent(),
+                Value<DownloadRequest?> requestSnapshot = const Value.absent(),
+                Value<DateTime?> expiresAt = const Value.absent(),
+                Value<int> attempts = const Value.absent(),
+                Value<DateTime?> retryAt = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<String?> transportTaskId = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+              }) => DownloadTasksCompanion.insert(
+                id: id,
+                mediaFileId: mediaFileId,
+                state: state,
+                hold: hold,
+                priority: priority,
+                bytesDone: bytesDone,
+                bytesTotal: bytesTotal,
+                requestSnapshot: requestSnapshot,
+                expiresAt: expiresAt,
+                attempts: attempts,
+                retryAt: retryAt,
+                lastError: lastError,
+                transportTaskId: transportTaskId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$DownloadTasksTable, DownloadTaskRow>(table),
+                  $$DownloadTasksTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({mediaFileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (mediaFileId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.mediaFileId,
+                        referencedTable: $$DownloadTasksTableReferences
+                            ._mediaFileIdTable(db),
+                        referencedColumn: $$DownloadTasksTableReferences
+                            ._mediaFileIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DownloadTasksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$KikuyomiDatabase,
+      $DownloadTasksTable,
+      DownloadTaskRow,
+      $$DownloadTasksTableFilterComposer,
+      $$DownloadTasksTableOrderingComposer,
+      $$DownloadTasksTableAnnotationComposer,
+      $$DownloadTasksTableCreateCompanionBuilder,
+      $$DownloadTasksTableUpdateCompanionBuilder,
+      (DownloadTaskRow, $$DownloadTasksTableReferences),
+      DownloadTaskRow,
+      PrefetchHooks Function({bool mediaFileId})
+    >;
 
 class $KikuyomiDatabaseManager {
   final _$KikuyomiDatabase _db;
@@ -14402,4 +15954,6 @@ class $KikuyomiDatabaseManager {
       $$ExtensionsTableTableManager(_db, _db.extensions);
   $$ExtensionPreferencesTableTableManager get extensionPreferences =>
       $$ExtensionPreferencesTableTableManager(_db, _db.extensionPreferences);
+  $$DownloadTasksTableTableManager get downloadTasks =>
+      $$DownloadTasksTableTableManager(_db, _db.downloadTasks);
 }

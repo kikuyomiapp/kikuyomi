@@ -226,7 +226,10 @@ class _KikuyomiAppState extends ConsumerState<KikuyomiApp> {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF3949AB);
+    // Warm peach, the accent Mihon and Tachiyomi are recognised by, and the family this app is
+    // meant to read as part of. Material 3 derives the rest of the scheme from it, so the pills,
+    // the selected tab and the floating button all come out of this one figure.
+    const seed = Color(0xFFF0A868);
     return MaterialApp.router(
       title: 'Kikuyomi',
       routerConfig: _router,

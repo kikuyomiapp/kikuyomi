@@ -87,7 +87,7 @@ void main() {
         ),
       );
 
-  test('creates exactly the tables of version 2', () {
+  test('creates exactly the tables of version 3', () {
     expect(
       {for (final table in db.allTables) table.actualTableName},
       {
@@ -105,6 +105,7 @@ void main() {
         'book_categories',
         'extensions',
         'extension_preferences',
+        'download_tasks',
       },
     );
   });

@@ -45,6 +45,8 @@ dependencies:
     path: ../packages/domain
   kikuyomi_data:
     path: ../packages/data
+  kikuyomi_downloads:
+    path: ../packages/downloads
   kikuyomi_playback:
     path: ../packages/playback
   kikuyomi_sources_builtin:

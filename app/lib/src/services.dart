@@ -12,6 +12,7 @@ import 'package:kikuyomi_data/kikuyomi_data.dart'
     as data
     show markBookFinished, markBookNotFinished;
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
+import 'package:kikuyomi_downloads/kikuyomi_downloads.dart';
 import 'package:kikuyomi_extension_manager/kikuyomi_extension_manager.dart';
 import 'package:kikuyomi_networking/kikuyomi_networking.dart' as net;
 import 'package:kikuyomi_platform_adapters/kikuyomi_platform_adapters.dart';
@@ -42,6 +43,8 @@ final class AppServices {
     required this.playable,
     required this.extensions,
     required this.streamCache,
+    required this.downloads,
+    required this.downloadFiles,
   }) : covers = CoverFiles(locations.covers),
        _importFolder = ImportFolder(mediaRoot: locations.mediaRoot);
 
@@ -110,21 +113,60 @@ final class AppServices {
     // book opened tomorrow are reads from this device. Pruned once at start, off the critical path.
     final streamCache = StreamAudioCache(locations.streamCache);
     unawaited(streamCache.prune());
-    final coordinator = PlaybackCoordinator(
-      engine: JustAudioEngine(cache: streamCache, userAgent: userAgent),
-      // One resolver for the whole library: files on the device go to the local one, and a book
-      // that streams is resolved through its source, just in time (§6.3).
-      resolver: SourceMediaResolver(
+    // One resolver for the whole library: files on the device go to the local one, and a book that
+    // streams is resolved through its source, just in time (§6.3). Downloads share it, so a chapter
+    // the listener is playing and the same chapter being fetched do not ask the source twice.
+    final resolver = SourceMediaResolver(
+      database,
+      openSource: sources.open,
+      onDevice: LocalMediaResolver(
         database,
-        openSource: sources.open,
-        onDevice: LocalMediaResolver(database, mediaRoot: locations.mediaRoot),
-        clock: clock,
-        onTiming: _timings,
+        mediaRoot: locations.mediaRoot,
+        downloadRoot: locations.downloads,
       ),
+      clock: clock,
+      onTiming: _timings,
+    );
+    final coordinator = PlaybackCoordinator(
+      engine: JustAudioEngine(
+        cache: streamCache,
+        userAgent: userAgent,
+        // Into the extension console, because a streamed book's bytes are an extension's URL being
+        // fetched, and whoever is looking at why it will not play is looking there. The player only
+        // ever reports its own platform's word for a failed fetch.
+        onStreamFailure: (error, uri) => console.report(
+          playbackConsoleId,
+          uri == null ? error : 'fetching $uri: $error',
+        ),
+      ),
+      resolver: resolver,
       store: DriftPlaybackStore(database, deviceId: deviceId, clock: clock),
       clock: clock,
       onTiming: _timings,
     );
+    // §5.2's queue. The table is the source of truth; the transport only moves bytes (ADR-0007).
+    // Resolution goes through the same resolver playback uses, with `refresh` on, because a download
+    // is about to use the address for real and a cached one may have expired (§5.4).
+    final downloadFiles = DownloadedFiles(locations.downloads);
+    final deviceConditions = DeviceConditionsSource();
+    final downloads = DownloadDriver(
+      store: DriftDownloadStore(database, clock: clock),
+      transport: BackgroundTransport(),
+      resolve: (fileId) => resolver.resolve(fileId, refresh: true),
+      conditions: deviceConditions.read,
+      postProcess: downloadFiles.keep,
+      clock: clock,
+    )..start();
+    // Pumped when something changed rather than on a clock alone: a listener who walks into Wi-Fi
+    // expects the book they queued on the train to start, not to wait out a tick. The tick is the
+    // backstop that picks up retries whose backoff has elapsed (§5.5), and an idle pass is two reads.
+    deviceConditions.changes.listen((_) => unawaited(downloads.pump()));
+    Timer.periodic(_downloadTick, (_) => unawaited(downloads.pump()));
+    // Anything left running when the app was last killed is still in the table, and the transport may
+    // even still be carrying it. Reconciling first is what settles which of those it is, because a row
+    // stuck in flight holds one of §5.2's slots against the source for as long as the app runs.
+    unawaited(downloads.reconcile().then((_) => downloads.pump()));
+
     // §5.1: automatic backups to the folder the user chose, which outlives an Android uninstall and
     // an iOS re-sign.
     final backupStore = DriftBackupStore(database);
@@ -170,6 +212,8 @@ final class AppServices {
       playable: EngineFormats.forThisDevice(),
       extensions: extensions,
       streamCache: streamCache,
+      downloads: downloads,
+      downloadFiles: downloadFiles,
     );
   }
 
@@ -204,6 +248,12 @@ final class AppServices {
   /// What extensions have written to the in-app console, and what the app has written about them
   /// (§3.5, §3.11).
   ExtensionConsole get extensionConsole => extensions.console;
+
+  /// §5.2's download queue: what the listener asked to keep, and the thing that fetches it.
+  final DownloadDriver downloads;
+
+  /// Where downloaded files live, and what they come to (§5.6).
+  final DownloadedFiles downloadFiles;
 
   /// The bytes of streamed books kept on this device, so that moving about in one is instant. Not
   /// a download (§5.2): it is bounded, it is emptied when it grows past its bound, and
@@ -490,6 +540,118 @@ final class AppServices {
     );
   }
 
+  /// Queues every file of book [bookId] that is not already on the device, and sets the queue going.
+  ///
+  /// §5.2 counts in physical files, so a thirty-chapter M4B is one download however it was asked for,
+  /// and asking twice adds nothing. What comes back says what happened, because "nothing to do" and
+  /// "four files queued" should not look the same to the listener.
+  Future<EnqueuedDownloads> downloadBook(int bookId) async {
+    final asked = await enqueueBookDownload(database, bookId, clock: clock);
+    unawaited(downloads.pump());
+    return asked;
+  }
+
+  /// Queues the files chapter [chapterId] is made of.
+  ///
+  /// [priority] raises it above the rest of its book, which is what the chapter about to be played
+  /// wants.
+  Future<EnqueuedDownloads> downloadChapter(
+    int chapterId, {
+    int priority = 0,
+  }) async {
+    final asked = await enqueueChapterDownload(
+      database,
+      chapterId,
+      clock: clock,
+      priority: priority,
+    );
+    unawaited(downloads.pump());
+    return asked;
+  }
+
+  /// Stops download [taskId], keeping what has arrived.
+  Future<void> pauseDownload(int taskId) => downloads.pause(taskId);
+
+  /// Carries on with download [taskId], from where it paused if the platform can.
+  Future<void> resumeDownload(int taskId) => downloads.resume(taskId);
+
+  /// Gives up on download [taskId] and throws away what has arrived.
+  Future<void> cancelDownload(int taskId) => downloads.cancel(taskId);
+
+  /// Puts download [taskId] back in the queue with its attempts forgiven (§5.5).
+  Future<void> retryDownload(int taskId) async {
+    await retryDownloadTask(database, taskId, clock: clock);
+    unawaited(downloads.pump());
+  }
+
+  /// Deletes the downloaded file [mediaFileId] and forgets it (§5.6).
+  ///
+  /// The file goes first and the row second, so a delete the system refuses — a file the player still
+  /// has open, which is how Windows behaves — leaves the row saying the file is here, which it is.
+  /// The other order would show the listener a book they could no longer play and no longer delete.
+  ///
+  /// Nothing happens for a file the download system is not holding. A local book's path is the
+  /// listener's own file and is not this app's to delete; `readDownloadedPath` is what refuses it, and
+  /// it refuses by answering null rather than by throwing, because asking about a file that is not a
+  /// download is ordinary rather than wrong.
+  Future<bool> deleteDownloadedFile(int mediaFileId) async {
+    final path = await readDownloadedPath(database, mediaFileId);
+    if (path == null) return false;
+    await downloadFiles.discard(path);
+    await forgetDownloadedFile(database, mediaFileId);
+    return true;
+  }
+
+  /// Takes file [mediaFileId] off the Downloads screen entirely (§5.6).
+  ///
+  /// The one action that applies in every state, which is why it is three: whatever is still going is
+  /// stopped, whatever arrived is deleted, and the row goes last. A file that refuses to be deleted
+  /// keeps its row, because a row is the only thing that shows the file at all and the only thing that
+  /// can offer to try again.
+  Future<void> removeDownload(int mediaFileId) async {
+    final task = await readDownloadTask(database, mediaFileId);
+    // Cancelling something already finished would write `cancelled` over a completed row for the sake
+    // of a job the transport let go of long ago.
+    if (task != null && !task.state.isFinished) {
+      await downloads.cancel(task.id);
+    }
+    await deleteDownloadedFile(mediaFileId);
+    if (task != null) await forgetDownloadTask(database, task.id);
+  }
+
+  /// Takes every download of book [bookId] off the screen, and says what became of its files (§5.6).
+  ///
+  /// [kept] is what could not be deleted — a file the player still has open, which is how Windows
+  /// behaves. Those keep their rows so they can be tried again; everything else goes.
+  Future<({int deleted, int kept})> removeBookDownloads(int bookId) async {
+    // Stopped before anything is deleted, so the transport is not still writing into a file that is
+    // about to go.
+    for (final task in await readBookDownloadTasks(database, bookId)) {
+      if (!task.state.isFinished) await downloads.cancel(task.id);
+    }
+    final onDevice = (await readDownloadedPathsOfBook(database, bookId)).length;
+    final deleted = await deleteBookDownloads(bookId);
+    await forgetUnheldDownloads(database, bookId);
+    return (deleted: deleted, kept: onDevice - deleted);
+  }
+
+  /// Deletes every downloaded file of book [bookId], and says how many went (§5.6).
+  ///
+  /// Carries on past one it could not delete, so a single file the player has open does not leave the
+  /// rest of a finished book taking up room. What it returns is what really went.
+  Future<int> deleteBookDownloads(int bookId) async {
+    final paths = await readDownloadedPathsOfBook(database, bookId);
+    var deleted = 0;
+    for (final fileId in paths.keys) {
+      try {
+        if (await deleteDownloadedFile(fileId)) deleted++;
+      } on FileSystemException {
+        continue;
+      }
+    }
+    return deleted;
+  }
+
   /// Opens a book in the player, resuming where it was left with smart rewind applied.
   Future<void> openBook(int bookId) async {
     final watch = _timings == null ? null : (Stopwatch()..start());
@@ -707,6 +869,13 @@ String _join(String directory, String name) =>
 
 /// How far the system controls' skip buttons move: the same as the player screen's.
 const _skipInterval = Duration(seconds: 30);
+
+/// How often the download queue is looked at when nothing has happened to prompt it.
+///
+/// The prompts — a book queued, the network changing — are what actually move the queue along. This
+/// is only so that a retry whose backoff elapsed is picked up without waiting for one, and an idle
+/// pass costs two reads.
+const _downloadTick = Duration(seconds: 30);
 
 /// The app's version without its build number, for a User-Agent and for comparing against an
 /// extension's `minAppVersion`.

@@ -21,6 +21,14 @@ import 'package:flutter/foundation.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_source_runtime/kikuyomi_source_runtime.dart';
 
+/// What the app files a playback failure under, since the player is not an extension.
+///
+/// A streamed book's bytes come from an extension's URL, so a fetch that fails belongs in the same
+/// console as everything else about that source — but the engine knows only the file, not which
+/// extension resolved it. Rather than thread the source's id down through the player, these lines go
+/// under a name of the app's own, which the console shows beside the extensions'.
+const playbackConsoleId = 'kikuyomi.playback';
+
 /// One line in the console.
 @immutable
 final class ExtensionLogLine {

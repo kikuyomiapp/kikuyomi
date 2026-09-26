@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kikuyomi_backup/kikuyomi_backup.dart';
@@ -5,6 +7,9 @@ import 'package:kikuyomi_data/kikuyomi_data.dart';
 import 'package:kikuyomi_domain/kikuyomi_domain.dart';
 import 'package:kikuyomi_playback/kikuyomi_playback.dart';
 
+import 'downloads/book_downloads.dart';
+import 'history/listening_history_days.dart';
+import 'downloads/downloads_overview.dart';
 import 'services.dart';
 import 'setup_gate.dart';
 import 'sources/extension_console.dart';
@@ -175,6 +180,56 @@ final bookOverviewProvider = StreamProvider.autoDispose
       (ref, bookId) =>
           watchBookOverview(ref.watch(servicesProvider).database, bookId),
     );
+
+/// How far a book's download has got, watched, so a progress bar follows the queue without anything
+/// being refreshed (§2.5). Disposed once no screen shows the book.
+final bookDownloadsProvider = StreamProvider.autoDispose
+    .family<BookDownloads, int>(
+      (ref, bookId) => watchBookDownloads(
+        ref.watch(servicesProvider).database,
+        bookId,
+      ).map(summariseDownloads),
+    );
+
+/// Everything the download system is holding or fetching, grouped by book, watched (§5.6).
+///
+/// Not disposed with the screen: the same stream answers whether there is anything to show at all,
+/// and it is one query over a table that is nearly always small.
+final downloadsProvider = StreamProvider<List<DownloadedBook>>(
+  (ref) =>
+      watchDownloads(ref.watch(servicesProvider).database).map(groupDownloads),
+);
+
+/// How fast each download is moving, by task id, sampled once a second (§5.2).
+///
+/// A stream on a timer rather than a watched query, because a speed is not written down: it is a
+/// property of the last few seconds and putting it in the database would churn a table every open
+/// screen is watching. Disposed with the last screen that shows one, so nothing ticks when nobody is
+/// looking.
+final downloadRatesProvider = StreamProvider.autoDispose<Map<int, double>>((
+  ref,
+) {
+  final services = ref.watch(servicesProvider);
+  return Stream<Map<int, double>>.multi((controller) {
+    void emit() =>
+        controller.add(services.downloads.rates.snapshot(services.clock.now()));
+    emit();
+    final timer = Timer.periodic(const Duration(seconds: 1), (_) => emit());
+    controller.onCancel = timer.cancel;
+  });
+});
+
+/// What has been listened to, grouped by day, newest first (§6.4).
+///
+/// `listening_session` has been recorded since the coordinator learned to, and nothing ever read it
+/// back until the History screen. The grouping is done here rather than in the view so the view takes
+/// finished data, and `now` is read once per emission so "Today" is right for the day the listener is
+/// actually having.
+final listeningHistoryProvider = StreamProvider<List<HistoryDay>>((ref) {
+  final services = ref.watch(servicesProvider);
+  return watchListeningHistory(services.database)
+      .map((entries) => groupHistoryByDay(entries, now: services.clock.now()));
+});
 
 /// A book's bookmarks in playing order, straight from the database, so one added, changed or
 /// deleted shows at once. Disposed once no screen shows them.

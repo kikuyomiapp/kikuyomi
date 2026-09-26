@@ -5,8 +5,10 @@
 ///
 /// Version 2 adds what installing an extension needs: `extension`, so that what is installed
 /// survives a restart, and `extension_preference`, so that what an extension stores does too.
-/// `repository` follows with the repository door, `download_task` in Phase 3, and
-/// `smart_collection` and the `book_fts` full-text index in Phase 4.
+///
+/// Version 3 adds `download_task`, the queue that makes a book playable with no network (§5.2).
+/// `repository` follows with the repository door, and `smart_collection` and the `book_fts`
+/// full-text index in Phase 4.
 ///
 /// Row classes are named `…Row`. §4.1 keeps database records, domain entities and extension DTOs as
 /// three separate types, and the suffix keeps a record from being mistaken for an entity.
@@ -166,8 +168,18 @@ class MediaFiles extends Table {
   TextColumn get embeddedMarkers =>
       text().map(const MarkerListConverter()).nullable()();
 
-  /// Non-null once the file has been downloaded.
+  /// Where the file is, once it is on this device at all.
+  ///
+  /// Absolute for a file that stays where the user keeps it, and otherwise relative — to the app's
+  /// downloads folder when [downloadedAt] is set, and to the media root when it is not. The two are
+  /// different folders, so the pair of columns has to be read together; `LocalMediaResolver` is the
+  /// one place that does it.
   TextColumn get localPath => text().nullable()();
+
+  /// When the download queue put this file here, and nothing else ever sets it (§5.2).
+  ///
+  /// So it is also what says that [localPath] is relative to the downloads folder rather than to the
+  /// media root. An imported file is on the device without ever having been downloaded.
   DateTimeColumn get downloadedAt => dateTime().nullable()();
 
   @override
@@ -343,4 +355,77 @@ class ExtensionPreferences extends Table {
 
   @override
   Set<Column<Object>> get primaryKey => {extensionId, key};
+}
+
+/// One file the listener wants on the device (§5.2's queue, and §4.3's `download_task`).
+///
+/// The table is the source of truth for downloading, not the transport: `background_downloader`
+/// delegates to WorkManager, a background `URLSession` or an in-process isolate depending on the
+/// platform, and none of those survives inspection, reordering or a process kill the way a row does
+/// (ADR-0007). The transport is handed work and reports back; what is *wanted* is here.
+///
+/// **One task per physical file, never per chapter.** A thirty-chapter M4B is one row, so it is
+/// fetched once however many chapters point into it, and a chapter spanning three files is three
+/// rows. That is the same model the playback engine uses for its queue, and [mediaFileId] is unique
+/// to enforce it rather than leaving it to whoever writes the next enqueue path.
+@DataClassName('DownloadTaskRow')
+@TableIndex(name: 'download_tasks_pending', columns: {#state, #priority})
+class DownloadTasks extends Table {
+  IntColumn get id => integer().autoIncrement()();
+
+  /// The file to fetch. Cascading: a file that is no longer part of any book has nothing to download.
+  IntColumn get mediaFileId =>
+      integer().references(MediaFiles, #id, onDelete: KeyAction.cascade)();
+
+  TextColumn get state => textEnum<DownloadState>()();
+
+  /// Why a `waiting` task is waiting, and null in every other state. Kept apart from [state] so a
+  /// screen can say "waiting for Wi-Fi" rather than "waiting" (§5.2).
+  TextColumn get hold => textEnum<DownloadHold>().nullable()();
+
+  /// What the scheduler picks first. Higher runs sooner; the chapter about to be played is raised
+  /// above the rest of its book.
+  IntColumn get priority => integer().withDefault(const Constant(0))();
+
+  IntColumn get bytesDone => integer().withDefault(const Constant(0))();
+
+  /// What the site said the whole file is, once it has said. Null until then, because a progress bar
+  /// that guesses is worse than one that waits.
+  IntColumn get bytesTotal => integer().nullable()();
+
+  /// The resolved URL and headers, written down as the file is about to start (§5.4). Null until the
+  /// first resolution, and stale after [expiresAt].
+  TextColumn get requestSnapshot =>
+      text().map(const DownloadRequestConverter()).nullable()();
+
+  /// When [requestSnapshot] stops being usable, as the source said. Null when the source gave no
+  /// expiry, which does not mean the URL is eternal — a 403 or a 410 sends it back to be resolved
+  /// either way.
+  DateTimeColumn get expiresAt => dateTime().nullable()();
+
+  /// How many times this file has failed in a way that might not fail again (§5.5). Five ends it.
+  /// A URL that merely expired does not count here: that is the source working as designed.
+  IntColumn get attempts => integer().withDefault(const Constant(0))();
+
+  /// When a `failedRetryable` task may join the queue again.
+  ///
+  /// Not in §4.3's column list, but the backoff has to outlive the process or a phone that was
+  /// killed mid-queue would retry everything the moment it came back, which is the behaviour the
+  /// jitter exists to prevent.
+  DateTimeColumn get retryAt => dateTime().nullable()();
+
+  /// What went wrong last, for the listener and for a bug report. Never the explanation on its own.
+  TextColumn get lastError => text().nullable()();
+
+  /// What the transport calls this task, so the reconciler can match its live tasks to these rows at
+  /// launch and repair the drift (§5.2).
+  TextColumn get transportTaskId => text().nullable()();
+
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  List<Set<Column<Object>>> get uniqueKeys => [
+    {mediaFileId},
+  ];
 }
