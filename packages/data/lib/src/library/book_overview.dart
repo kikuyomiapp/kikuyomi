@@ -22,6 +22,11 @@ final class BookOverview {
     required this.progress,
     required this.finished,
     required this.coverFileName,
+    this.description,
+    this.genres = const [],
+    this.status,
+    this.webUrl,
+    this.sourceName,
   });
 
   final int bookId;
@@ -60,6 +65,25 @@ final class BookOverview {
   /// and the player make. A book can be finished without being started, when it is marked finished
   /// by hand, and stays finished while its listener moves back through it.
   final bool finished;
+
+  /// What the source says the book is about, or null where it said nothing.
+  final String? description;
+
+  /// What the source files it under. Empty for a book with none, which a local import usually is.
+  final List<String> genres;
+
+  /// Whether the source calls it finished, ongoing, or something else again. A free-text field,
+  /// because §3.4 lets a source say what it likes here and the app has no vocabulary to force on it.
+  final String? status;
+
+  /// The book's page at its source, for opening it in a browser, or null for a local book.
+  final String? webUrl;
+
+  /// What the source is called, for the line that says where the book came from.
+  ///
+  /// Null when the source row has gone, which happens to a book whose extension was removed:
+  /// §3.9 keeps the books and lets the source go, so this has to be missing rather than assumed.
+  final String? sourceName;
 }
 
 final class ChapterOverview {
@@ -157,6 +181,7 @@ Stream<BookOverview?> watchBookOverview(KikuyomiDatabase db, int bookId) =>
       db.chapterSegments,
       db.mediaFiles,
       db.playbackStates,
+      db.sources,
     ], () => _loadBookOverview(db, bookId));
 
 Future<BookOverview?> _loadBookOverview(KikuyomiDatabase db, int bookId) async {
@@ -241,9 +266,20 @@ Future<BookOverview?> _loadBookOverview(KikuyomiDatabase db, int bookId) async {
     ];
   }
 
+  // Left to be missing rather than assumed: §3.9 lets an extension be removed while its books stay,
+  // and then there is no source row to name.
+  final source = await (db.select(
+    db.sources,
+  )..where((s) => s.id.equals(book.sourceId))).getSingleOrNull();
+
   return BookOverview(
     bookId: book.id,
     title: book.title,
+    description: book.description,
+    genres: book.genres,
+    status: book.status,
+    webUrl: book.webUrl,
+    sourceName: source?.name,
     authors: credited(ContributorRole.author),
     narrators: credited(ContributorRole.narrator),
     totalDurationMs: book.totalDurationMs ?? timeline?.totalDurationMs,

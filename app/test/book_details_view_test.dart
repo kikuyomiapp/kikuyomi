@@ -79,7 +79,6 @@ Widget details(BookOverview overview, [List<String>? pressed]) => MaterialApp(
     body: BookDetailsView(
       book: overview,
       covers: covers,
-      onPlay: (from) => pressed?.add('play from ${from.name}'),
       onRemove: () => pressed?.add('remove'),
       listenedCommands: ListenedCommands(
         markChapters: (chapterIds, listened) async {
@@ -130,8 +129,8 @@ void main() {
     await tester.pumpWidget(details(book()));
 
     expect(find.text('A Book'), findsOneWidget);
-    expect(find.text('By An Author, Second Author'), findsOneWidget);
-    expect(find.text('Read by A Narrator'), findsOneWidget);
+    expect(find.text('An Author, Second Author'), findsOneWidget);
+    expect(find.text('A Narrator'), findsOneWidget);
     expect(find.text('35:00'), findsOneWidget);
     for (final (title, length) in [
       ('Opening', '10:00'),
@@ -148,57 +147,62 @@ void main() {
     }
   });
 
-  testWidgets('shows the cover above the title', (tester) async {
+  testWidgets('shows the cover beside what identifies the book', (
+    tester,
+  ) async {
+    // Beside rather than above, so the title, the credits and the length are all on the first
+    // screen of a phone instead of below a cover the width of the window.
     await tester.pumpWidget(details(book(cover: '1.jpg')));
 
     final cover = tester.widget<BookCover>(find.byType(BookCover));
     expect(cover.file!.path, covers.fileOf('1.jpg')!.path);
     expect(cover.semanticLabel, 'Cover of A Book');
-    expect(tester.getSize(find.byType(BookCover)), const Size(240, 240));
     expect(
-      tester.getBottomLeft(find.byType(BookCover)).dy,
-      lessThan(tester.getTopLeft(find.text('A Book')).dy),
+      tester.getTopRight(find.byType(BookCover)).dx,
+      lessThanOrEqualTo(tester.getTopLeft(find.text('A Book')).dx),
+    );
+    expect(
+      tester.getTopLeft(find.text('A Book')).dy,
+      lessThan(tester.getBottomLeft(find.byType(BookCover)).dy),
+      reason: 'the title sits alongside the cover, not under it',
     );
   });
 
-  testWidgets('narrows the cover to fit a narrow window', (tester) async {
+  testWidgets('keeps the cover one size, whatever the window', (tester) async {
+    // A fixed cover is what leaves the metadata a readable column beside it. Sizing it to the
+    // window made that column collapse on a narrow one.
     tester.view.physicalSize = const Size(240, 800);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(details(book()));
 
-    expect(tester.getSize(find.byType(BookCover)), const Size(208, 208));
+    expect(tester.getSize(find.byType(BookCover)).width, 120);
   });
 
-  testWidgets('offers Play for a book never started', (tester) async {
-    final pressed = <String>[];
-    await tester.pumpWidget(details(book(), pressed));
-    await tester.tap(find.text('Play'));
-    expect(pressed, ['play from savedPosition']);
-  });
-
-  testWidgets('offers Resume, with the time left, for a started book', (
-    tester,
-  ) async {
-    final pressed = <String>[];
-    await tester.pumpWidget(details(book(progress: elevenMinutesIn), pressed));
+  testWidgets('shows the time left on a started book', (tester) async {
+    await tester.pumpWidget(details(book(progress: elevenMinutesIn)));
 
     expect(find.text('24:00 left'), findsOneWidget);
-    await tester.tap(find.text('Resume'));
-    expect(pressed, ['play from savedPosition']);
   });
 
-  testWidgets('offers to play a finished book again from the start', (
-    tester,
-  ) async {
-    final pressed = <String>[];
-    await tester.pumpWidget(
-      details(book(progress: elevenMinutesIn, finished: true), pressed),
-    );
+  group('what the play button says', () {
+    test('a book never started is started', () {
+      expect(playButtonLabel(book()), 'Start');
+      expect(playButtonFrom(book()), PlayFrom.savedPosition);
+    });
 
-    expect(find.text('Finished'), findsOneWidget);
-    await tester.tap(find.text('Play again'));
-    expect(pressed, ['play from start']);
+    test('a book left part-way is resumed', () {
+      final started = book(progress: elevenMinutesIn);
+      expect(playButtonLabel(started), 'Resume');
+      expect(playButtonFrom(started), PlayFrom.savedPosition);
+    });
+
+    test('a finished book is played again from the top', () {
+      // Resuming it would drop the listener at the end, the one place they do not want.
+      final done = book(progress: elevenMinutesIn, finished: true);
+      expect(playButtonLabel(done), 'Play again');
+      expect(playButtonFrom(done), PlayFrom.start);
+    });
   });
 
   testWidgets('marks the chapters listened and the one being listened to', (
@@ -260,12 +264,10 @@ void main() {
   testWidgets('says a book marked finished is finished, started or not', (
     tester,
   ) async {
-    final pressed = <String>[];
-    await tester.pumpWidget(details(book(finished: true), pressed));
+    await tester.pumpWidget(details(book(finished: true)));
 
     expect(find.text('Finished'), findsOneWidget);
-    await tester.tap(find.text('Play again'));
-    expect(pressed, ['play from start']);
+    expect(find.text('Mark finished'), findsNothing);
   });
 
   group("a chapter's menu", () {
@@ -339,7 +341,7 @@ void main() {
         details(book(progress: elevenMinutesIn), pressed),
       );
 
-      await tester.tap(find.text('Mark as finished'));
+      await tester.tap(find.text('Mark finished'));
       await tester.pumpAndSettle();
       expect(pressed, ['mark finished']);
       expect(find.text('Marked as finished'), findsOneWidget);
@@ -357,24 +359,22 @@ void main() {
         details(book(progress: elevenMinutesIn, finished: true), pressed),
       );
 
-      expect(find.text('Mark as finished'), findsNothing);
-      await tester.tap(find.text('Mark as not finished'));
+      expect(find.text('Mark finished'), findsNothing);
+      await tester.tap(find.text('Finished'));
       await tester.pumpAndSettle();
       expect(pressed, ['mark not finished']);
     });
 
-    testWidgets('is a pair of buttons, one for each way', (tester) async {
+    testWidgets('is one cell of the strip with two faces', (tester) async {
+      // A state as much as an action, which is what the strip is for: lit or not says at a glance
+      // what a row of identical outlined buttons made you read to find out.
       await tester.pumpWidget(details(book()));
-      expect(
-        find.widgetWithText(OutlinedButton, 'Mark as finished'),
-        findsOneWidget,
-      );
+      expect(find.text('Mark finished'), findsOneWidget);
+      expect(find.text('Finished'), findsNothing);
 
       await tester.pumpWidget(details(book(finished: true)));
-      expect(
-        find.widgetWithText(OutlinedButton, 'Mark as not finished'),
-        findsOneWidget,
-      );
+      expect(find.text('Finished'), findsOneWidget);
+      expect(find.text('Mark finished'), findsNothing);
     });
   });
 
@@ -383,7 +383,7 @@ void main() {
       final pressed = <String>[];
       await tester.pumpWidget(details(book(), pressed));
 
-      await tester.tap(find.text('Remove from library'));
+      await tester.tap(find.text('In library'));
       await tester.pumpAndSettle();
       expect(find.text('Remove from library?'), findsOneWidget);
       await tester.tap(find.text('Cancel'));
@@ -396,7 +396,7 @@ void main() {
       final pressed = <String>[];
       await tester.pumpWidget(details(book(), pressed));
 
-      await tester.tap(find.text('Remove from library'));
+      await tester.tap(find.text('In library'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Remove'));
       await tester.pumpAndSettle();
@@ -406,8 +406,12 @@ void main() {
     testWidgets('is not offered for a book already out of the library', (
       tester,
     ) async {
+      // The cell stays, saying what is true. Hiding it would move the ones beside it under the
+      // listener's finger between one visit and the next.
       await tester.pumpWidget(details(book(inLibrary: false)));
-      expect(find.text('Remove from library'), findsNothing);
+
+      expect(find.text('In library'), findsNothing);
+      expect(find.text('Add to library'), findsOneWidget);
     });
   });
 }

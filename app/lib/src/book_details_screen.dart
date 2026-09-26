@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kikuyomi_data/kikuyomi_data.dart'
@@ -25,21 +26,33 @@ class BookDetailsScreen extends ConsumerWidget {
     final overview = ref.watch(bookOverviewProvider(bookId));
     final downloads =
         ref.watch(bookDownloadsProvider(bookId)).value ?? BookDownloads.none;
+    final book = overview.value;
     return Scaffold(
       appBar: AppBar(),
+      // The one thing every visit is for, kept where a thumb reaches it rather than in a row of
+      // outlined buttons where it looked like one option among four.
+      floatingActionButton: book == null
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => openBookInPlayer(
+                context,
+                ref,
+                bookId,
+                fromStart: playButtonFrom(book) == PlayFrom.start,
+              ),
+              icon: const Icon(Icons.play_arrow),
+              label: Text(playButtonLabel(book)),
+            ),
       body: overview.when(
         data: (book) => book == null
             ? const Center(child: Text('This book is no longer available'))
             : BookDetailsView(
                 book: book,
                 covers: ref.watch(servicesProvider).covers,
-                onPlay: (from) => openBookInPlayer(
-                  context,
-                  ref,
-                  bookId,
-                  fromStart: from == PlayFrom.start,
-                ),
                 onRemove: () => _remove(context, ref, book.title),
+                onOpenAtSource: book.webUrl == null
+                    ? null
+                    : () => _openAtSource(context, book.webUrl!),
                 listenedCommands: _listenedCommands(
                   ref.watch(servicesProvider),
                 ),
@@ -52,6 +65,19 @@ class BookDetailsScreen extends ConsumerWidget {
             Center(child: Text('Could not load the book: $error')),
       ),
     );
+  }
+
+  /// Opens the book's page at its source in a browser.
+  ///
+  /// Outside the app rather than in a view of our own: §3.4 lets a source hand back any page it
+  /// likes, and the browser is where a listener already trusts their sign-ins and their blocker.
+  Future<void> _openAtSource(BuildContext context, String webUrl) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final url = Uri.tryParse(webUrl);
+    if (url == null ||
+        !await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      tellInSnackBar(messenger, 'That page could not be opened.');
+    }
   }
 
   /// Asks for every file of the book that is not already here, and says what that came to.
